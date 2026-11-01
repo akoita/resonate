@@ -82,6 +82,12 @@ music on Resonate for others stays an artist operation (release upload).
   row's `id`. Every lookup is scoped to the owner.
 - Availability, public playlist resolution and takedown cleanup derive catalog
   identity from `source`, never from URL fields on a local row.
+- On a remote stem row, `isOwned`, `tokenId`, `listingId` and `purchaseDate`
+  come from the account's holdings, never from the client (#2511,
+  `library_holdings.ts`): its `StemPurchase` rows and its active `StemListing`
+  rows, across the same addresses the collection endpoint reads (wallet,
+  smart-account owner, agent-purchase buyers). They are written on save and
+  recomputed on every read, so a stem sold on stops reading as owned.
 
 Outside the library:
 

@@ -10,6 +10,7 @@ import {
     normalizeCreditName,
     resolveCreditedArtistName,
 } from "../shared/artist_attribution";
+import { libraryRowStemId, ownershipFor, resolveStemHoldings, type StemHolding } from "./library_holdings";
 
 const prisma = new PrismaClient();
 
@@ -169,9 +170,13 @@ export interface SaveTrackInput {
     remoteUrl?: string | null;
     remoteArtworkUrl?: string | null;
     stemType?: string | null;
+    /** Ignored: derived from the account's holdings (#2511). */
     tokenId?: string | null;
+    /** Ignored: derived from the account's holdings (#2511). */
     listingId?: string | null;
+    /** Ignored: derived from the account's holdings (#2511). */
     purchaseDate?: string | null;
+    /** Rejected on a local file; ignored on a catalog row (#2511). */
     isOwned?: boolean;
     previewUrl?: string | null;
 }
@@ -257,6 +262,29 @@ export function presentLibraryTrack<T extends { id: string; clientKey?: string |
     return track.clientKey ? { ...track, id: track.clientKey } : track;
 }
 
+/**
+ * Replace each row's ownership fields with what the account holds (#2511), so
+ * a stem sold or never bought stops reading as owned even if an older client
+ * stored the claim.
+ */
+function withHoldings<T extends {
+    source: string;
+    catalogTrackId?: string | null;
+    clientKey?: string | null;
+    previewUrl?: string | null;
+    remoteUrl?: string | null;
+}>(tracks: T[], holdings: Map<string, StemHolding>): T[] {
+    return tracks.map((track) => {
+        if (track.source !== "remote") return track;
+        return { ...track, ...ownershipFor(libraryRowStemId(track), holdings) };
+    });
+}
+
+async function holdingsForRows(userId: string, tracks: Array<Parameters<typeof libraryRowStemId>[0]>) {
+    const stemIds = tracks.map(libraryRowStemId).filter((id): id is string => Boolean(id));
+    return resolveStemHoldings(userId, stemIds);
+}
+
 @Injectable()
 export class LibraryService {
     async saveTrack(userId: string, data: SaveTrackInput) {
@@ -265,6 +293,11 @@ export class LibraryService {
 
     private async writeTrack(userId: string, data: SaveTrackInput) {
         const { source, clientKey } = validateLibraryTrackInput(data);
+        // Ownership is never taken from the client (#2511).
+        const stemId = libraryRowStemId({ ...data, source, clientKey });
+        const ownership = stemId
+            ? ownershipFor(stemId, await resolveStemHoldings(userId, [stemId]))
+            : ownershipFor(null, new Map());
         const trackData = {
             userId,
             source,
@@ -281,10 +314,10 @@ export class LibraryService {
             remoteUrl: source === "remote" ? data.remoteUrl : null,
             remoteArtworkUrl: source === "remote" ? data.remoteArtworkUrl : null,
             stemType: source === "remote" ? data.stemType : null,
-            tokenId: source === "remote" ? data.tokenId : null,
-            listingId: source === "remote" ? data.listingId : null,
-            purchaseDate: source === "remote" && data.purchaseDate ? new Date(data.purchaseDate) : null,
-            isOwned: source === "remote" ? data.isOwned ?? false : false,
+            tokenId: ownership.tokenId,
+            listingId: ownership.listingId,
+            purchaseDate: ownership.purchaseDate,
+            isOwned: ownership.isOwned,
             previewUrl: source === "remote" ? data.previewUrl : null,
         };
 
@@ -359,10 +392,11 @@ export class LibraryService {
     async listTracks(userId: string, source?: string) {
         const where: any = { userId };
         if (source) where.source = source;
-        const tracks = await prisma.libraryTrack.findMany({
+        const stored = await prisma.libraryTrack.findMany({
             where,
             orderBy: { createdAt: "desc" },
         });
+        const tracks = withHoldings(stored, await holdingsForRows(userId, stored));
 
         const remoteTracks = tracks.filter((track) => track.source === "remote");
         const catalogTrackIds = new Set<string>();
@@ -471,10 +505,11 @@ export class LibraryService {
     }
 
     async getTrack(userId: string, id: string) {
-        const track = await findOwnedLibraryTrack(userId, id);
-        if (!track) {
+        const stored = await findOwnedLibraryTrack(userId, id);
+        if (!stored) {
             throw new NotFoundException("Library track not found");
         }
+        const [track] = withHoldings([stored], await holdingsForRows(userId, [stored]));
         // A device file is never a catalog track, whatever fields it carries.
         const references = track.source === "local"
             ? EMPTY_CATALOG_REFERENCES

@@ -308,6 +308,57 @@ describe('LibraryService (integration)', () => {
       expect((await service.getTrack(userId, stemId)).userId).toBe(userId);
     });
 
+    it('derives stem ownership from holdings, never from the client (#2511)', async () => {
+      const wallet = `0x${'2511'.padEnd(40, 'a')}`;
+      const stem = await prisma.stem.create({
+        data: { trackId: catalogTrackId, type: 'drums', uri: '/meta/drums-2511.mp3' },
+      });
+      const row = {
+        id: stem.id, source: 'remote', title: 'Drums', stemType: 'drums',
+        previewUrl: `/catalog/stems/${stem.id}/preview`,
+        // A forged claim: none of these may be stored.
+        isOwned: true, tokenId: '999', listingId: '7', purchaseDate: '2020-01-01T00:00:00.000Z',
+      };
+      await prisma.wallet.create({ data: { userId, address: wallet, chainId: 31337 } });
+      const listing = await prisma.stemListing.create({
+        data: {
+          listingId: 925110n, stemId: stem.id, tokenId: 2511n, chainId: 31337,
+          contractAddress: '0xStemMarket', sellerAddress: `0x${'5'.repeat(40)}`,
+          pricePerUnit: '1000000', amount: 1n, paymentToken: `0x${'6'.repeat(40)}`,
+          expiresAt: new Date(Date.now() + 86_400_000), transactionHash: `${TEST_PREFIX}holding_listing`,
+          blockNumber: 1n, status: 'sold', listedAt: new Date(),
+        },
+      });
+      try {
+        const forged = await service.saveTrack(userId, row);
+        expect(forged).toMatchObject({ isOwned: false, tokenId: null, listingId: null, purchaseDate: null });
+
+        const purchasedAt = new Date('2026-10-01T12:00:00.000Z');
+        const purchase = await prisma.stemPurchase.create({
+          data: {
+            listingId: listing.id, buyerAddress: wallet, amount: 1n, totalPaid: '1000000',
+            royaltyPaid: '0', protocolFeePaid: '0', sellerReceived: '1000000', licenseType: 'personal',
+            transactionHash: `${TEST_PREFIX}holding_buy`, blockNumber: 2n, purchasedAt,
+          },
+        });
+        const owned = await service.saveTrack(userId, row);
+        expect(owned).toMatchObject({ isOwned: true, tokenId: '2511', listingId: null });
+        expect(owned.purchaseDate?.toISOString()).toBe(purchasedAt.toISOString());
+
+        // Sold on (the purchase record is gone): the stored claim no longer counts.
+        await prisma.stemPurchase.delete({ where: { id: purchase.id } });
+        const listed = (await service.listTracks(userId)).find((track) => track.id === stem.id);
+        expect(listed).toMatchObject({ isOwned: false, tokenId: null });
+        expect((await service.getTrack(userId, stem.id)).isOwned).toBe(false);
+      } finally {
+        await prisma.libraryTrack.deleteMany({ where: { userId, clientKey: stem.id } });
+        await prisma.stemPurchase.deleteMany({ where: { listingId: listing.id } });
+        await prisma.stemListing.delete({ where: { id: listing.id } });
+        await prisma.stem.delete({ where: { id: stem.id } });
+        await prisma.wallet.deleteMany({ where: { userId } });
+      }
+    });
+
     it('rejects a local file that carries catalog fields', async () => {
       await expect(service.saveTrack(userId, {
         id: 'local_boundary_forged', source: 'local', title: 'Forged', catalogTrackId,
