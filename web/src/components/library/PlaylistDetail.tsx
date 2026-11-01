@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import {
     Playlist,
     getPlaylist,
     removeTrackFromPlaylist,
+    removeTracksFromPlaylist,
     reorderTracks,
     renamePlaylist,
 } from "../../lib/playlistStore";
@@ -39,7 +40,11 @@ import {
     queueableTracks,
     resolveAvailability,
 } from "./trackAvailability";
-import { RemoveIcon } from "../ui/MenuIcons";
+import { AddToPlaylistIcon, AddToQueueIcon, LoopIcon, PlayIcon, PlayNextIcon, RemoveIcon, RepeatIcon } from "../ui/MenuIcons";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { TrackSelectionBar } from "../player/TrackSelectionBar";
+import { useListSelection } from "../../lib/useListSelection";
+import { useUIStore } from "../../lib/uiStore";
 
 interface PlaylistDetailProps {
     playlistId: string;
@@ -62,7 +67,6 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const [loading, setLoading] = useState(true);
     const [artworkUrls, setArtworkUrls] = useState<Map<string, string>>(new Map());
     const [showRenameModal, setShowRenameModal] = useState(false);
-    const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
@@ -74,9 +78,14 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     // What may actually go into a queue. Never used for rendering the list.
     const playableTracks = useMemo(() => queueableTracks(tracks), [tracks]);
 
-    const { playQueue, currentTrack } = usePlayer();
+    const { playQueue, currentTrack, setRepeatMode } = usePlayer();
     const queueActions = useQueueActions();
-    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
+    const setTracksToAddToPlaylist = useUIStore((state) => state.setTracksToAddToPlaylist);
+    const setTrackForRepeats = useUIStore((state) => state.setTrackForRepeats);
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, indices: number[] } | null>(null);
+    /** Entry ids waiting on the "remove several" confirmation. */
+    const [pendingRemoval, setPendingRemoval] = useState<string[] | null>(null);
+    const listRef = useRef<HTMLDivElement>(null);
     const { addToast } = useToast();
     const [trackProgress, setTrackProgress] = useState<Map<string, number>>(new Map());
 
@@ -150,16 +159,76 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         addToast({ type: "success", title: "Removed", message: "Track removed from playlist" });
     };
 
-    const handleContextMenu = (e: React.MouseEvent, track: LocalTrack) => {
-        e.preventDefault();
-        setContextMenu({ x: e.clientX, y: e.clientY, track });
+    const confirmRemoveEntries = async () => {
+        const ids = pendingRemoval ?? [];
+        setPendingRemoval(null);
+        if (ids.length === 0) return;
+        await removeTracksFromPlaylist(playlistId, ids);
+        await loadPlaylistData();
+        addToast({ type: "success", title: "Removed", message: `${ids.length} track${ids.length === 1 ? "" : "s"} removed from playlist` });
     };
 
-    const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
-        ...queueActions.contextMenuItems(track),
-        { separator: true, label: "", onClick: () => { } },
-        { label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => handleRemoveTrack(track.id) },
-    ];
+    const playEntryRow = useCallback((index: number) => {
+        const track = entries[index]?.track;
+        if (track && resolveAvailability(track).playable) handlePlayTrack(track);
+    }, [entries, handlePlayTrack]);
+
+    const requestRemoveRows = useCallback((indices: number[]) => {
+        const ids = [...new Set(indices.map((index) => entries[index]?.id).filter((id): id is string => Boolean(id)))];
+        if (ids.length > 0) setPendingRemoval(ids);
+    }, [entries]);
+
+    // Shift/Ctrl/Cmd+click and the keyboard select rows; a plain click still plays.
+    const rowSelection = useListSelection({
+        count: entries.length,
+        resetKey: entries.map((entry) => entry.id).join("\u0000"),
+        listRef,
+        onActivate: playEntryRow,
+        onRemove: requestRemoveRows,
+    });
+
+    const handleContextMenu = (e: React.MouseEvent, index: number) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY, indices: rowSelection.contextTargets(index) });
+    };
+
+    /** Everything that applies to several playlist rows at once. */
+    const getSelectionItems = (indices: number[]): ContextMenuItem[] => {
+        const selectedTracks = indices
+            .map((index) => entries[index]?.track)
+            .filter((track): track is LocalTrack => Boolean(track));
+        const playable = queueableTracks(selectedTracks);
+        const noPlayable = playable.length === 0;
+        return [
+            { label: "Play", icon: <PlayIcon />, disabled: noPlayable, onClick: () => void playQueue(playable, 0) },
+            { label: "Loop These", icon: <LoopIcon />, disabled: noPlayable, onClick: () => {
+                setRepeatMode("all");
+                void playQueue(playable, 0);
+                addToast({ type: "success", title: `Looping ${playable.length} track${playable.length === 1 ? "" : "s"}` });
+            } },
+            { label: "Play Next", icon: <PlayNextIcon />, disabled: noPlayable, onClick: () => queueActions.queue(playable, "next") },
+            { label: "Add to Queue", icon: <AddToQueueIcon />, disabled: noPlayable, onClick: () => queueActions.queue(playable, "queue") },
+            { label: "Set Repeats…", icon: <RepeatIcon />, disabled: noPlayable, onClick: () => setTrackForRepeats(playable) },
+            { separator: true, label: "", onClick: () => { } },
+            { label: "Add to Playlist", icon: <AddToPlaylistIcon />, disabled: selectedTracks.length === 0, onClick: () => setTracksToAddToPlaylist(selectedTracks) },
+            { label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => requestRemoveRows(indices) },
+        ];
+    };
+
+    const getTrackContextMenuItems = (indices: number[]): ContextMenuItem[] => {
+        if (indices.length > 1) return getSelectionItems(indices);
+        const entry = entries[indices[0]];
+        if (!entry) return [];
+        if (!entry.track) {
+            return [{ label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => handleRemoveTrack(entry.id) }];
+        }
+        const track = entry.track;
+        return [
+            ...queueActions.contextMenuItems(track),
+            { separator: true, label: "", onClick: () => { } },
+            { label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => handleRemoveTrack(track.id) },
+        ];
+    };
 
     const handlePlayAll = () => {
         if (playableTracks.length > 0) {
@@ -182,18 +251,16 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-            if (e.code === "Space" && selectedTrackId) {
+            const focused = rowSelection.selection.focus;
+            if (e.code === "Space" && !e.ctrlKey && !e.metaKey && focused !== null) {
                 e.preventDefault();
-                const track = tracks.find(t => t.id === selectedTrackId);
-                if (track) {
-                    handlePlayTrack(track);
-                }
+                playEntryRow(focused);
             }
         };
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [selectedTrackId, tracks, handlePlayTrack]);
+    }, [rowSelection.selection.focus, playEntryRow]);
 
     const handleRename = async (newName: string) => {
         if (!newName.trim() || !playlist) {
@@ -318,10 +385,21 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
 
             <div className="detail-tracks">
                 <h2 className="detail-section-title">Tracks</h2>
+                <TrackSelectionBar
+                    count={rowSelection.selected.length}
+                    items={getSelectionItems(rowSelection.selected)}
+                    onClear={rowSelection.clear}
+                />
                 {entries.length === 0 ? (
                     <div className="home-subtitle">This playlist is empty. Add some tracks from your library!</div>
                 ) : (
-                    <div className="library-list">
+                    <div
+                        ref={listRef}
+                        className="library-list"
+                        tabIndex={0}
+                        aria-label="Playlist tracks. Shift or Ctrl-click to select several tracks."
+                        {...rowSelection.listProps}
+                    >
                         {entries.map((entry, index) => {
                             const track = entry.track;
                             const availability = resolveAvailability(track);
@@ -332,7 +410,9 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                 return (
                                     <div
                                         key={`${entry.id}-${index}`}
-                                        className="library-item playlist-track-item is-unplayable"
+                                        className={`library-item playlist-track-item is-unplayable ${rowSelection.isSelected(index) ? "selected" : ""} ${rowSelection.isFocused(index) ? "is-focused" : ""}`}
+                                        {...rowSelection.rowProps(index)}
+                                        onContextMenu={(e) => handleContextMenu(e, index)}
                                         aria-disabled="true"
                                         title={availability.reason ?? undefined}
                                         style={{ opacity: 0.55 }}
@@ -362,16 +442,12 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                 <div
                                     key={`${track.id}-${index}`}
                                     draggable
-                                    className={`library-item playlist-track-item ${selectedTrackId === track.id ? "selected" : ""} ${isCurrent ? "playing" : ""} ${draggingTrackId === track.id ? "dragging" : ""} ${dragOverIndex === index ? "drag-before" : ""} ${dragOverIndex === index + 1 && index === entries.length - 1 ? "drag-after" : ""} ${availability.playable ? "" : "is-unplayable"}`}
+                                    className={`library-item playlist-track-item ${rowSelection.isSelected(index) ? "selected" : ""} ${rowSelection.isFocused(index) ? "is-focused" : ""} ${isCurrent ? "playing" : ""} ${draggingTrackId === track.id ? "dragging" : ""} ${dragOverIndex === index ? "drag-before" : ""} ${dragOverIndex === index + 1 && index === entries.length - 1 ? "drag-after" : ""} ${availability.playable ? "" : "is-unplayable"}`}
                                     aria-disabled={availability.playable ? undefined : true}
                                     title={availability.playable ? undefined : availability.reason ?? undefined}
                                     style={availability.playable ? undefined : { opacity: 0.55 }}
-                                    onClick={() => {
-                                        setSelectedTrackId(track.id);
-                                        if (!availability.playable) return;
-                                        handlePlayTrack(track);
-                                    }}
-                                    onContextMenu={(e) => handleContextMenu(e, track)}
+                                    {...rowSelection.rowProps(index)}
+                                    onContextMenu={(e) => handleContextMenu(e, index)}
                                     onDragStart={(e) => {
                                         e.stopPropagation();
                                         setDraggingTrackId(track.id);
@@ -503,10 +579,20 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                 <ContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
-                    items={getTrackContextMenuItems(contextMenu.track)}
+                    items={getTrackContextMenuItems(contextMenu.indices)}
                     onClose={() => setContextMenu(null)}
                 />
             )}
+
+            <ConfirmDialog
+                isOpen={pendingRemoval !== null}
+                title={`Remove ${pendingRemoval?.length ?? 0} track${pendingRemoval?.length === 1 ? "" : "s"}?`}
+                message="They are removed from this playlist only, not from your library."
+                confirmLabel="Remove"
+                variant="danger"
+                onConfirm={confirmRemoveEntries}
+                onCancel={() => setPendingRemoval(null)}
+            />
 
             <PromptModal
                 isOpen={showRenameModal}

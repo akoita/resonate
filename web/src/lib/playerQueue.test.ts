@@ -5,6 +5,7 @@ import {
   createShuffleCycleState,
   insertQueueTracksNext,
   reconcileShuffleCycle,
+  removeQueueIndices,
   shuffleNext,
   shufflePrevious,
 } from "./playerQueue";
@@ -180,5 +181,39 @@ describe("shuffle cycle navigation", () => {
     });
     expect(result.trackId).toBe("a");
     expect(result.state).toEqual({ history: ["a"], position: 0, played: ["a"] });
+  });
+});
+
+describe("removeQueueIndices", () => {
+  const queue = ["a", "b", "c", "d", "e"].map(track);
+  const ids = (list: LocalTrack[]) => list.map((t) => t.id);
+
+  it("keeps the current track playing when it survives", () => {
+    const result = removeQueueIndices(queue, 3, [0, 1, 4]);
+    expect(ids(result.queue)).toEqual(["c", "d"]);
+    expect(result.currentIndex).toBe(1);
+    expect(result.currentRemoved).toBe(false);
+  });
+
+  it("moves to the next surviving track when the current one is removed", () => {
+    const result = removeQueueIndices(queue, 1, [1, 2]);
+    expect(ids(result.queue)).toEqual(["a", "d", "e"]);
+    expect(result.currentIndex).toBe(1);
+    expect(result.currentRemoved).toBe(true);
+  });
+
+  it("falls back to the last track when everything after the current one goes", () => {
+    const result = removeQueueIndices(queue, 3, [3, 4]);
+    expect(ids(result.queue)).toEqual(["a", "b", "c"]);
+    expect(result.currentIndex).toBe(2);
+  });
+
+  it("empties the queue and ignores out-of-range indices", () => {
+    expect(removeQueueIndices(queue, 0, [0, 1, 2, 3, 4, 9])).toEqual({ queue: [], currentIndex: -1, currentRemoved: true });
+    expect(ids(removeQueueIndices(queue, 0, [-1, 7]).queue)).toEqual(ids(queue));
+  });
+
+  it("keeps no current track when nothing was playing", () => {
+    expect(removeQueueIndices(queue, -1, [0]).currentIndex).toBe(-1);
   });
 });

@@ -55,6 +55,38 @@ export function insertQueueTracksNext(
   };
 }
 
+export interface QueueRemovalResult {
+  queue: LocalTrack[];
+  /** Index of the track that should now be current, or -1 when empty. */
+  currentIndex: number;
+  /** The track that was current was among the removed ones. */
+  currentRemoved: boolean;
+}
+
+/**
+ * Remove several queue positions at once. The current track keeps playing
+ * when it survives; when it is removed, the first surviving track after it
+ * (else the last one) becomes current, as for a single removal.
+ */
+export function removeQueueIndices(
+  queue: readonly LocalTrack[],
+  currentIndex: number,
+  indices: readonly number[],
+): QueueRemovalResult {
+  const removed = new Set(indices.filter((index) => index >= 0 && index < queue.length));
+  const nextQueue = queue.filter((_, index) => !removed.has(index));
+  if (nextQueue.length === 0) return { queue: [], currentIndex: -1, currentRemoved: removed.has(currentIndex) };
+  if (currentIndex < 0) return { queue: nextQueue, currentIndex: -1, currentRemoved: false };
+  const removedBefore = [...removed].filter((index) => index < currentIndex).length;
+  const currentRemoved = removed.has(currentIndex);
+  const shifted = Math.max(0, currentIndex - removedBefore);
+  return {
+    queue: nextQueue,
+    currentIndex: Math.min(shifted, nextQueue.length - 1),
+    currentRemoved,
+  };
+}
+
 function addQueueTracksAt(
   queue: readonly LocalTrack[],
   tracks: readonly LocalTrack[],

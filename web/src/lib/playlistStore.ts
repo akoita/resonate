@@ -581,6 +581,42 @@ export async function removeTrackFromPlaylist(
 }
 
 /**
+ * Remove several tracks from a playlist in one write (a multi-selection).
+ * Every entry of each given id goes, as for `removeTrackFromPlaylist`.
+ */
+export async function removeTracksFromPlaylist(
+    playlistId: string,
+    trackIds: readonly string[]
+): Promise<Playlist | null> {
+    const playlist = await getPlaylist(playlistId);
+    if (!playlist) return null;
+    const removing = new Set(trackIds);
+    if (removing.size === 0) return playlist;
+
+    playlist.trackIds = playlist.trackIds.filter((id) => !removing.has(id));
+    playlist.updatedAt = new Date().toISOString();
+
+    const token = getToken();
+    if (token && !playlistId.startsWith("playlist_")) {
+        try {
+            const apiPlaylist = await updatePlaylistAPI(playlistId, token, { trackIds: playlist.trackIds });
+            playlist.updatedAt = apiPlaylist.updatedAt;
+        } catch (err) {
+            console.error("Failed to update track list on backend", err);
+        }
+    }
+
+    await playlistStore.setItem(playlistId, playlist);
+    for (const trackId of removing) {
+        reportPlaylistEvent("playlist.track_removed", playlist, {
+            trackId,
+            trackCount: playlist.trackIds.length,
+        });
+    }
+    return playlist;
+}
+
+/**
  * Reorder tracks in a playlist
  */
 export async function reorderTracks(
