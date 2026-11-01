@@ -87,6 +87,28 @@ export function removeQueueIndices(
   };
 }
 
+/** Every queue position except the current track: what Clear queue removes. */
+export function clearQueueIndices(queueLength: number, currentIndex: number): number[] {
+  const indices: number[] = [];
+  for (let index = 0; index < queueLength; index += 1) {
+    if (index !== currentIndex) indices.push(index);
+  }
+  return indices;
+}
+
+/**
+ * Undo for Clear queue stays on offer only while the queue is still exactly
+ * what the clear left: the kept track alone, or nothing. Any later add,
+ * removal or new play makes the snapshot stale, so Undo goes away.
+ */
+export function canUndoQueueClear(
+  keptTrackId: string | null,
+  queue: readonly LocalTrack[],
+): boolean {
+  if (keptTrackId === null) return queue.length === 0;
+  return queue.length === 1 && queue[0].id === keptTrackId;
+}
+
 function addQueueTracksAt(
   queue: readonly LocalTrack[],
   tracks: readonly LocalTrack[],

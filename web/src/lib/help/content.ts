@@ -885,7 +885,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/player-listening-controls.png`,
-              alt: "The player with queue saving, a five-to-ten-second passage loop, and one additional track repeat configured.",
+              alt: "The player with Save queue as playlist and Clear queue actions, a five-to-ten-second passage loop, and one additional track repeat configured.",
               caption: "Loop and repeat controls with a sample listening queue.",
               width: 1440,
               height: 1100,
@@ -899,6 +899,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "You can queue a card without opening it. In the catalog and on Home, point at a release, artist, playlist, or track card and select its queue button (always shown on touch screens), or right-click the card, then choose Play next or Add to queue. An artist adds all of their tracks, newest release first. Add to queue never starts playback.",
               "Shuffle plays every eligible queued track once before Repeat All begins another cycle. Tracks added during shuffle join the current cycle.",
               "Choose Save queue as playlist beside Queue Manifest to keep the whole queue in its displayed order, including tracks already played. Give it a name and folder. An unchanged playlist offers View playlist instead; changing its queue lets you save a new playlist without overwriting the original. Review any tracks that cannot be saved before confirming.",
+              "Choose Clear queue beside Queue Manifest to remove every track except the one playing, which keeps playing. If nothing is playing, the queue empties. Select Undo in the line that appears to put the tracks back in their order; Undo goes away once you add or play something else.",
               "Open Loop and repeat in the player bar or full player. Set A and B in seconds, or mark your current position with Set A here and Set B here, then choose Loop passage. Seeking stays within that passage until you clear it; changing tracks clears the loop.",
               "Choose Current track or Entire queue and a number of additional repeats; type it or use the − and + buttons beside the field. One additional repeat means one replay after the current pass. The remaining count changes only at a natural track end or complete queue cycle. Passage loops pause that count. You can update or cancel repeats, and selecting an infinite repeat mode replaces the finite plan.",
               "To set repeats for a track that is not playing, open its menu (right-click a queue or library row, or the ⋮ button) and choose Set repeats. The count waits until that track next starts, then runs like one set from Loop and repeat, and the queue shows it as ↻ with the number. Choose Set repeats again to change or cancel it. If a queue repeat is running, the track count waits until the queue repeat ends.",

@@ -410,6 +410,39 @@ details.listening-controls[open] .lc-caret {
   margin: 4px 0 0;
 }
 
+/* Save / View playlist and Clear queue share one chip row; status lines
+ * (Playlist saved, Cleared … Undo) wrap onto their own line below. */
+.queue-manifest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.queue-manifest-actions .queue-save {
+  margin: 0;
+}
+
+.queue-manifest-actions > .player-action-chip {
+  font-family: var(--font-sans);
+}
+
+.queue-clear-status {
+  flex-basis: 100%;
+}
+
+.queue-clear-undo {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--r-primary, currentColor);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .queue-save .player-action-chip {
   text-decoration: none;
 }

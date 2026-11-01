@@ -297,6 +297,15 @@ Manual:
 Implemented for #1724, #1721 and #1723. These
 controls serve listeners and curators; they are vision-neutral product quality.
 
+**Clear queue** sits in the same Queue Manifest chip row whenever the queue
+holds tracks other than the playing one. It removes every other position in one
+step (played and upcoming), keeps the current track playing, and empties the
+queue when nothing is current. It cancels a queue repeat plan (a track repeat
+stays). A status line offers **Undo**, which restores the full list, its
+position and its playlist source without restarting playback; Undo is offered
+only while the queue is still exactly what the clear left, so any later add,
+removal or play retires it.
+
 **Save queue as playlist** appears beside Queue Manifest for ad-hoc or modified
 queues. It snapshots past, current and upcoming tracks in manifest order, never
 shuffle traversal order. An unchanged playlist links to its source. Provenance

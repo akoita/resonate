@@ -120,6 +120,28 @@ test('source provenance survives reload and queue removal makes a new snapshot e
   await expect(page.getByRole('button', { name: 'Save queue as playlist' })).toBeVisible({ timeout: HYDRATION_TIMEOUT });
 });
 
+test('clear queue keeps the playing track, and undo restores the list and its source', async ({ page }) => {
+  await seedPlayer(page, true);
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: 'Clear queue' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Cleared 2 tracks from the queue.' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Remove Test b/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Remove Test a/ })).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Clear queue' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Remove Test c/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'View playlist' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
+  await expect(main.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  // Undo lives with the page; the cleared queue is what persists.
+  await main.getByRole('button', { name: 'Clear queue' }).click();
+  await waitForPersistedQueueLength(page, 1);
+  await page.reload();
+  await expect(page.getByRole('button', { name: /Remove Test a/ })).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
+});
+
 test('passage loop holds finite counts, then natural ends consume exact additional repeats', async ({ page }) => {
   await seedPlayer(page);
   const events: string[] = [];
