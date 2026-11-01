@@ -676,6 +676,12 @@ export type PublicPlaylistView = {
   isSaved: boolean;
   trackCount: number;
   playableTrackCount: number;
+  /**
+   * The owner's device files left out for this viewer (#2506): their details
+   * stay private, only the count is shared. 0 for the owner. Optional for
+   * older responses.
+   */
+  privateTrackCount?: number;
   tracks: PublicPlaylistTrack[];
   createdAt: string;
   updatedAt: string;

@@ -69,6 +69,11 @@ export interface PublicPlaylistView {
     isSaved: boolean;
     trackCount: number;
     playableTrackCount: number;
+    /**
+     * Owner device files left out of `tracks` for this viewer (#2506). Their
+     * details stay private; only the count is shared. Always 0 for the owner.
+     */
+    privateTrackCount: number;
     tracks: PublicPlaylistTrack[];
     createdAt: Date;
     updatedAt: Date;
@@ -397,7 +402,9 @@ export class PlaylistService {
             throw new NotFoundException("Playlist not found");
         }
 
-        const tracks = await this.resolvePublicTracks(playlist.userId, playlist.trackIds);
+        const { tracks, privateTrackCount } = await this.resolvePublicTracks(playlist.userId, playlist.trackIds, {
+            includeLocalFiles: isOwner,
+        });
 
         let isSaved = false;
         if (viewerUserId && !isOwner) {
@@ -418,22 +425,34 @@ export class PlaylistService {
             isSaved,
             trackCount: tracks.length,
             playableTrackCount: tracks.filter((t) => t.playable).length,
+            privateTrackCount,
             tracks,
             createdAt: playlist.createdAt,
             updatedAt: playlist.updatedAt,
         };
     }
 
-    /** Build streamable public track entries from the owner's LibraryTrack records, preserving order. */
-    private async resolvePublicTracks(ownerUserId: string, trackIds: string[]): Promise<PublicPlaylistTrack[]> {
-        if (trackIds.length === 0) return [];
+    /**
+     * Build streamable public track entries from the owner's LibraryTrack
+     * records, preserving order.
+     *
+     * A device file is the owner's private data — its tags, its name, the fact
+     * it exists — and nobody else can play it. For any viewer but the owner it
+     * is left out and only counted (#2506).
+     */
+    private async resolvePublicTracks(
+        ownerUserId: string,
+        trackIds: string[],
+        options: { includeLocalFiles: boolean },
+    ): Promise<{ tracks: PublicPlaylistTrack[]; privateTrackCount: number }> {
+        if (trackIds.length === 0) return { tracks: [], privateTrackCount: 0 };
         // A playlist stores the frontend track id, which for catalog tracks is the
         // catalog track id, not the per-user LibraryTrack uuid. Resolve the owner's
         // rows by either, scoped to the owner so another user's row never matches.
         const records = await prisma.libraryTrack.findMany({
             where: {
                 userId: ownerUserId,
-                OR: [{ id: { in: trackIds } }, { catalogTrackId: { in: trackIds } }],
+                OR: [{ id: { in: trackIds } }, { clientKey: { in: trackIds } }, { catalogTrackId: { in: trackIds } }],
             },
         });
         const byKey = indexLibraryTracksByPlaylistKey(records);
@@ -442,23 +461,28 @@ export class PlaylistService {
         // (#1793) — never one query per entry.
         const availabilityByCatalogId = await resolveTrackAvailability(
             records
-                .map((record) => extractCatalogRefs(record).trackId ?? record.catalogTrackId)
+                .map((record) => extractCatalogRefs(record).trackId)
                 .filter((id): id is string => Boolean(id)),
         );
 
         const resolved: PublicPlaylistTrack[] = [];
         const seenRecordIds = new Set<string>();
+        let privateTrackCount = 0;
         for (const trackId of trackIds) {
             const record = byKey.get(trackId);
             if (!record) continue; // track removed from owner's library; skip silently
             if (seenRecordIds.has(record.id)) continue; // already emitted via its other key
             seenRecordIds.add(record.id);
+            if (record.source === "local" && !options.includeLocalFiles) {
+                privateTrackCount += 1;
+                continue;
+            }
             const refs = extractCatalogRefs(record);
             const { streamPath, artworkPath } = catalogPathsFor(refs);
             const catalogTrackId = refs.trackId ?? record.catalogTrackId ?? null;
             const availability = availabilityFor(catalogTrackId, availabilityByCatalogId);
             resolved.push({
-                id: record.id,
+                id: record.clientKey ?? record.id,
                 title: record.title,
                 artist: record.artist ?? null,
                 album: record.album ?? null,
@@ -471,7 +495,7 @@ export class PlaylistService {
                 availability,
             });
         }
-        return resolved;
+        return { tracks: resolved, privateTrackCount };
     }
 
     /**
@@ -487,10 +511,12 @@ export class PlaylistService {
         const records = await prisma.libraryTrack.findMany({
             where: {
                 userId: ownerUserId,
-                OR: [{ id: { in: trackIds } }, { catalogTrackId: { in: trackIds } }],
+                OR: [{ id: { in: trackIds } }, { clientKey: { in: trackIds } }, { catalogTrackId: { in: trackIds } }],
             },
             select: {
                 id: true,
+                source: true,
+                clientKey: true,
                 catalogTrackId: true,
                 remoteUrl: true,
                 remoteArtworkUrl: true,
@@ -499,15 +525,16 @@ export class PlaylistService {
         });
         const availabilityByCatalogId = await resolveTrackAvailability(
             records
-                .map((record) => extractCatalogRefs(record).trackId ?? record.catalogTrackId)
+                .map((record) => extractCatalogRefs(record).trackId)
                 .filter((id): id is string => Boolean(id)),
         );
         const byPlaylistKey: Record<string, TrackAvailability> = {};
         for (const record of records) {
             const catalogTrackId =
-                extractCatalogRefs(record).trackId ?? record.catalogTrackId ?? null;
+                extractCatalogRefs(record).trackId;
             const availability = availabilityFor(catalogTrackId, availabilityByCatalogId);
             byPlaylistKey[record.id] = availability;
+            if (record.clientKey) byPlaylistKey[record.clientKey] = availability;
             if (record.catalogTrackId) byPlaylistKey[record.catalogTrackId] = availability;
         }
         for (const trackId of trackIds) {
@@ -550,14 +577,20 @@ export class PlaylistService {
         const allTrackIds = Array.from(new Set(candidates.flatMap((p) => p.trackIds)));
         const records = allTrackIds.length
             ? await prisma.libraryTrack.findMany({
-                where: { OR: [{ id: { in: allTrackIds } }, { catalogTrackId: { in: allTrackIds } }] },
+                where: {
+                    OR: [
+                        { id: { in: allTrackIds } },
+                        { clientKey: { in: allTrackIds } },
+                        { catalogTrackId: { in: allTrackIds } },
+                    ],
+                },
             })
             : [];
         // #1793: a withdrawn (or otherwise unavailable) track is not playable, so
         // it must not inflate a discovery card's playable count. One batched query.
         const availabilityByCatalogId = await resolveTrackAvailability(
             records
-                .map((record) => extractCatalogRefs(record).trackId ?? record.catalogTrackId)
+                .map((record) => extractCatalogRefs(record).trackId)
                 .filter((id): id is string => Boolean(id)),
         );
         // ownerUserId -> (id | catalogTrackId) -> row, so a playlist only resolves
@@ -570,6 +603,7 @@ export class PlaylistService {
                 byOwner.set(r.userId, owned);
             }
             owned.set(r.id, r);
+            if (r.clientKey) owned.set(r.clientKey, r);
             if (r.catalogTrackId) owned.set(r.catalogTrackId, r);
         }
 
@@ -585,6 +619,7 @@ export class PlaylistService {
                 if (!record) continue; // not in the owner's library (removed, or never theirs)
                 if (seenRecordIds.has(record.id)) continue; // already counted via its other key
                 seenRecordIds.add(record.id);
+                if (record.source === "local") continue; // the owner's private device file (#2506)
                 trackCount += 1;
                 const refs = extractCatalogRefs(record);
                 const { streamPath, artworkPath } = catalogPathsFor(refs);
@@ -682,6 +717,7 @@ export class PlaylistService {
                     isSaved: true,
                     trackCount: 0,
                     playableTrackCount: 0,
+                    privateTrackCount: 0,
                     tracks: [],
                     createdAt: entry.createdAt,
                     updatedAt: entry.createdAt,
@@ -774,12 +810,15 @@ function clampLimit(value: number | undefined, fallback: number): number {
  * entry resolves whether it stored the per-user LibraryTrack uuid or the shared
  * catalog track id (catalog tracks are added to playlists by their catalog id).
  */
-function indexLibraryTracksByPlaylistKey<T extends { id: string; catalogTrackId: string | null }>(
+function indexLibraryTracksByPlaylistKey<
+    T extends { id: string; clientKey: string | null; catalogTrackId: string | null },
+>(
     records: T[],
 ): Map<string, T> {
     const byKey = new Map<string, T>();
     for (const record of records) {
         byKey.set(record.id, record);
+        if (record.clientKey) byKey.set(record.clientKey, record);
         if (record.catalogTrackId) byKey.set(record.catalogTrackId, record);
     }
     return byKey;
@@ -806,11 +845,14 @@ function catalogPathsFor(refs: { releaseId: string | null; trackId: string | nul
  * which marks them non-playable for other listeners.
  */
 function extractCatalogRefs(record: {
+    source?: string;
     catalogTrackId: string | null;
     remoteUrl: string | null;
     remoteArtworkUrl: string | null;
     previewUrl: string | null;
 }): { releaseId: string | null; trackId: string | null } {
+    // A device file is never a catalog track, whatever fields it carries (#2505).
+    if (record.source === "local") return { releaseId: null, trackId: null };
     let releaseId: string | null = null;
     let trackId: string | null = record.catalogTrackId ?? null;
 

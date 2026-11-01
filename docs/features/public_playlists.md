@@ -28,10 +28,13 @@ resolves those ids into a **denormalized, streamable track list**:
 
 - Catalog/remote tracks become public catalog stream/artwork paths and are
   playable by anyone.
-- Owner-device-only files (no catalog reference) are returned but marked
-  `playable: false` — other listeners can see them but cannot stream them.
+- Owner-device-only files (`source: "local"`) are **left out for every viewer
+  but the owner** and only counted in `privateTrackCount` ([#2506](https://github.com/akoita/resonate/issues/2506)).
+  Their titles, tags and ids are the owner's private data and nobody else can
+  play them. The owner still sees them, marked `playable: false`. Discovery
+  cards do not count them either.
 
-Resolution matches the owner's rows by **`LibraryTrack.id` _or_ `catalogTrackId`**,
+Resolution matches the owner's rows by **`LibraryTrack.id`, `clientKey` _or_ `catalogTrackId`**,
 scoped to the owner. Catalog tracks are added to playlists by their catalog track
 id (not the per-user library uuid), so matching on `catalogTrackId` is what makes
 them resolve — and the owner scope guarantees one user's library can never satisfy

@@ -335,6 +335,18 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
               {playlist.playableTrackCount} of {playlist.trackCount} tracks are available to stream here.
             </div>
           )}
+          {(playlist.privateTrackCount ?? 0) > 0 && (
+            <div className="pl-public-note">
+              {playlist.privateTrackCount === 1
+                ? "1 personal file from the owner's device is not shown."
+                : `${playlist.privateTrackCount} personal files from the owner's device are not shown.`}
+            </div>
+          )}
+          {playlist.isOwner && playlist.visibility === "public" && playlist.tracks.some((track) => !track.catalogTrackId && !track.streamPath) && (
+            <div className="pl-public-note">
+              Files from your own devices stay private. Other listeners see only the Resonate tracks in this playlist.
+            </div>
+          )}
         </div>
       </div>
 
