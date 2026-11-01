@@ -153,7 +153,9 @@ test.describe("keyboard accessibility smoke", () => {
 
   test("file drop target opens the native picker from the keyboard", async ({ page }) => {
     await authenticate(page);
-    await openSettledRoute(page, "/import");
+    // The copy-based /import page now redirects to Settings › Library (#2504);
+    // the artist upload page is the remaining multi-file drop target.
+    await openSettledRoute(page, "/artist/upload");
 
     const dropTarget = page.getByRole("button", { name: "Select audio files", exact: true });
     await dropTarget.focus();

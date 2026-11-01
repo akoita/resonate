@@ -147,6 +147,12 @@ export const NOT_COUNTED: { status: string; eventId: string; ingested: number; r
   reason: "account_restricted",
 };
 
+/** Playback `source` the web player sends for a device-local file (#2507). */
+export const LOCAL_FILE_PLAYBACK_SOURCE = "web_player_local";
+
+/** What a playback write answers for a device-local file (#2507); nothing was recorded. */
+export const LOCAL_FILE_NOT_COUNTED: typeof NOT_COUNTED = { ...NOT_COUNTED, reason: "local_file" };
+
 @Injectable()
 export class AnalyticsInstrumentationService {
   constructor(
@@ -164,14 +170,19 @@ export class AnalyticsInstrumentationService {
    * input or an agent/taste signal, so a restricted actor is dropped here,
    * before any of those writes, and playback itself is untouched.
    */
-  private async playbackNotCounted(userId: string | undefined): Promise<boolean> {
-    return (await this.accountStanding?.isRestricted(userId)) === true;
+  private async playbackNotCounted(input: { actorUserId?: string; source?: string }): Promise<typeof NOT_COUNTED | null> {
+    // #2507: a listener's own device file is not a catalog play. It never
+    // counts toward a track, an artist, popularity or taste, whatever id the
+    // client attached to it.
+    if (input.source === LOCAL_FILE_PLAYBACK_SOURCE) return LOCAL_FILE_NOT_COUNTED;
+    return (await this.accountStanding?.isRestricted(input.actorUserId)) === true ? NOT_COUNTED : null;
   }
 
   private readonly productArtistCache = new Map<string, { value: ResolvedProductArtist; expiresAt: number }>();
 
   async recordPlaybackCompleted(input: PlaybackCompletedAnalyticsInput) {
-    if (await this.playbackNotCounted(input.actorUserId)) return NOT_COUNTED;
+    const notCounted = await this.playbackNotCounted(input);
+    if (notCounted) return notCounted;
     const catalog = await this.resolvePlaybackCatalog(input);
 
     const result = await this.emit({
@@ -258,7 +269,8 @@ export class AnalyticsInstrumentationService {
   }
 
   async recordPlaybackLifecycle(input: PlaybackLifecycleAnalyticsInput) {
-    if (await this.playbackNotCounted(input.actorUserId)) return NOT_COUNTED;
+    const notCounted = await this.playbackNotCounted(input);
+    if (notCounted) return notCounted;
     const catalog = await this.resolvePlaybackCatalog(input);
 
     const result = await this.emit({
@@ -370,8 +382,12 @@ export class AnalyticsInstrumentationService {
 
   async recordProductEvent(input: ProductAnalyticsInput) {
     // A client must not be able to record a play through the generic product route either.
-    if (input.eventName.startsWith("playback.") && (await this.playbackNotCounted(input.actorUserId))) {
-      return NOT_COUNTED;
+    if (input.eventName.startsWith("playback.")) {
+      const notCounted = await this.playbackNotCounted({
+        actorUserId: input.actorUserId,
+        source: payloadString(input.payload, "source") ?? input.source,
+      });
+      if (notCounted) return notCounted;
     }
     // A retry has a new server timestamp, but remains the same client action.
     // Scope the key to the authenticated actor so callers cannot suppress each other's events.

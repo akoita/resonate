@@ -263,6 +263,97 @@ describe('LibraryService (integration)', () => {
     }
   });
 
+  describe('local vs. catalog boundary (#2505)', () => {
+    const otherUserId = `${TEST_PREFIX}boundary_other`;
+
+    beforeAll(async () => {
+      await prisma.user.create({ data: { id: otherUserId, email: `${otherUserId}@test.resonate` } });
+    });
+
+    afterAll(async () => {
+      await prisma.libraryTrack.deleteMany({ where: { userId: { in: [otherUserId] } } });
+      await prisma.libraryTrack.deleteMany({ where: { userId, clientKey: { startsWith: 'local_boundary' } } });
+      await prisma.libraryTrack.deleteMany({ where: { userId, clientKey: { startsWith: `${TEST_PREFIX}stem` } } });
+      await prisma.user.deleteMany({ where: { id: otherUserId } });
+    });
+
+    it('never lets a save reach a row another listener owns', async () => {
+      const victim = await service.saveTrack(otherUserId, {
+        id: 'local_boundary_victim', source: 'local', title: 'Voice memo', sourcePath: 'memo.m4a', fileSize: 42,
+      });
+      expect(victim.id).toBe('local_boundary_victim');
+      const victimRow = await prisma.libraryTrack.findFirstOrThrow({ where: { userId: otherUserId, clientKey: 'local_boundary_victim' } });
+
+      // Same client id, and even the victim's real row id: both stay per-user.
+      await service.saveTrack(userId, { id: 'local_boundary_victim', source: 'local', title: 'Mine' });
+      await expect(
+        service.saveTrack(userId, { id: victimRow.id, source: 'remote', title: 'x', stemType: 'vocals' }),
+      ).rejects.toThrow('catalog reference');
+
+      const after = await prisma.libraryTrack.findUniqueOrThrow({ where: { id: victimRow.id } });
+      expect(after.userId).toBe(otherUserId);
+      expect(after.title).toBe('Voice memo');
+      expect(await prisma.libraryTrack.count({ where: { userId, clientKey: 'local_boundary_victim' } })).toBe(1);
+    });
+
+    it('lets two listeners keep the same owned stem', async () => {
+      const stemId = `${TEST_PREFIX}stem_shared`;
+      const stem = { id: stemId, source: 'remote', title: 'Vocals', stemType: 'vocals', isOwned: true,
+        previewUrl: `/catalog/stems/${stemId}/preview` };
+      const a = await service.saveTrack(userId, stem);
+      const b = await service.saveTrack(otherUserId, stem);
+      expect(a.id).toBe(stemId);
+      expect(b.id).toBe(stemId);
+      expect(await prisma.libraryTrack.count({ where: { clientKey: stemId } })).toBe(2);
+      expect((await service.getTrack(userId, stemId)).userId).toBe(userId);
+    });
+
+    it('rejects a local file that carries catalog fields', async () => {
+      await expect(service.saveTrack(userId, {
+        id: 'local_boundary_forged', source: 'local', title: 'Forged', catalogTrackId,
+      })).rejects.toThrow('catalogTrackId');
+      await expect(service.saveTrack(userId, {
+        id: 'local_boundary_forged', source: 'local', title: 'Forged',
+        remoteUrl: `/catalog/releases/${releaseId}/tracks/${catalogTrackId}/stream`,
+      })).rejects.toThrow('remoteUrl');
+      await expect(service.saveTrack(userId, {
+        id: 'local_boundary_forged', source: 'local', title: 'Forged', isOwned: true,
+      })).rejects.toThrow('isOwned');
+    });
+
+    it('rejects a catalog row without a catalog reference or with local fields', async () => {
+      await expect(service.saveTrack(userId, { source: 'remote', title: 'Nothing' })).rejects.toThrow('catalog reference');
+      await expect(service.saveTrack(userId, {
+        source: 'remote', title: 'Mixed', catalogTrackId, sourcePath: 'a.mp3', fileSize: 1,
+      })).rejects.toThrow('local file fields');
+      await expect(service.saveTrack(userId, { title: 'No source' } as any)).rejects.toThrow('source');
+    });
+
+    it('requires local ids to use the local_ namespace', async () => {
+      await expect(service.saveTrack(userId, { id: catalogTrackId, source: 'local', title: 'Clash' }))
+        .rejects.toThrow('local_');
+    });
+
+    it('reuses the row when the same file comes back under a new id', async () => {
+      const first = await service.saveTrack(userId, {
+        id: 'local_boundary_file_a', source: 'local', title: 'Song', sourcePath: 'Music/song.mp3', fileSize: 777,
+      });
+      const second = await service.saveTrack(userId, {
+        id: 'local_boundary_file_b', source: 'local', title: 'Song', sourcePath: 'Music/song.mp3', fileSize: 777,
+      });
+      expect(second.id).toBe(first.id);
+      expect(await prisma.libraryTrack.count({ where: { userId, sourcePath: 'Music/song.mp3', fileSize: 777 } })).toBe(1);
+    });
+
+    it('reports a local file as local even if an old row carries catalog fields', async () => {
+      await prisma.libraryTrack.create({
+        data: { userId, source: 'local', clientKey: 'local_boundary_legacy', title: 'Legacy', catalogTrackId: `${TEST_PREFIX}legacy_ref` },
+      });
+      const row = (await service.listTracks(userId)).find((t: any) => t.id === 'local_boundary_legacy');
+      expect(row?.availability).toEqual({ state: 'unavailable', reason: 'local_file' });
+    });
+  });
+
   it('purges catalog-id playlist references when a remote track is stale', async () => {
     // Post per-user-row fix, LibraryTrack.id is a generated uuid but the frontend
     // adds catalog tracks to playlists by their SHARED catalog id. Stale cleanup

@@ -153,16 +153,22 @@ describe('PlaylistService — public playlists (integration)', () => {
     const view = await service.getPublicPlaylist(pl.id);
     expect(view.visibility).toBe('public');
     expect(view.ownerDisplayName).toBe('The Owner');
-    expect(view.trackCount).toBe(2);
-    // Catalog track is streamable; local device file is not.
+    // #2506: the owner's device file stays private — counted, never described.
+    expect(view.trackCount).toBe(1);
     expect(view.playableTrackCount).toBe(1);
+    expect(view.privateTrackCount).toBe(1);
 
     const remoteTrack = view.tracks.find((t) => t.id === remoteId)!;
     expect(remoteTrack.playable).toBe(true);
     expect(remoteTrack.streamPath).toContain(`/catalog/releases/${rid}/tracks/${ctid}/stream`);
     expect(remoteTrack.artworkPath).toContain(`/catalog/releases/${rid}/artwork`);
+    expect(view.tracks.find((t) => t.id === localId)).toBeUndefined();
+    expect(JSON.stringify(view)).not.toContain(localId);
 
-    const localTrack = view.tracks.find((t) => t.id === localId)!;
+    // The owner still sees the entry, marked unplayable for streaming.
+    const ownerView = await service.getPublicPlaylist(pl.id, owner);
+    expect(ownerView.privateTrackCount).toBe(0);
+    const localTrack = ownerView.tracks.find((t) => t.id === localId)!;
     expect(localTrack.playable).toBe(false);
     expect(localTrack.streamPath).toBeNull();
   });

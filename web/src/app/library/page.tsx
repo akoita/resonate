@@ -11,6 +11,7 @@ import {
     deleteTracks,
     getArtworkUrl,
     saveTracksMetadata,
+    isOnOtherDevice,
     LocalTrack,
 } from "../../lib/localLibrary";
 import { getMyGenerations, getGenerationAnalytics, type GenerationListItem, type GenerationAnalytics, API_BASE } from "../../lib/api";
@@ -44,6 +45,7 @@ import {
     resolveAvailability,
 } from "../../components/library/trackAvailability";
 import { useAutoScan } from "../../lib/useAutoScan";
+import { getSettings as getLibrarySettings, updateSettings as updateLibrarySettings } from "../../lib/librarySettings";
 import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
@@ -161,12 +163,29 @@ function LibraryPageContent() {
     }, [tracks, ownedStems]);
 
     const [showStems, setShowStems] = useState(false);
+    // Local files imported on another device: greyed out, or hidden (#2503).
+    const [showOtherDeviceTracks, setShowOtherDeviceTracks] = useState(true);
+    useEffect(() => {
+        let active = true;
+        void getLibrarySettings()
+            .then((settings) => { if (active) setShowOtherDeviceTracks(settings.showOtherDeviceTracks); })
+            .catch(() => undefined);
+        return () => { active = false; };
+    }, []);
+    const otherDeviceTrackCount = useMemo(
+        () => unifiedTracks.filter(isOnOtherDevice).length,
+        [unifiedTracks],
+    );
+    const handleToggleOtherDeviceTracks = (show: boolean) => {
+        setShowOtherDeviceTracks(show);
+        void updateLibrarySettings({ showOtherDeviceTracks: show }).catch(() => undefined);
+    };
     // Library › Stems license filter (#2042)
     const [stemLicenseFilter, setStemLicenseFilter] = useState<StemLicenseFilter>("all");
 
     // Filtered tracks
     const filteredTracks = useMemo(() => {
-        let source = unifiedTracks;
+        let source = showOtherDeviceTracks ? unifiedTracks : unifiedTracks.filter((t) => !isOnOtherDevice(t));
 
         // In "Tracks" tab, only show stems if toggle is ON
         if (activeTab === "tracks" && !showStems) {
@@ -184,7 +203,7 @@ function LibraryPageContent() {
             (t.artist && t.artist.toLowerCase().includes(q)) ||
             (t.album && t.album.toLowerCase().includes(q))
         );
-    }, [unifiedTracks, ownedStems, activeTab, searchQuery, showStems, stemLicenseFilter]);
+    }, [unifiedTracks, ownedStems, activeTab, searchQuery, showStems, stemLicenseFilter, showOtherDeviceTracks]);
 
     // Source tracks with two or more remix-ready stems in view: one Remix
     // Studio session can load them together (#2042).
@@ -1281,6 +1300,20 @@ function LibraryPageContent() {
                                     />
                                     Show Stems
                                 </label>
+                                {otherDeviceTrackCount > 0 && (
+                                    <label
+                                        className="library-switch"
+                                        title="Files you added on another device. They stay greyed out here and play only on that device."
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={showOtherDeviceTracks}
+                                            onChange={(e) => handleToggleOtherDeviceTracks(e.target.checked)}
+                                            className="library-switch__input"
+                                        />
+                                        Show files on other devices ({otherDeviceTrackCount})
+                                    </label>
+                                )}
                             </div>
                         )}
                     </div>

@@ -51,6 +51,27 @@ describe("AnalyticsInstrumentationService", () => {
     expect(await ingest.listEvents()).toHaveLength(6);
   });
 
+  it("never counts a device-local file as a catalog play (#2507)", async () => {
+    const ingest = new AnalyticsIngestService();
+    const instrumentation = new AnalyticsInstrumentationService(ingest);
+    const completed = await instrumentation.recordPlaybackCompleted({
+      trackId: "catalog-track-1",
+      artistId: "artist-1",
+      completionRatio: 1,
+      actorId: "listener_hash",
+      source: "web_player_local",
+    });
+    const started = await instrumentation.recordPlaybackLifecycle({
+      action: "started",
+      trackId: "catalog-track-1",
+      actorId: "listener_hash",
+      source: "web_player_local",
+    });
+    expect(completed).toMatchObject({ status: "skipped", ingested: 0, reason: "local_file" });
+    expect(started).toMatchObject({ status: "skipped", ingested: 0, reason: "local_file" });
+    expect(await ingest.listEvents()).toHaveLength(0);
+  });
+
   it("emits generation events with the required personal-data consent basis", async () => {
     const ingest = new AnalyticsIngestService();
     const instrumentation = new AnalyticsInstrumentationService(ingest);

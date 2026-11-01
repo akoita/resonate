@@ -18,12 +18,18 @@ export interface LibrarySettings {
     lastScanTime: string | null;
     /** Display names of configured source folders (parallel to stored handles) */
     sourceFolderNames: string[];
+    /**
+     * Show local files imported on another device, greyed out and not
+     * playable here (#2503). Off hides them from library lists.
+     */
+    showOtherDeviceTracks: boolean;
 }
 
 const DEFAULT_SETTINGS: LibrarySettings = {
     autoScanOnLoad: true,
     lastScanTime: null,
     sourceFolderNames: [],
+    showOtherDeviceTracks: true,
 };
 
 /**

@@ -1,0 +1,110 @@
+# Local Audio Library
+
+**Status:** `implemented` — epic [#2503](https://github.com/akoita/resonate/issues/2503)
+(slices [#2504](https://github.com/akoita/resonate/issues/2504),
+[#2505](https://github.com/akoita/resonate/issues/2505),
+[#2506](https://github.com/akoita/resonate/issues/2506),
+[#2507](https://github.com/akoita/resonate/issues/2507),
+[#2508](https://github.com/akoita/resonate/issues/2508))
+
+Listeners can add folders of their own music and use those files in their
+library, playlists and queue next to Resonate tracks. A local file is private
+and **device-only**: it plays only on the device where its folder was added,
+it is never uploaded or copied, and it never behaves like a release. Putting
+music on Resonate for others stays an artist operation (release upload).
+
+## Who it's for
+
+- **Listeners** — play their own collection alongside the catalog.
+- **Frontend/backend developers** — the boundary between device files and
+  platform tracks, which share one client type and one table.
+
+## How it works
+
+| Piece | Where it lives |
+| --- | --- |
+| Library row (title, tags, duration, `sourcePath`, `fileSize`) | `LibraryTrack` with `source: "local"`, via `/library/tracks` |
+| Link to the file on disk | `FileSystemFileHandle` in IndexedDB (`fileHandles` store), this device only |
+| Cover art | Thumbnail (≤ 320 px) in IndexedDB, this device only |
+| Audio | **Stays on disk.** Read with `handle.getFile()` when it plays |
+
+- **Adding.** Settings › Library › Add Folder stores a directory handle; the
+  scanner (`libraryScanner.ts`) walks it and saves one row per new file
+  (dedup by relative path + size). A file already in the library is linked to
+  this device instead of being imported again, so adding the same folder on a
+  second device makes those rows playable there. `/import`, which copied files
+  into the browser, now redirects to Settings › Library.
+- **Playing.** `resolveTrackPlayback()` returns a URL or a reason:
+  `other_device`, `needs_permission` (browser read permission lapsed after a
+  restart; pressing play asks again) or `missing` (moved, renamed, deleted).
+  The player shows a message for each. Only a few object URLs are kept alive.
+- **Other devices.** Rows with no link on this device resolve to
+  `available: false` and render greyed out as **On another device**. The
+  library toggle *Show files on other devices* (also in Settings › Library,
+  stored per device) hides them.
+- **Legacy copies.** Audio copied into IndexedDB before #2503 still plays; a
+  rescan that links the file on disk deletes the copy.
+
+## The boundary (server)
+
+`LibraryService.saveTrack` enforces it (#2505):
+
+- `source` is required, `"local"` or `"remote"`.
+- A local row cannot carry `catalogTrackId`, `remoteUrl`, `remoteArtworkUrl`,
+  `previewUrl`, `stemType`, `tokenId`, `listingId`, `purchaseDate` or
+  `isOwned`, and its id must start with `local_`.
+- A remote row needs a catalog reference and cannot carry `sourcePath` or
+  `fileSize`.
+- The primary key is always server-generated. Ids a client names (device files,
+  owned stems) are stored as `clientKey`, unique per user, and returned as the
+  row's `id`. Every lookup is scoped to the owner.
+- Availability, public playlist resolution and takedown cleanup derive catalog
+  identity from `source`, never from URL fields on a local row.
+
+Outside the library:
+
+- **Public and saved playlists** leave local files out for non-owners
+  (`privateTrackCount`) — see [Public Playlists](public_playlists.md).
+- **Analytics and learning** drop playback with `source: "web_player_local"`
+  (`LOCAL_FILE_NOT_COUNTED`); the web player never attaches a catalog id to a
+  local file (`catalogTrackIdOf`). AI DJ learning no longer counts local plays.
+- **Community cohorts** read only `source: "remote"` library rows.
+- **Release, stem, mint, remix and upload flows** have no entry point that
+  accepts a local file; uploading stays artist-only.
+
+`web/src/lib/trackIdentity.ts` (`isLocalFileTrack`, `catalogTrackIdOf`,
+`isCatalogTrack`) is the single client-side answer to "is this a catalog
+track?". Use it for anything that leaves the device.
+
+## Browser support
+
+Adding folders needs the File System Access API (Chrome, Edge, other
+Chromium browsers, the desktop app). In other browsers only the Library
+section of Settings explains this; the rest of Settings works.
+
+## Tests
+
+- `web/src/lib/localLibraryDevice.test.ts` — handles, device availability,
+  playback problems, legacy copies.
+- `web/src/lib/libraryScanner.test.ts`, `web/src/lib/trackIdentity.test.ts`.
+- `backend/src/tests/library.integration.spec.ts` (`local vs. catalog boundary`),
+  `library.controller.http.spec.ts`, `playlist-public.integration.spec.ts`,
+  `playlist-discovery.integration.spec.ts`,
+  `community_cohort_generation.integration.spec.ts`,
+  `analytics_instrumentation.spec.ts`.
+
+## Manual test
+
+1. In Chrome, Settings › Library › Add Folder, pick a folder with a few songs.
+2. Library: the songs play. DevTools › Application › IndexedDB: `fileHandles`
+   has entries, `audioBlobs` has none.
+3. Sign in on a second browser profile: the songs appear greyed out, *On another
+   device*; the toggle hides them. Add the same folder there: they play.
+4. Add a local song and a catalog track to a playlist, make it public, open it
+   signed out: only the catalog track is listed, with "1 personal file … not
+   shown".
+
+## Related
+
+- [Removing music from My Library](library_removal.md)
+- [Public Playlists](public_playlists.md)

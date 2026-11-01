@@ -1617,7 +1617,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Save tracks to your library, find the stems you bought, organize them into playlists, and share a playlist publicly — by link or in the global catalog.",
     category: "library",
     audiences: ["listener", "producer"],
-    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog", "stems", "my stems", "purchased stems", "my purchases", "license", "remix-ready", "upgrade"],
+    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog", "stems", "my stems", "purchased stems", "my purchases", "license", "remix-ready", "upgrade", "local files", "my music folder", "another device", "on another device"],
     sections: [
       {
         id: "library",
@@ -1630,6 +1630,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "To remove saved music, open a track's More actions menu, or the menu on an artist or album card. Confirm the number of tracks to remove. You can also select several tracks and use Remove from library. If removal fails, your library stays as it was and shows an error. A track you remove also leaves your play queue. A removed local file stays on your device but will not return on the next folder scan. Owned stems stay in your library while you hold them; removing saved music does not affect purchases or playlists.",
+          },
+          {
+            kind: "paragraph",
+            text: "You can also add your own music. In Settings › Library, choose Add Folder and pick a folder on your computer. Resonate lists the songs in your library and reads each file from that folder when you press play. It never uploads or copies your audio, and your files are never published: putting music on Resonate for others is something only artists do, through a release. The first time you play after restarting your browser, it may ask again for permission to read the folder. Adding folders needs Chrome, Edge, another Chromium-based browser, or the Resonate desktop app.",
+          },
+          {
+            kind: "paragraph",
+            text: "Your own files play only on the device where you added their folder. On your other devices they still appear in your library and playlists, greyed out and marked On another device, so nothing goes missing. Add the same folder on that device and they become playable there too. If you would rather not see them, turn off Show files on other devices in your library or in Settings › Library. If a file was moved, renamed or deleted, rescan the folder in Settings › Library.",
           },
           {
             kind: "paragraph",
@@ -1711,7 +1719,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Private stays private",
-            text: "Making one playlist public never exposes your other playlists or how you've organized your library. Device-only files in a shared playlist show as unavailable to others and don't make a playlist eligible for the catalog on their own.",
+            text: "Making one playlist public never exposes your other playlists or how you've organized your library. Your own device files stay private in a shared playlist: other listeners see only how many personal files were left out, never their titles, and those files don't make a playlist eligible for the catalog. Your own device files also never count as plays for an artist and never place you in a listener group.",
           },
         ],
       },

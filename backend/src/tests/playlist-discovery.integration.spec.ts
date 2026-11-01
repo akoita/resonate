@@ -150,7 +150,7 @@ describe('PlaylistService — public playlist discovery (integration)', () => {
 
     expect(big.name).toBe('Big Mix');
     expect(big.ownerDisplayName).toBe('Disco Curator');
-    expect(big.trackCount).toBe(6); // 5 catalog + 1 local, all still in the owner's library
+    expect(big.trackCount).toBe(5); // 5 catalog; the owner's local file stays private (#2506)
     expect(big.playableTrackCount).toBe(5); // local file is not streamable by others
   });
 

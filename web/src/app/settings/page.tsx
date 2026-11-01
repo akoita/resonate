@@ -342,20 +342,13 @@ export default function SettingsPage() {
         });
     };
 
-    const hasSources = sourceNames.length > 0;
+    const handleToggleOtherDeviceTracks = async () => {
+        if (!settings) return;
+        const updated = await updateSettings({ showOtherDeviceTracks: !settings.showOtherDeviceTracks });
+        setSettings(updated);
+    };
 
-    if (!isSupported) {
-        return (
-            <AuthGate title="Connect your wallet to access settings.">
-                <main className="settings-workspace">
-                    <div className="settings-unsupported">
-                        <strong>File System Access API is not supported in this browser.</strong>
-                        <p>Please use Chrome, Edge, or another Chromium-based browser.</p>
-                    </div>
-                </main>
-            </AuthGate>
-        );
-    }
+    const hasSources = sourceNames.length > 0;
 
     return (
         <AuthGate title="Connect your wallet to access settings.">
@@ -398,7 +391,21 @@ export default function SettingsPage() {
                     </nav>
 
                     <section className="settings-panel" aria-live="polite">
-                        {activeSection === "library" ? (
+                        {activeSection === "library" && !isSupported ? (
+                            // Only local folders need the File System Access API;
+                            // every other section works in any browser.
+                            <div className="settings-section">
+                                <div className="settings-unsupported">
+                                    <strong>This browser can&apos;t link folders on your computer.</strong>
+                                    <p>
+                                        Use Chrome, Edge, another Chromium-based browser, or the Resonate desktop app
+                                        to add your own music. Your local files never leave your device.
+                                    </p>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {activeSection === "library" && isSupported ? (
                             <div className="settings-section">
                                 <div className="settings-section-header">
                                     <div>
@@ -407,6 +414,11 @@ export default function SettingsPage() {
                                         <p className="settings-copy">
                                             Add local folders, rescan sources, and decide whether Resonate scans
                                             automatically when the app opens.
+                                        </p>
+                                        <p className="settings-copy">
+                                            Your files stay on this device. Resonate links to them and reads them
+                                            when you press play; it never uploads or copies the audio. Each file
+                                            plays only on the device where you added its folder.
                                         </p>
                                     </div>
                                     <Button variant="primary" onClick={handleAddFolder} disabled={scanning}>
@@ -479,6 +491,17 @@ export default function SettingsPage() {
                                             <span>
                                                 <strong>Auto-scan on load</strong>
                                                 <small>Look for new files when the app starts.</small>
+                                            </span>
+                                        </label>
+                                        <label className="settings-toggle">
+                                            <input
+                                                type="checkbox"
+                                                checked={settings?.showOtherDeviceTracks ?? true}
+                                                onChange={handleToggleOtherDeviceTracks}
+                                            />
+                                            <span>
+                                                <strong>Show files from other devices</strong>
+                                                <small>Files added on another device appear greyed out in your library. Turn off to hide them.</small>
                                             </span>
                                         </label>
                                     </aside>

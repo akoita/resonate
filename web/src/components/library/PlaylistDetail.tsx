@@ -11,6 +11,7 @@ import {
     renamePlaylist,
 } from "../../lib/playlistStore";
 import { LocalTrack, getTrack, getArtworkUrl } from "../../lib/localLibrary";
+import { catalogTrackIdOf } from "../../lib/trackIdentity";
 import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
 import { QueueActionsButton } from "../player/QueueActionsButton";
@@ -133,7 +134,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
             subjectId: playlistId,
             payload: {
                 playlistId,
-                trackId: track.catalogTrackId || track.id,
+                // A device file's id never leaves the device (#2507).
+                trackId: catalogTrackIdOf(track) ?? undefined,
                 startIndex: index,
                 trackCount: playableTracks.length,
             },
