@@ -1168,7 +1168,8 @@ async function findPriorTelemetryCompletion(
       AND COALESCE("metadata"->>'agentOriginated', 'false') <> 'true'
       AND (
         "metadata"->>'telemetryMirror' = 'true'
-        OR "metadata"->>'source' IN ('web_player', 'web_player_local')
+        OR "metadata"->>'source' = 'web_player'
+        -- 'web_player_local' (a device file) is not a catalog play (#2507).
       )
       AND "metadata"->'outcome'->>'type' = 'playback_completed'
     LIMIT 1

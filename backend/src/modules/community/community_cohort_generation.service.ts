@@ -133,9 +133,13 @@ export class CommunityCohortGenerationService {
   }
 
   private async addLibraryGenreCandidates(candidates: Map<string, CohortCandidate>, eligibleUsers: Map<string, EligibleUser>) {
+    // #2507: only catalog saves count. A device file's genre is a free-text
+    // tag on the listener's private file; it neither joins a social group nor
+    // names one.
     const rows = await prisma.libraryTrack.findMany({
       where: {
         userId: { in: socialUserIds(eligibleUsers) },
+        source: "remote",
         genre: { not: null },
       },
       select: { userId: true, genre: true },
@@ -198,6 +202,7 @@ export class CommunityCohortGenerationService {
     const rows = await prisma.libraryTrack.findMany({
       where: {
         userId: { in: socialUserIds(eligibleUsers) },
+        source: "remote",
         catalogTrackId: { not: null },
       },
       select: { userId: true, catalogTrackId: true },

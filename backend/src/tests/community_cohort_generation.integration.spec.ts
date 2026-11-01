@@ -22,6 +22,7 @@ const optedOutUserId = `${TEST_PREFIX}opted_out`;
 const campaignId = `${TEST_PREFIX}campaign`;
 const tasteGenre = `Dream Pop ${TEST_PREFIX}`;
 const smallTasteGenre = `Tiny Signal ${TEST_PREFIX}`;
+const localFileGenre = `Local Shoegaze ${TEST_PREFIX}`;
 const reconcileGenre = `Reconcile Signal ${TEST_PREFIX}`;
 const zeroRefreshGenre = `Zero Signal ${TEST_PREFIX}`;
 const unsafeGenre = "Wallet 0x1111111111111111111111111111111111111111";
@@ -104,6 +105,14 @@ describe("CommunityCohortGenerationService integration", () => {
           title: `Dream Pop Track ${index}`,
           source: "remote",
           genre: tasteGenre,
+        })),
+        // Device files with a shared tag: enough listeners for a cohort, but
+        // private files never form one (#2507).
+        ...tasteUsers.map((userId, index) => ({
+          userId,
+          title: `Home Recording ${index}`,
+          source: "local",
+          genre: localFileGenre,
         })),
         {
           userId: optedOutUserId,
@@ -216,6 +225,11 @@ describe("CommunityCohortGenerationService integration", () => {
     expect(suggestions.cohorts).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: tasteCohort!.cohortId }),
     ]));
+  });
+
+  it("never forms a cohort from the genre tag of a device-local file (#2507)", async () => {
+    const result = await generationService.generateCohorts({ minimumSize: 5, now });
+    expect(result.cohorts.some((cohort) => cohort.reasonCode.includes("local_shoegaze"))).toBe(false);
   });
 
   it("keeps below-threshold cohorts from becoming visible or actionable", async () => {
