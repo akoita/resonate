@@ -37,7 +37,8 @@ vi.mock("./api", () => ({
 }));
 
 import { ApiRequestError } from "./api";
-import { deleteTrack, deleteTracks, getTrack, listLocalTrackOmissions } from "./localLibrary";
+import { deleteTrack, deleteTracks, getTrack, getTrackUrl, listLocalTrackOmissions } from "./localLibrary";
+import type { LocalTrack } from "./localLibrary";
 
 describe("library removal", () => {
     beforeEach(() => {
@@ -183,5 +184,31 @@ describe("getTrack catalog fallback", () => {
         mocks.getCatalogTrack.mockRejectedValue(new Error("Not found"));
 
         expect(await getTrack("missing")).toBeNull();
+    });
+});
+
+describe("getTrackUrl", () => {
+    const base: LocalTrack = {
+        id: "lib-row-1",
+        title: "Butu na moyi",
+        artist: null,
+        albumArtist: null,
+        album: null,
+        year: null,
+        genre: null,
+        duration: null,
+        createdAt: "2026-10-31T00:00:00.000Z",
+        source: "remote",
+        catalogTrackId: "trk_1",
+        releaseId: "rel_1",
+    };
+
+    it("streams a catalog row that lost its saved URL from the catalog", async () => {
+        expect(await getTrackUrl(base)).toBe("/stream/rel_1/trk_1");
+    });
+
+    it("still has nothing to play for a stem row or a row without its release", async () => {
+        expect(await getTrackUrl({ ...base, stemType: "vocals" })).toBeNull();
+        expect(await getTrackUrl({ ...base, releaseId: null })).toBeNull();
     });
 });

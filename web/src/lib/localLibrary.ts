@@ -467,7 +467,14 @@ const trackUrlCache = new Map<string, string>();
 export async function getTrackUrl(track: LocalTrack): Promise<string | null> {
     if (track.remoteUrl) return sanitizeStemUrl(track.remoteUrl) || track.remoteUrl;
     if (track.previewUrl) return sanitizeStemUrl(track.previewUrl) || track.previewUrl;
-    if (!track.blobKey) return null;
+    if (!track.blobKey) {
+        // A whole catalog track whose saved row lost its URL still streams from
+        // the catalog: never tell the listener it has no audio.
+        if (track.source === "remote" && !track.stemType && track.catalogTrackId && track.releaseId) {
+            return getReleaseTrackStreamUrl(track.releaseId, track.catalogTrackId);
+        }
+        return null;
+    }
 
     // Check cache first
     const cached = trackUrlCache.get(track.blobKey);
