@@ -35,6 +35,25 @@ export function sourceLayerForStemType(type?: string | null): string | null {
   return LABEL_BY_LAYER.has(key) ? key : null;
 }
 
+/**
+ * The layer a set's bonus clip is cut from (#2522), mirroring the backend's
+ * setBonusSourceLayer: the layer most moments use; ties go to vocals, then to
+ * the earliest moment's layer; no moments means vocals.
+ */
+export function setBonusSourceLayer(momentLayers: Array<string | null | undefined>): string {
+  const counts = new Map<string, number>();
+  const order: string[] = [];
+  for (const raw of momentLayers) {
+    const layer = raw?.trim().toLowerCase() || DEFAULT_SOURCE_LAYER;
+    if (!counts.has(layer)) order.push(layer);
+    counts.set(layer, (counts.get(layer) ?? 0) + 1);
+  }
+  if (order.length === 0) return DEFAULT_SOURCE_LAYER;
+  const top = Math.max(...counts.values());
+  const tied = order.filter((layer) => counts.get(layer) === top);
+  return tied.includes(DEFAULT_SOURCE_LAYER) ? DEFAULT_SOURCE_LAYER : tied[0]!;
+}
+
 /** One pickable source for a track: the layer plus the stem row that plays it. */
 export type MomentSourceOption = {
   layer: string;

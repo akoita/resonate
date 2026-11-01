@@ -9,6 +9,7 @@ import {
   sourceLayerForStemType,
   sourceLayerLabel,
   tracksWithMomentSource,
+  setBonusSourceLayer,
 } from "./punchlineSourceHelpers";
 
 function makeTrack(id: string, stemTypes: string[]): Track {
@@ -89,5 +90,14 @@ describe("punchline source helpers (#1476)", () => {
     expect(isMissingSourceReason("no_source_stem")).toBe(true);
     expect(isMissingSourceReason("no_vocals_stem")).toBe(true);
     expect(isMissingSourceReason("content_removed")).toBe(false);
+  });
+});
+
+describe("setBonusSourceLayer (#2522)", () => {
+  it("mirrors the backend rule: majority, then vocals, then earliest", () => {
+    expect(setBonusSourceLayer(["full", "full", "drums"])).toBe("full");
+    expect(setBonusSourceLayer(["drums", "vocals"])).toBe("vocals");
+    expect(setBonusSourceLayer(["drums", "full"])).toBe("drums");
+    expect(setBonusSourceLayer([])).toBe("vocals");
   });
 });
