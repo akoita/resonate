@@ -199,6 +199,9 @@ describe("Punchline collect + ownership grant (integration)", () => {
     expect(item.drop.releaseId).toBe(RELEASE_ID);
     expect(item.drop.momentCount).toBe(3);
     expect(item.editionSize).toBe(100);
+    // #2522: the inventory carries the moment's kind and source layer.
+    expect(item.moment.momentKind).toBe("punchline");
+    expect(item.moment.sourceStemType).toBe("vocals");
 
     const collected = events.find(
       (e) =>

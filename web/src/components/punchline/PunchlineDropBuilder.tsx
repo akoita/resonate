@@ -538,6 +538,7 @@ export function PunchlineDropBuilder({
         <PunchlineMomentEditor
           mode={editor.mode}
           momentKind={momentKind}
+          sourceLayer={activeSource.layer}
           stemId={activeSource.stemId}
           durationSeconds={activeSource.durationSeconds}
           minMs={activeSource.bounds.minMs}

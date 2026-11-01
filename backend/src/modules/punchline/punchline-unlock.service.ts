@@ -12,8 +12,30 @@ import { prisma } from "../../db/prisma";
 import { PunchlineUnlockGrantedEvent } from "../../events/event_types";
 import { EventBus } from "../shared/event_bus";
 import { resolvePunchlineClipBounds } from "./punchline-clip.config";
-import { PunchlineClipService } from "./punchline-clip.service";
+import { PunchlineClipException, PunchlineClipService } from "./punchline-clip.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import { PUNCHLINE_SOURCE_STEM_TYPE } from "./punchline-rights";
+import { normalizeSourceLayer, sourceLayerLabel } from "./punchline-source";
+
+/**
+ * The layer a set's bonus clip is cut from (#2522): the layer most of the set's
+ * moments use, so an orchestral set's bonus is not a vocal clip. Ties go to
+ * vocals when vocals is tied, otherwise to the layer of the earliest moment.
+ * No moments falls back to vocals.
+ */
+export function setBonusSourceLayer(momentLayers: Array<string | null | undefined>): string {
+  const counts = new Map<string, number>();
+  const order: string[] = [];
+  for (const raw of momentLayers) {
+    const layer = normalizeSourceLayer(raw) || PUNCHLINE_SOURCE_STEM_TYPE;
+    if (!counts.has(layer)) order.push(layer);
+    counts.set(layer, (counts.get(layer) ?? 0) + 1);
+  }
+  if (order.length === 0) return PUNCHLINE_SOURCE_STEM_TYPE;
+  const top = Math.max(...counts.values());
+  const tied = order.filter((layer) => counts.get(layer) === top);
+  return tied.includes(PUNCHLINE_SOURCE_STEM_TYPE) ? PUNCHLINE_SOURCE_STEM_TYPE : tied[0]!;
+}
 
 /**
  * Complete-set unlock rewards (#488).
@@ -38,6 +60,8 @@ export type PunchlineUnlockRewardMetadata = {
   startMs: number;
   endMs: number;
   message: string | null;
+  /** The layer the clip was cut from, set at publish (#2522); absent on older rows. */
+  sourceStemType?: string;
   /** Filled at publish time by the #481 extractor; null while drafting. */
   clipAssetUri: string | null;
 };
@@ -60,6 +84,7 @@ export function parsePunchlineUnlockReward(
     startMs: Number(m.startMs),
     endMs: Number(m.endMs),
     message: typeof m.message === "string" ? m.message : null,
+    ...(typeof m.sourceStemType === "string" ? { sourceStemType: m.sourceStemType } : {}),
     clipAssetUri: typeof m.clipAssetUri === "string" ? m.clipAssetUri : null,
   };
 }
@@ -159,7 +184,11 @@ export class PunchlineUnlockService {
    * the eligibility re-check. Throws the extractor's typed 400 on failure so
    * the drop stays a draft.
    */
-  async renderUnlockClipForPublish(dropId: string, trackId: string) {
+  async renderUnlockClipForPublish(
+    dropId: string,
+    trackId: string,
+    sourceLayer: string = PUNCHLINE_SOURCE_STEM_TYPE,
+  ) {
     const unlock = await prisma.punchlineUnlock.findFirst({
       where: { dropId },
     });
@@ -171,13 +200,27 @@ export class PunchlineUnlockService {
       this.logger.warn(`Unlock ${unlock.id} has unparseable rewardMetadata`);
       return null;
     }
-    const clip = await this.clipService.extractClip({
-      trackId,
-      startMs: reward.startMs,
-      endMs: reward.endMs,
-    });
+    let clip: Awaited<ReturnType<PunchlineClipService["extractClip"]>>;
+    try {
+      clip = await this.clipService.extractClip({
+        trackId,
+        startMs: reward.startMs,
+        endMs: reward.endMs,
+        sourceLayer,
+      });
+    } catch (error) {
+      if (error instanceof PunchlineClipException) {
+        // Name the layer: a bonus cut from the full mix has a tighter cap.
+        throw new PunchlineClipException(
+          error.code,
+          `The set bonus is cut from the ${sourceLayerLabel(sourceLayer)}, like most of this set's moments, and failed [${error.code}]: ${error.message} Adjust the bonus range and try again.`,
+        );
+      }
+      throw error;
+    }
     const updated: PunchlineUnlockRewardMetadata = {
       ...reward,
+      sourceStemType: sourceLayer,
       clipAssetUri: clip.clipAssetUri,
     };
     await prisma.punchlineUnlock.update({

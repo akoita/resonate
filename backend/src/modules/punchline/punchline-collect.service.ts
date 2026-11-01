@@ -417,6 +417,9 @@ export class PunchlineCollectService {
           endMs: row.moment.endMs,
           clipAssetUri: row.moment.clipAssetUri,
           rightsLabel: row.moment.rightsLabel,
+          // #2522: so the Moments tab names each moment by its kind.
+          momentKind: row.moment.momentKind,
+          sourceStemType: row.moment.sourceStemType,
         },
         drop: {
           id: row.moment.drop.id,

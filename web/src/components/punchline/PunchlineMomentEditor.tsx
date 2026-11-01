@@ -14,6 +14,7 @@ import {
   centsToPriceDollars,
   MOMENT_LYRIC_MAX,
   MOMENT_TITLE_MAX,
+  momentTextCopy,
   parsePriceDollarsToCents,
   validateMomentInput,
   type MomentFieldKey,
@@ -38,6 +39,8 @@ export interface PunchlineMomentEditorProps {
   rightsLabel: string;
   /** Kind shown on the live card preview (#1476); the builder owns the pick. */
   momentKind?: string;
+  /** The moment's source layer: a vocal moment asks for a lyric, others a caption (#2522). */
+  sourceLayer?: string;
   initial?: PunchlineMomentEditorInitial;
   saving: boolean;
   /** Server-side 400 message (e.g. a rejected range), surfaced inline. */
@@ -77,6 +80,7 @@ export function PunchlineMomentEditor({
   maxMs,
   rightsLabel,
   momentKind,
+  sourceLayer,
   initial,
   saving,
   serverError,
@@ -85,6 +89,7 @@ export function PunchlineMomentEditor({
   onPreviewError,
 }: PunchlineMomentEditorProps) {
   const durationMs = Math.max(0, Math.round(durationSeconds * 1000));
+  const textCopy = momentTextCopy(sourceLayer);
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [lyricText, setLyricText] = useState(initial?.lyricText ?? "");
@@ -119,7 +124,7 @@ export function PunchlineMomentEditor({
         startMs: range.startMs,
         endMs: range.endMs,
       },
-      { minMs, maxMs },
+      { minMs, maxMs, sourceLayer },
     );
     if (!result.ok) {
       setErrors(result.errors);
@@ -158,13 +163,13 @@ export function PunchlineMomentEditor({
           </div>
 
           <div className="punchline-field">
-            <label htmlFor="punchline-moment-lyric">Lyric</label>
+            <label htmlFor="punchline-moment-lyric">{textCopy.label}</label>
             <textarea
               id="punchline-moment-lyric"
               value={lyricText}
               rows={2}
               maxLength={MOMENT_LYRIC_MAX}
-              placeholder="The exact words in this moment"
+              placeholder={textCopy.placeholder}
               onChange={(e) => setLyricText(e.target.value)}
             />
             <div className="punchline-field-row">

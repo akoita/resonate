@@ -3345,6 +3345,9 @@ export type PunchlineCollectibleItem = {
     endMs: number;
     clipAssetUri: string | null;
     rightsLabel: string;
+    /** Punchline, Crescendo, Hook or Solo (#2522); older servers omit it. */
+    momentKind?: string;
+    sourceStemType?: string;
   };
   drop: {
     id: string;
@@ -4304,6 +4307,9 @@ export type PublicCommunityProfileResponse = {
         rightsLabel: string;
         priceCents: number;
         collectedCount: number;
+        /** Punchline, Crescendo, Hook or Solo (#2522); older servers omit it. */
+        momentKind?: string;
+        sourceStemType?: string;
       };
       drop: {
         id: string;

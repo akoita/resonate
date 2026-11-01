@@ -17,6 +17,7 @@ import {
 import {
   PunchlineUnlockService,
   parsePunchlineUnlockReward,
+  setBonusSourceLayer,
 } from "./punchline-unlock.service";
 import { resolvePunchlineClipBounds } from "./punchline-clip.config";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
@@ -425,7 +426,12 @@ export class PunchlineDropService {
     // Set-bonus clip (#488): extract the unlock's bonus clip with the same
     // primitive. A failure throws the extractor's typed 400 and the drop stays
     // a draft (deterministic filenames keep the retry idempotent).
-    await this.unlockService.renderUnlockClipForPublish(drop.id, drop.trackId);
+    // #2522: cut from the layer most of the set's moments use.
+    await this.unlockService.renderUnlockClipForPublish(
+      drop.id,
+      drop.trackId,
+      setBonusSourceLayer(drop.moments.map((moment) => moment.sourceStemType)),
+    );
 
     const publishedAt = new Date();
     await prisma.$transaction([

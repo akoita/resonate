@@ -170,8 +170,8 @@ export function PunchlineInventory({
         </span>
         <h4>Your moments live here</h4>
         <p>
-          Sign in to see the Punchline moments you have collected — limited
-          vocal moments from the artists you love.
+          Sign in to see the moments you have collected — limited punchlines,
+          hooks, solos and crescendos from the artists you love.
         </p>
       </div>
     );
@@ -193,7 +193,7 @@ export function PunchlineInventory({
         </span>
         <h4>No moments yet</h4>
         <p>
-          When a release has collectible Punchline moments, you&apos;ll find a
+          When a release has collectible moments, you&apos;ll find a
           “Collect moments” section on its page — free moments are one tap away.
         </p>
         <Link href="/catalog" className="punchline-btn-primary">
@@ -220,7 +220,7 @@ export function PunchlineInventory({
           <div className="punchline-collect-drop-head">
             <div>
               <h5 className="punchline-collect-drop-title">
-                {group.dropTitle ?? group.trackTitle ?? "Punchline Drop"}
+                {group.dropTitle ?? group.trackTitle ?? "Drop"}
               </h5>
               <p className="punchline-collect-drop-note">
                 {[group.artistName, group.trackTitle]
@@ -281,6 +281,7 @@ export function PunchlineInventory({
               <div key={item.id} className="punchline-collect-item">
                 <PunchlineCollectibleCard
                   title={item.moment.title}
+                  momentKind={item.moment.momentKind}
                   lyricText={item.moment.lyricText}
                   artworkUrl={item.moment.artworkUrl}
                   durationMs={item.moment.endMs - item.moment.startMs}
