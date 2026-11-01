@@ -17,6 +17,8 @@ import { PlayerActionPanel } from "../../components/player/PlayerActionPanel";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 import { getDiscoveryAttribution } from "../../lib/discoveryAttribution";
 import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
+import { NowPlayingCredits, nowPlayingReleaseHref } from "../../components/player/NowPlayingCredits";
+import Link from "next/link";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useImmersiveMode } from "../../lib/useImmersiveMode";
 import { VolumeIcon } from "../../components/player/VolumeIcon";
@@ -480,6 +482,13 @@ function PlayerContent() {
     }
   }, [trackId, playQueue, queue, currentTrack?.id]);
 
+  // The album and artist under the title open their catalog pages.
+  const heroReleaseId = shareTrack.releaseId ?? null;
+  const heroArtistId = currentTrack
+    ? currentTrack.artistId || visibleTrackActions?.track.artistId || null
+    : null;
+  const heroReleaseHref = nowPlayingReleaseHref(heroReleaseId);
+
   const displayTrack = currentTrack || {
     title: "No track selected",
     artist: "Select a track from the library",
@@ -512,7 +521,12 @@ function PlayerContent() {
       {/* THE HERO STAGE */}
       <section className="player-hero-stage">
         <div className="player-art-container">
-          {artworkUrl ? (
+          {artworkUrl && heroReleaseHref ? (
+            <Link href={heroReleaseHref} className="player-art-link" title={displayTrack.album ? `Go to album ${displayTrack.album}` : "Go to album"}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={artworkUrl} alt={displayTrack.title} className="player-art-master" />
+            </Link>
+          ) : artworkUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img src={artworkUrl} alt={displayTrack.title} className="player-art-master" />
           ) : (
@@ -546,9 +560,13 @@ function PlayerContent() {
 
         <h1 className="hero-title">{displayTrack.title}</h1>
         <AiDisclosureBadge disclosure={currentTrack?.aiDisclosure} />
-        <p className="hero-artist">
-          {displayTrack.artist} {displayTrack.album ? ` • ${displayTrack.album}` : ""}
-        </p>
+        <NowPlayingCredits
+          className="hero-artist"
+          artist={displayTrack.artist}
+          album={displayTrack.album}
+          releaseId={heroReleaseId}
+          artistId={heroArtistId}
+        />
       </section>
 
       {/* Mixer Panel - shows when active */}

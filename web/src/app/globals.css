@@ -1344,6 +1344,28 @@ a {
   letter-spacing: 0.02em;
 }
 
+.player-art-link {
+  display: block;
+  border-radius: var(--radius-lg);
+}
+
+.player-art-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+}
+
+.hero-credit-link {
+  color: inherit;
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.hero-credit-link:hover,
+.hero-credit-link:focus-visible {
+  color: var(--color-text);
+  text-decoration: underline;
+}
+
 .player-action-panel {
   width: 100%;
   margin: var(--space-3) 0;

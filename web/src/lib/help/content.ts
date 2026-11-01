@@ -854,7 +854,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog"],
+    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog", "album", "go to album", "go to artist"],
     sections: [
       {
         id: "playing",
@@ -862,7 +862,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Press play on any track in Discover, the catalog, a release page, or your library. The Player opens a Now Playing console with full transport controls and your live queue.",
+            text: "Press play on any track in Discover, the catalog, a release page, or your library. The Player opens a Now Playing console with full transport controls and your live queue. For a catalog track, click the album name or the artwork to open the album, or the artist name to open the artist's page.",
           },
           {
             kind: "figure",
