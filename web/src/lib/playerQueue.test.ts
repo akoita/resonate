@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { LocalTrack } from "./localLibrary";
 import {
   appendQueueTracks,
+  canUndoQueueClear,
+  clearQueueIndices,
   createShuffleCycleState,
   insertQueueTracksNext,
   reconcileShuffleCycle,
@@ -215,5 +217,31 @@ describe("removeQueueIndices", () => {
 
   it("keeps no current track when nothing was playing", () => {
     expect(removeQueueIndices(queue, -1, [0]).currentIndex).toBe(-1);
+  });
+});
+
+describe("Clear queue", () => {
+  const queue = [track("a"), track("b"), track("c"), track("d")];
+
+  it("removes every position except the playing track", () => {
+    const indices = clearQueueIndices(queue.length, 2);
+    expect(indices).toEqual([0, 1, 3]);
+    const result = removeQueueIndices(queue, 2, indices);
+    expect(ids(result.queue)).toEqual(["c"]);
+    expect(result.currentIndex).toBe(0);
+    expect(result.currentRemoved).toBe(false);
+  });
+
+  it("empties the queue when nothing is playing", () => {
+    expect(clearQueueIndices(queue.length, -1)).toEqual([0, 1, 2, 3]);
+    expect(removeQueueIndices(queue, -1, clearQueueIndices(queue.length, -1)).queue).toEqual([]);
+  });
+
+  it("offers Undo only while the queue is still what the clear left", () => {
+    expect(canUndoQueueClear("c", [track("c")])).toBe(true);
+    expect(canUndoQueueClear("c", [track("c"), track("e")])).toBe(false);
+    expect(canUndoQueueClear("c", [track("e")])).toBe(false);
+    expect(canUndoQueueClear(null, [])).toBe(true);
+    expect(canUndoQueueClear(null, [track("e")])).toBe(false);
   });
 });

@@ -168,6 +168,11 @@ interface PlayerContextType {
     removeFromQueue: (index: number) => void;
     /** Remove several queue positions in one step. */
     removeQueueTracks: (indices: number[]) => void;
+    /**
+     * Put back a queue taken earlier (Undo for Clear queue). The current track
+     * keeps playing; only the list, its position and its source come back.
+     */
+    restoreQueue: (tracks: LocalTrack[], currentIndex: number, source: QueueSource) => void;
     setRepeatMode: (mode: "none" | "one" | "all") => void;
     // Mixer support
     mixerMode: boolean;
@@ -1595,6 +1600,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         removeQueueTracks([index]);
     }, [removeQueueTracks]);
 
+    const restoreQueue = useCallback((tracks: LocalTrack[], index: number, source: QueueSource) => {
+        const nextQueue = [...tracks];
+        const nextIndex = index >= 0 && index < nextQueue.length ? index : -1;
+        queueRef.current = nextQueue;
+        setQueue(nextQueue);
+        currentIndexRef.current = nextIndex;
+        setCurrentIndex(nextIndex);
+        queueSourceRef.current = source;
+        setQueueSource(source);
+        shuffleCycleRef.current = reconcileShuffleCycle(
+            shuffleCycleRef.current,
+            nextQueue.map((track) => track.id),
+            nextQueue[nextIndex]?.id ?? null,
+        );
+    }, []);
+
     /** Set the repeat mode directly (the toggle cycles none → all → one). */
     const setRepeatModeTo = useCallback((mode: "none" | "one" | "all") => {
         clearFiniteRepeat();
@@ -1689,6 +1710,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         playTracksNext,
         removeFromQueue,
         removeQueueTracks,
+        restoreQueue,
         setRepeatMode: setRepeatModeTo,
         mixerMode,
         toggleMixerMode,
@@ -1701,7 +1723,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         duration, artworkUrl, volume, muted, shuffle, repeatMode, playQueue, nextTrack,
         prevTrack, togglePlay, toggleShuffle, toggleRepeatMode, seek, setVolume, toggleMute,
         stop, addToQueue, playNextInQueue, addTracksToQueue, playTracksNext, removeFromQueue,
-        removeQueueTracks, setRepeatModeTo, mixerMode, toggleMixerMode, mixerVolumes,
+        removeQueueTracks, restoreQueue, setRepeatModeTo, mixerMode, toggleMixerMode, mixerVolumes,
         setMixerVolumes,
     ]);
 

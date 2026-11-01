@@ -25,6 +25,7 @@ import { VolumeIcon } from "../../components/player/VolumeIcon";
 import { useQueueActions } from "../../lib/useQueueActions";
 import { useIdleReveal } from "../../lib/useIdleReveal";
 
+import { ClearQueueButton } from "../../components/player/ClearQueueButton";
 import { SaveQueuePlaylist } from "../../components/player/SaveQueuePlaylist";
 import { PlayerDjQueueHeader, isDjSetTrack } from "../../components/player/PlayerDjQueueHeader";
 import { PlayerQueueDjMark } from "../../components/player/PlayerQueueDjMark";
@@ -699,7 +700,10 @@ function PlayerContent() {
         <div className="queue-section" style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
           <PlayerDjQueueHeader queue={queue} />
-          <SaveQueuePlaylist />
+          <div className="queue-manifest-actions">
+            <SaveQueuePlaylist />
+            <ClearQueueButton />
+          </div>
           <ListeningControls key={currentTrack?.id} />
           <TrackSelectionBar
             compact
