@@ -20,6 +20,7 @@ import {
   setBonusSourceLayer,
 } from "./punchline-unlock.service";
 import { resolvePunchlineClipBounds } from "./punchline-clip.config";
+import { suggestMomentRanges } from "./punchline-suggest";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import {
   PUNCHLINE_RIGHTS_LABEL,
@@ -735,6 +736,35 @@ export class PunchlineDropService {
         unlocks: { select: { id: true, unlockType: true, rewardMetadata: true } },
       },
     });
+  }
+
+  /**
+   * Suggested ranges for a new moment on an owned drop's track (#1476 slice
+   * 3): the loudest stretches and lifts of the chosen source layer, snapped to
+   * the measured beat grid. Suggestions only; nothing is saved.
+   */
+  async suggestRanges(userId: string, dropId: string, sourceLayer?: string) {
+    const drop = await this.loadOwnedDrop(userId, dropId);
+    const layer = normalizeSourceLayer(sourceLayer) || PUNCHLINE_SOURCE_STEM_TYPE;
+    const allowedLayers = resolvePunchlineSourceLayers(this.configService);
+    if (!allowedLayers.includes(layer)) {
+      throw new BadRequestException(`Source layer "${layer}" is not allowed for moments.`);
+    }
+    await this.assertSourceLayerAvailable(drop.trackId, layer);
+    const { minMs, maxMs } = resolvePunchlineClipBounds(this.configService, layer);
+    const scan = await this.clipService.measureLoudness(drop.trackId, layer);
+    return {
+      sourceLayer: layer,
+      tempoBpm: scan.tempoBpm,
+      ranges: suggestMomentRanges(scan.envelope, {
+        durationMs: scan.durationMs,
+        windowMs: scan.windowMs,
+        minMs,
+        maxMs,
+        tempoBpm: scan.tempoBpm,
+        firstBeatSec: scan.firstBeatSec,
+      }),
+    };
   }
 
   private async loadOwnedDrop(

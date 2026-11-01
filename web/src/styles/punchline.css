@@ -350,6 +350,48 @@
   color: var(--r-error, #ef4444);
 }
 
+/* ---- Suggested ranges (#1476 slice 3) ---- */
+
+.punchline-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  margin-top: var(--space-3, 1rem);
+}
+
+.punchline-suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 32px;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.16));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-primary, #fff);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.punchline-suggestion-chip:hover,
+.punchline-suggestion-chip:focus-visible {
+  border-color: var(--r-accent, #a78bfa);
+}
+
+.punchline-suggestion-chip.is-active {
+  border-color: var(--r-accent, #a78bfa);
+  background: rgba(167, 139, 250, 0.16);
+}
+
+.punchline-suggestion-reason {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+}
+
 /* ---- Selection summary + next step ---- */
 
 .punchline-selection-summary {

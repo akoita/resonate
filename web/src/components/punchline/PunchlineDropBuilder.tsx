@@ -21,6 +21,8 @@ import { PunchlinePublishReviewDialog } from "./PunchlinePublishReviewDialog";
 import { PunchlineSetBonusEditor } from "./PunchlineSetBonusEditor";
 import {
   getPunchlineDropMetrics,
+  getPunchlineSuggestedRanges,
+  type SuggestedMomentRange,
   type PunchlineDropMetrics,
 } from "../../lib/api";
 import {
@@ -113,6 +115,32 @@ export function PunchlineDropBuilder({
   const [editor, setEditor] = useState<EditorState>(null);
   const [editorSaving, setEditorSaving] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+
+  // Suggested ranges for the open editor's layer (#1476 slice 3).
+  const [suggestions, setSuggestions] = useState<{
+    layer: string;
+    state: "loading" | "ready" | "error";
+    ranges: SuggestedMomentRange[];
+  } | null>(null);
+  const editorOpen = editor !== null;
+  const suggestLayer = activeSource?.layer;
+  useEffect(() => {
+    if (!editorOpen || !token || !suggestLayer || isPublished) return;
+    let cancelled = false;
+    setSuggestions({ layer: suggestLayer, state: "loading", ranges: [] });
+    getPunchlineSuggestedRanges(drop.id, suggestLayer, token)
+      .then((result) => {
+        if (!cancelled) setSuggestions({ layer: suggestLayer, state: "ready", ranges: result.ranges });
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestions({ layer: suggestLayer, state: "error", ranges: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editorOpen, token, suggestLayer, isPublished, drop.id]);
+  const editorSuggestions =
+    suggestions && suggestions.layer === suggestLayer ? suggestions : null;
 
   const [pendingRemove, setPendingRemove] = useState<PunchlineMoment | null>(
     null,
@@ -544,6 +572,8 @@ export function PunchlineDropBuilder({
           mode={editor.mode}
           momentKind={momentKind}
           sourceLayer={activeSource.layer}
+          suggestions={editorSuggestions?.ranges}
+          suggestionsState={editorSuggestions?.state}
           stemId={activeSource.stemId}
           durationSeconds={activeSource.durationSeconds}
           minMs={activeSource.bounds.minMs}

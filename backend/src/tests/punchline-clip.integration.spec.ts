@@ -41,6 +41,7 @@ import {
   PUNCHLINE_CLIP_MAX_MS,
   PUNCHLINE_CLIP_MIN_MS,
 } from "../modules/punchline/punchline-clip.config";
+import { suggestMomentRanges } from "../modules/punchline/punchline-suggest";
 
 const TEST_PREFIX = `punchline_clip_${Date.now()}_`;
 const USER_ID = `${TEST_PREFIX}user`;
@@ -372,4 +373,53 @@ describe("Punchline clip extraction (integration)", () => {
       ),
     ).toBe("no_source_stem");
   });
+
+  (ffmpegAvailable ? it : it.skip)(
+    "(g) scans loudness and suggests the loud stretch, cached per stem (#1476 slice 3)",
+    async () => {
+      const trackId = `${TEST_PREFIX}track_scan`;
+      await prisma.track.create({
+        data: {
+          id: trackId, releaseId: RELEASE_ID, title: "Scan Track", position: 3,
+          processingStatus: "complete", contentStatus: "clean",
+        },
+      });
+      // 12 s quiet, then 8 s loud.
+      const dir = mkdtempSync(join(tmpdir(), "punchline-scan-fixture-"));
+      const outPath = join(dir, "scan.mp3");
+      execFileSync("ffmpeg", [
+        "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+        "-i", "sine=frequency=440:duration=20,volume='if(lt(t,12),0.02,0.9)':eval=frame",
+        "-codec:a", "libmp3lame", outPath,
+      ], { stdio: "ignore" });
+      const data = readFileSync(outPath);
+      rmSync(dir, { recursive: true, force: true });
+      await prisma.stem.create({
+        data: {
+          id: `${TEST_PREFIX}scan_drums`, trackId, type: "drums", uri: `local://${TEST_PREFIX}-scan`,
+          data, mimeType: "audio/mpeg", durationSeconds: 20, isEncrypted: false,
+          audioFeatures: { schemaVersion: "stem-audio-features/v1", tempoBpm: 120, firstBeatSec: 0 },
+        },
+      });
+
+      const scan = await service.measureLoudness(trackId, "drums");
+      expect(scan.stemId).toBe(`${TEST_PREFIX}scan_drums`);
+      expect(scan.durationMs).toBeGreaterThan(19_000);
+      expect(scan.tempoBpm).toBe(120);
+      expect(scan.envelope.length).toBeGreaterThan(70);
+      expect(await service.measureLoudness(trackId, "drums")).toBe(scan);
+
+      const ranges = suggestMomentRanges(scan.envelope, {
+        durationMs: scan.durationMs, windowMs: scan.windowMs,
+        minMs: PUNCHLINE_CLIP_MIN_MS, maxMs: PUNCHLINE_CLIP_MAX_MS,
+        tempoBpm: scan.tempoBpm, firstBeatSec: scan.firstBeatSec,
+      });
+      const loudest = [...ranges].sort((a, b) => b.loudnessDb - a.loudnessDb)[0]!;
+      expect(loudest.startMs).toBeGreaterThanOrEqual(11_500);
+      expect(loudest.endMs - loudest.startMs).toBe(8000);
+      expect(loudest.startMs % 500).toBe(0); // on the 120 bpm beat grid
+
+      expect(await codeOf(() => service.measureLoudness(trackId, "bass"))).toBe("no_source_stem");
+    },
+  );
 });
