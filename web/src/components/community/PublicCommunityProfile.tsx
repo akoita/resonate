@@ -144,6 +144,7 @@ export function PublicCommunityProfile({
               <div key={owned.collectibleId} className="punchline-collect-item">
                 <PunchlineCollectibleCard
                   title={owned.moment.title}
+                  momentKind={owned.moment.momentKind}
                   lyricText={owned.moment.lyricText}
                   artworkUrl={owned.moment.artworkUrl}
                   durationMs={Math.max(0, owned.moment.endMs - owned.moment.startMs)}

@@ -143,6 +143,38 @@ export interface MomentInputFields {
 export interface MomentInputBounds {
   minMs: number;
   maxMs: number;
+  /** The moment's source layer; drives lyric vs caption copy (#2522). */
+  sourceLayer?: string | null;
+}
+
+export interface MomentTextCopy {
+  label: string;
+  placeholder: string;
+  missing: string;
+  tooLong: string;
+}
+
+/**
+ * The moment's text field reads as a lyric for a vocal moment and as a short
+ * caption for any other stem or the full mix (#2522). The stored field stays
+ * `lyricText`.
+ */
+export function momentTextCopy(sourceLayer?: string | null): MomentTextCopy {
+  const layer = sourceLayer?.trim().toLowerCase() || "vocals";
+  if (layer === "vocals") {
+    return {
+      label: "Lyric",
+      placeholder: "The exact words in this moment",
+      missing: "Add the lyric for this moment.",
+      tooLong: `Lyric must be ${MOMENT_LYRIC_MAX} characters or fewer — a punchline, not the whole song.`,
+    };
+  }
+  return {
+    label: "Caption",
+    placeholder: "A short line fans will see, e.g. “The strings take over”",
+    missing: "Add a short caption for this moment.",
+    tooLong: `Caption must be ${MOMENT_LYRIC_MAX} characters or fewer.`,
+  };
 }
 
 export type MomentFieldKey =
@@ -181,10 +213,11 @@ export function validateMomentInput(
   }
 
   const lyricText = fields.lyricText.trim();
+  const textCopy = momentTextCopy(bounds.sourceLayer);
   if (!lyricText) {
-    errors.lyricText = "Add the lyric for this moment.";
+    errors.lyricText = textCopy.missing;
   } else if (lyricText.length > MOMENT_LYRIC_MAX) {
-    errors.lyricText = `Lyric must be ${MOMENT_LYRIC_MAX} characters or fewer — a punchline, not the whole song.`;
+    errors.lyricText = textCopy.tooLong;
   }
 
   let artworkUrl: string | null = null;

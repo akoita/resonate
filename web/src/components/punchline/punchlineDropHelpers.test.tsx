@@ -13,6 +13,7 @@ import {
   totalEditions,
   validateMomentInput,
   type MomentInputFields,
+  momentTextCopy,
 } from "./punchlineDropHelpers";
 import {
   PunchlineCollectibleCard,
@@ -399,5 +400,22 @@ describe("maskSensitiveLyric (display-only masking)", () => {
     );
     expect(html).not.toContain("nigga");
     expect(html).toContain("n***a");
+  });
+});
+
+describe("lyric vs caption copy (#2522)", () => {
+  it("asks a vocal moment for a lyric and any other source for a caption", () => {
+    expect(momentTextCopy("vocals").label).toBe("Lyric");
+    expect(momentTextCopy(undefined).label).toBe("Lyric");
+    expect(momentTextCopy("drums").label).toBe("Caption");
+    expect(momentTextCopy("full").label).toBe("Caption");
+  });
+
+  it("uses the caption wording in validation errors for non-vocal moments", () => {
+    const missing = validateMomentInput(fields({ lyricText: " " }), { ...BOUNDS, sourceLayer: "full" });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.errors.lyricText).toBe("Add a short caption for this moment.");
+    const vocal = validateMomentInput(fields({ lyricText: " " }), BOUNDS);
+    if (!vocal.ok) expect(vocal.errors.lyricText).toBe("Add the lyric for this moment.");
   });
 });

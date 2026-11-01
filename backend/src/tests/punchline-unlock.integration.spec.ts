@@ -381,6 +381,8 @@ describe("Punchline complete-set unlock rewards (integration)", () => {
 
       const unlock = await unlockService.getOwnerUnlock(draft.id);
       expect(unlock?.reward?.clipAssetUri).toBeTruthy();
+      // #2522: cut from the layer the set's moments use (vocals here).
+      expect(unlock?.reward?.sourceStemType).toBe("vocals");
 
       const downloaded = await storageProvider.download(
         unlock!.reward!.clipAssetUri!,

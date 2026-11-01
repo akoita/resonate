@@ -30,6 +30,7 @@ import {
 import {
   DEFAULT_SOURCE_LAYER,
   defaultSourceLayer,
+  setBonusSourceLayer,
   sourceLayerLabel,
   type MomentSourceOption,
 } from "./punchlineSourceHelpers";
@@ -97,8 +98,12 @@ export function PunchlineDropBuilder({
   );
   const activeSource =
     sources.find((s) => s.layer === sourceLayer) ?? sources[0];
-  // The set bonus is still clipped from the vocals stem server-side.
-  const vocalsSource = sources.find((s) => s.layer === DEFAULT_SOURCE_LAYER);
+  // The set bonus is cut from the layer most moments use (#2522), so its
+  // editor previews and bounds that same layer.
+  const bonusLayer = setBonusSourceLayer(drop.moments.map((m) => m.sourceStemType));
+  const bonusSource =
+    sources.find((s) => s.layer === bonusLayer) ??
+    sources.find((s) => s.layer === DEFAULT_SOURCE_LAYER);
 
   const [title, setTitle] = useState(drop.title ?? "");
   const [description, setDescription] = useState(drop.description ?? "");
@@ -538,6 +543,7 @@ export function PunchlineDropBuilder({
         <PunchlineMomentEditor
           mode={editor.mode}
           momentKind={momentKind}
+          sourceLayer={activeSource.layer}
           stemId={activeSource.stemId}
           durationSeconds={activeSource.durationSeconds}
           minMs={activeSource.bounds.minMs}
@@ -570,14 +576,14 @@ export function PunchlineDropBuilder({
       )}
 
       {/* Set bonus (#488) — draft-only, hidden while the moment editor is open */}
-      {!editor && vocalsSource && (
+      {!editor && bonusSource && (
         <PunchlineSetBonusEditor
           token={token}
           drop={drop}
-          stemId={vocalsSource.stemId}
-          durationSeconds={vocalsSource.durationSeconds}
-          minMs={vocalsSource.bounds.minMs}
-          maxMs={vocalsSource.bounds.maxMs}
+          stemId={bonusSource.stemId}
+          durationSeconds={bonusSource.durationSeconds}
+          minMs={bonusSource.bounds.minMs}
+          maxMs={bonusSource.bounds.maxMs}
           onDropChange={onDropChange}
           addToast={addToast}
         />

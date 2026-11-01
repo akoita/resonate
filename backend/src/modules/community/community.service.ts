@@ -96,6 +96,9 @@ type PublicOwnedMomentRecord = {
     rightsLabel: string;
     priceCents: number;
     collectedCount: number;
+    /** Punchline, Crescendo, Hook or Solo (#2522). */
+    momentKind: string;
+    sourceStemType: string;
   };
   drop: {
     id: string;
@@ -399,6 +402,8 @@ export class CommunityService {
         rightsLabel: row.moment.rightsLabel,
         priceCents: row.moment.priceCents,
         collectedCount: row.moment._count?.collectibles ?? 0,
+        momentKind: row.moment.momentKind,
+        sourceStemType: row.moment.sourceStemType,
       },
       drop: {
         id: row.moment.drop.id,
@@ -481,6 +486,8 @@ export function publicProfileDto(record: PublicProfileRecord) {
               rightsLabel: owned.moment.rightsLabel,
               priceCents: owned.moment.priceCents,
               collectedCount: owned.moment.collectedCount,
+              momentKind: owned.moment.momentKind,
+              sourceStemType: owned.moment.sourceStemType,
             },
             drop: {
               id: owned.drop.id,

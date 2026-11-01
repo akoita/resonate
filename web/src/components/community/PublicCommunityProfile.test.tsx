@@ -100,6 +100,8 @@ describe("PublicCommunityProfile", () => {
               rightsLabel: "NON_COMMERCIAL_COLLECTIBLE",
               priceCents: 0,
               collectedCount: 12,
+              momentKind: "crescendo",
+              sourceStemType: "full",
             },
             drop: {
               id: "drop-1",
@@ -124,6 +126,8 @@ describe("PublicCommunityProfile", () => {
     });
     expect(html).toContain("Moments showcase");
     expect(html).toContain("Golden hour");
+    // #2522: the card names the moment by its kind, not always "Punchline".
+    expect(html).toContain("Crescendo");
     expect(html).toContain("Edition #3 of 50");
     expect(html).toContain("Nova — Golden Hour");
     expect(html).toContain("Collected May 31, 2026");
