@@ -1,7 +1,7 @@
 # Vision Sprint 49: Owned means owned, every moment named
 
-**Status:** ◐ Proposed 2026-11-01, waiting on owner approval. Nothing is
-assigned to the milestone until the scope is approved.
+**Status:** ◐ In progress. Owner-approved 2026-11-01, including the proposed
+defaults.
 **Milestone:** to be created by the owner (the agent session cannot create or
 close milestones).
 **Goal:** What the library says you own comes only from what you actually
@@ -28,7 +28,7 @@ Solo) everywhere it appears, not just on the collectible card.
   and player work.** It finishes tails instead of opening new surfaces, so the
   owner's review queue (below) doesn't grow much.
 
-## Proposed scope and order
+## Approved scope and order
 
 | Order | Tier | Axis | Issue | Outcome |
 | --- | --- | --- | --- | --- |
@@ -37,7 +37,7 @@ Solo) everywhere it appears, not just on the collectible card.
 | 3 | P1 | Known issue (owner) | [#2436](https://github.com/akoita/resonate/issues/2436) | Carried from Sprint 45. The owner runs the idle CPU/GPU/memory check on staging (steps in the issue thread). Close if fine; if GPU stays high on Home or Shows, one PR swaps the blur behind those two surfaces for a solid fill |
 | 4 | P2 | Business value | [#1476](https://github.com/akoita/resonate/issues/1476) slice 3 | The moment builder suggests ranges from measured energy and beats (a swell, a hook, a solo) that the artist can accept or adjust. Closes #1476 |
 
-## Defaults proposed (owner may override)
+## Defaults taken (owner may override in review)
 
 1. **Holdings source for #2511.** Ownership is read on write and on list from
    `StemPurchase` plus on-chain holdings already indexed. If a value can't be
