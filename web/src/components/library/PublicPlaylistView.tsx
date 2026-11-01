@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
@@ -8,7 +8,9 @@ import { useToast } from "../ui/Toast";
 import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
 import { QueueActionsButton } from "../player/QueueActionsButton";
-import { TrackActionMenu } from "../ui/TrackActionMenu";
+import { ContextMenu } from "../ui/ContextMenu";
+import { PlayIcon } from "../ui/MenuIcons";
+import { PlaylistHero, PlaylistMetaDot, PlaylistTrackRow, RowMenuButton, menuPositionFor } from "./PlaylistLayout";
 import { useAuth } from "../auth/AuthProvider";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
@@ -47,52 +49,50 @@ export function PublicPlaylistTrackRow({
   isCurrent,
   onPlay,
   actions,
+  onContextMenu,
 }: {
   track: PublicPlaylistTrack;
   index: number;
   isCurrent: boolean;
   onPlay: () => void;
   actions?: ReactNode;
+  /** Right-click: the same menu as the row's "⋯" button. */
+  onContextMenu?: (event: ReactMouseEvent<HTMLDivElement>) => void;
 }) {
   const availability = resolveAvailability(track);
   const playable = availability.playable;
   const artUrl = track.artworkPath ? `${API_BASE}${track.artworkPath}` : null;
 
   return (
-    <div
-      className={`library-item pl-public-track ${playable ? "" : "is-unplayable"} ${isCurrent ? "playing" : ""}`}
+    <PlaylistTrackRow
+      index={index}
+      title={track.title}
+      meta={
+        <>
+          {track.artist || "Unknown Artist"}
+          {track.album && ` • ${track.album}`}
+          <TrackUnavailableNote availability={availability} />
+        </>
+      }
+      duration={track.duration}
+      artUrl={artUrl}
+      isCurrent={isCurrent}
+      playable={playable}
+      menu={playable ? actions : null}
       onClick={playable ? onPlay : undefined}
+      onContextMenu={onContextMenu}
       role={playable ? "button" : undefined}
       aria-disabled={playable ? undefined : true}
       tabIndex={playable ? 0 : undefined}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (playable && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
           onPlay();
         }
       }}
-      title={playable ? "Play" : availability.reason ?? "Not available to stream"}
-    >
-      <div className="pl-public-track-index">{index + 1}</div>
-      <div className="library-item-artwork">
-        {artUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={artUrl} alt={track.title} />
-        ) : (
-          <div className="library-item-artwork-placeholder">🎵</div>
-        )}
-      </div>
-      <div className="library-item-info">
-        <div className="library-item-title">{track.title}</div>
-        <div className="library-item-meta">
-          {track.artist || "Unknown Artist"}
-          {track.album && ` • ${track.album}`}
-          <TrackUnavailableNote availability={availability} />
-        </div>
-      </div>
-      <div className="library-item-duration">{formatDuration(track.duration)}</div>
-      {playable ? actions : null}
-    </div>
+      tooltip={playable ? "Play" : availability.reason ?? "Not available to stream"}
+    />
   );
 }
 
@@ -108,6 +108,8 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
   const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedPlaylistId, setSavedPlaylistId] = useState<string | null>(null);
+  /** The open row menu: from the "⋯" button (with its element) or a right-click. */
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; index: number; opener: HTMLElement | null } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -253,36 +255,32 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
 
   return (
     <div className="pl-public-shell">
-      <div className="pl-public-hero glass-panel">
-        <div className="pl-public-hero-art">
-          {heroArtUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={heroArtUrl} alt={playlist.name} />
-          ) : (
-            <div className="pl-public-hero-art-fallback">🎶</div>
-          )}
-        </div>
-        <div className="pl-public-hero-body">
-          <div className="pl-public-hero-label">
+      <PlaylistHero
+        artUrl={heroArtUrl}
+        name={playlist.name}
+        label={
+          <>
             <span className="pl-visibility-badge">Public playlist</span>
-            {playlist.isOwner && <span className="pl-public-owner-tag">You own this</span>}
-          </div>
-          <h1 className="pl-public-hero-title">{playlist.name}</h1>
-          <div className="pl-public-hero-meta">
+            {playlist.isOwner && <span className="pl-hero-owner-tag">You own this</span>}
+          </>
+        }
+        meta={
+          <>
             {playlist.ownerDisplayName && (
               <>
-                <span className="pl-public-curator">by {playlist.ownerDisplayName}</span>
-                <span className="pl-public-dot">•</span>
+                <span className="pl-hero-curator">by {playlist.ownerDisplayName}</span>
+                <PlaylistMetaDot />
               </>
             )}
             {playlist.trackCount} track{playlist.trackCount !== 1 ? "s" : ""}
-            <span className="pl-public-dot">•</span>
+            <PlaylistMetaDot />
             {formatDuration(totalDuration)}
-          </div>
-
-          <div className="pl-public-hero-actions">
+          </>
+        }
+        actions={
+          <>
             <Button variant="primary" onClick={handlePlayAll} disabled={playableTracks.length === 0}>
-              ▶ Play
+              <PlayIcon /> Play
             </Button>
             <QueueActionsButton
               tracks={playableTracks}
@@ -308,27 +306,30 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
             <button type="button" className="ui-btn ui-btn-ghost" onClick={handleCopyLink}>
               Copy link
             </button>
-          </div>
-
-          {playlist.playableTrackCount < playlist.trackCount && (
-            <div className="pl-public-note">
-              {playlist.playableTrackCount} of {playlist.trackCount} tracks are available to stream here.
-            </div>
-          )}
-          {(playlist.privateTrackCount ?? 0) > 0 && (
-            <div className="pl-public-note">
-              {playlist.privateTrackCount === 1
-                ? "1 personal file from the owner's device is not shown."
-                : `${playlist.privateTrackCount} personal files from the owner's device are not shown.`}
-            </div>
-          )}
-          {playlist.isOwner && playlist.visibility === "public" && playlist.tracks.some((track) => !track.catalogTrackId && !track.streamPath) && (
-            <div className="pl-public-note">
-              Files from your own devices stay private. Other listeners see only the Resonate tracks in this playlist.
-            </div>
-          )}
-        </div>
-      </div>
+          </>
+        }
+        notes={
+          <>
+            {playlist.playableTrackCount < playlist.trackCount && (
+              <div className="pl-public-note">
+                {playlist.playableTrackCount} of {playlist.trackCount} tracks are available to stream here.
+              </div>
+            )}
+            {(playlist.privateTrackCount ?? 0) > 0 && (
+              <div className="pl-public-note">
+                {playlist.privateTrackCount === 1
+                  ? "1 personal file from the owner's device is not shown."
+                  : `${playlist.privateTrackCount} personal files from the owner's device are not shown.`}
+              </div>
+            )}
+            {playlist.isOwner && playlist.visibility === "public" && playlist.tracks.some((track) => !track.catalogTrackId && !track.streamPath) && (
+              <div className="pl-public-note">
+                Files from your own devices stay private. Other listeners see only the Resonate tracks in this playlist.
+              </div>
+            )}
+          </>
+        }
+      />
 
       <div className="pl-public-tracks">
         {playlist.tracks.length === 0 ? (
@@ -342,12 +343,35 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
                 index={index}
                 isCurrent={currentTrack?.id === track.id}
                 onPlay={() => handlePlayTrack(track)}
-                actions={<TrackActionMenu actions={queueActions.actionMenuItems(toLocalTrack(track))} />}
+                onContextMenu={(event) => {
+                  if (!isPlayableEntry(track)) return;
+                  event.preventDefault();
+                  setRowMenu({ x: event.clientX, y: event.clientY, index, opener: null });
+                }}
+                actions={
+                  <RowMenuButton
+                    label={`More options for ${track.title}`}
+                    expanded={rowMenu?.index === index && rowMenu.opener !== null}
+                    onOpen={(button) => setRowMenu({ ...menuPositionFor(button), index, opener: button })}
+                    onClose={() => setRowMenu(null)}
+                  />
+                }
               />
             ))}
           </div>
         )}
       </div>
+
+      {rowMenu && playlist.tracks[rowMenu.index] && (
+        <ContextMenu
+          x={rowMenu.x}
+          y={rowMenu.y}
+          items={queueActions.contextMenuItems(toLocalTrack(playlist.tracks[rowMenu.index]))}
+          onClose={() => setRowMenu(null)}
+          openerRef={rowMenu.opener ? { current: rowMenu.opener } : undefined}
+          ariaLabel={`Options for ${playlist.tracks[rowMenu.index].title}`}
+        />
+      )}
     </div>
   );
 }

@@ -37,7 +37,7 @@ vi.mock("./api", () => ({
 }));
 
 import { ApiRequestError } from "./api";
-import { deleteTrack, deleteTracks, getTrack, getTrackUrl, listLocalTrackOmissions } from "./localLibrary";
+import { deleteTrack, deleteTracks, getTrack, getTrackUrl, listLocalTrackOmissions, withKnownDuration } from "./localLibrary";
 import type { LocalTrack } from "./localLibrary";
 
 describe("library removal", () => {
@@ -210,5 +210,44 @@ describe("getTrackUrl", () => {
     it("still has nothing to play for a stem row or a row without its release", async () => {
         expect(await getTrackUrl({ ...base, stemType: "vocals" })).toBeNull();
         expect(await getTrackUrl({ ...base, releaseId: null })).toBeNull();
+    });
+});
+
+describe("withKnownDuration", () => {
+    const base = { id: "trk-1", title: "Signal One", artist: null, albumArtist: null, album: null, year: null, genre: null, createdAt: "2026-01-01T00:00:00.000Z" };
+
+    beforeEach(() => {
+        mocks.getCatalogTrack.mockReset();
+        vi.stubGlobal("window", {});
+        vi.stubGlobal("localStorage", { getItem: () => null });
+    });
+
+    it("keeps a duration the row already has", async () => {
+        const track = { ...base, duration: 180, source: "remote" } as LocalTrack;
+        expect(await withKnownDuration(track)).toBe(track);
+        expect(mocks.getCatalogTrack).not.toHaveBeenCalled();
+    });
+
+    it("takes the length from the stems before asking the catalog", async () => {
+        const track = { ...base, duration: null, source: "remote", stems: [{ id: "s", uri: "u", type: "ORIGINAL", durationSeconds: 243 }] } as LocalTrack;
+        expect((await withKnownDuration(track)).duration).toBe(243);
+        expect(mocks.getCatalogTrack).not.toHaveBeenCalled();
+    });
+
+    it("asks the catalog for a platform track saved without a length", async () => {
+        mocks.getCatalogTrack.mockResolvedValue({ id: "trk-1", stems: [{ id: "s", durationSeconds: 304 }] });
+        const track = { ...base, duration: null, source: "remote", catalogTrackId: "trk-1" } as LocalTrack;
+        expect((await withKnownDuration(track)).duration).toBe(304);
+        expect(mocks.getCatalogTrack).toHaveBeenCalledWith("trk-1", null);
+    });
+
+    it("leaves a device file and an unreachable catalog alone", async () => {
+        const local = { ...base, duration: null, source: "local" } as LocalTrack;
+        expect(await withKnownDuration(local)).toBe(local);
+        expect(mocks.getCatalogTrack).not.toHaveBeenCalled();
+
+        mocks.getCatalogTrack.mockRejectedValue(new Error("offline"));
+        const remote = { ...base, duration: null, source: "remote", catalogTrackId: "trk-1" } as LocalTrack;
+        expect(await withKnownDuration(remote)).toBe(remote);
     });
 });

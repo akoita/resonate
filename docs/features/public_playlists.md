@@ -115,6 +115,7 @@ before it can be shared (the Share toggle is disabled until then).
 | --- | --- |
 | UI route (public viewer) | `web/src/app/playlist/[id]/page.tsx` → `PublicPlaylistView` |
 | UI (catalog discovery) | `web/src/app/catalog/page.tsx` + home `web/src/app/page.tsx` "Playlists" tab → `web/src/components/catalog/CatalogPlaylistCard.tsx` |
+| UI (shared playlist layout) | `web/src/components/library/PlaylistLayout.tsx`: `PlaylistHero`, `PlaylistTrackRow` and the row's "⋯" `RowMenuButton`, drawn by both the owner page (`PlaylistDetail`) and the public viewer, so the two pages look the same. The owner page adds only owner actions: drag to reorder (the row number turns into a grip), multi-select, a click-to-rename title and Add to playlist / Remove from playlist in the row menu (confirmed with `ConfirmDialog`). The menu opens from the "⋯" button, a right-click, or Shift+F10 / the Menu key on the keyboard row. |
 | UI (owner share control) | `web/src/components/library/PlaylistShareControl.tsx` |
 | UI (saved playlists + badges) | `web/src/components/library/PlaylistTab.tsx` |
 | API client | `getPublicPlaylistAPI`, `listPublicPlaylists`, `setPlaylistVisibilityAPI`, `savePlaylistAPI`, `listSavedPlaylistsAPI`, `removeSavedPlaylistAPI` (`web/src/lib/api.ts`) |
@@ -123,7 +124,17 @@ before it can be shared (the Share toggle is disabled until then).
 | Data model | `Playlist.visibility`, `SavedPlaylist` (`backend/prisma/schema.prisma`) |
 | Domain events | `playlist.visibility_changed`, `playlist.saved_to_library`, `playlist.removed_from_library` |
 | Product analytics | `playlist.visibility_changed`, `playlist.shared`, `playlist.saved`, `playlist.removed_from_library`; `search.result_clicked` (`resultType: "playlist"`) from home catalog. The backend accepts `playlist.shared` (strict `{ playlistId, channel: "copy_link" }` payload); `playlist.visibility_changed`, `playlist.saved`, and `playlist.removed_from_library` are emitted by the web client but not yet on the backend product-event allowlist, so they are rejected with 400 |
-| Tests | `backend/src/tests/playlist-public.integration.spec.ts`, `backend/src/tests/playlist-discovery.integration.spec.ts`, `web/src/components/catalog/CatalogPlaylistCard.test.tsx`, `web/src/lib/publicPlaylists.test.ts` |
+| Tests | `backend/src/tests/playlist-public.integration.spec.ts`, `backend/src/tests/playlist-discovery.integration.spec.ts`, `web/src/components/catalog/CatalogPlaylistCard.test.tsx`, `web/src/lib/publicPlaylists.test.ts`, `web/src/components/library/PlaylistLayout.test.tsx`, `web/src/components/library/PublicPlaylistView.test.tsx` |
+
+## Owner and public pages share one layout
+
+The owner's page in the library and the public link used to be two separate
+designs (big Remove buttons and no track numbers on one, a card header and a
+narrow track column on the other). Both now render the same header card and
+track rows: number, artwork, title with artist and album, length, and a "⋯"
+menu revealed on hover or focus. The owner's page fills in a missing track
+length from the track's stems or the catalog (`withKnownDuration` in
+`web/src/lib/localLibrary.ts`), so it shows the same lengths as the public page.
 
 ## Remaining / deferred
 

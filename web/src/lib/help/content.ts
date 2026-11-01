@@ -1696,7 +1696,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Open the Add to playlist action on any track, release, album, or artist page — including artist pages inside My Library.",
               "To add several tracks at once, select them in My Library and choose Add to playlist, or drag them onto a playlist in the side panel. Dragging a track from one playlist onto another copies it there; the original playlist keeps it.",
               "Create a new playlist or add the tracks to an existing one.",
-              "Reorder and manage tracks from the Playlists tab in your library. Playlist covers, including public playlists you have saved, show a mosaic of the artwork inside.",
+              "Reorder and manage tracks from the Playlists tab in your library: drag a row by its number to move it, and use the ⋯ button at the end of a row (it appears when you point at the row, and is always shown on touch screens), or right-click the row, for Play next, Add to queue, Set repeats, Add to playlist and Remove from playlist. With the keyboard, move to a track and press Shift+F10 or the Menu key for the same options. Removing asks you to confirm and takes the track out of this playlist only. Your playlist page and its public link look the same; the owner's page only adds these editing options. Playlist covers, including public playlists you have saved, show a mosaic of the artwork inside.",
             ],
           },
           {

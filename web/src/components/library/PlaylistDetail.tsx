@@ -6,12 +6,11 @@ import { Button } from "../ui/Button";
 import {
     Playlist,
     getPlaylist,
-    removeTrackFromPlaylist,
     removeTracksFromPlaylist,
     reorderTracks,
     renamePlaylist,
 } from "../../lib/playlistStore";
-import { LocalTrack, getTrack, getArtworkUrl } from "../../lib/localLibrary";
+import { LocalTrack, getTrack, getArtworkUrl, withKnownDuration } from "../../lib/localLibrary";
 import { catalogTrackIdOf } from "../../lib/trackIdentity";
 import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
@@ -44,6 +43,7 @@ import { AddToPlaylistIcon, AddToQueueIcon, LoopIcon, PlayIcon, PlayNextIcon, Re
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TrackSelectionBar } from "../player/TrackSelectionBar";
 import { useListSelection } from "../../lib/useListSelection";
+import { PlaylistHero, PlaylistMetaDot, PlaylistTrackRow, RowMenuButton, menuPositionFor } from "./PlaylistLayout";
 import { useUIStore } from "../../lib/uiStore";
 
 interface PlaylistDetailProps {
@@ -82,7 +82,11 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const queueActions = useQueueActions();
     const setTracksToAddToPlaylist = useUIStore((state) => state.setTracksToAddToPlaylist);
     const setTrackForRepeats = useUIStore((state) => state.setTrackForRepeats);
-    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, indices: number[] } | null>(null);
+    /**
+     * The open track menu, from a right-click, the row's "⋯" button (its
+     * `opener`, which gets focus back) or the Menu key / Shift+F10.
+     */
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, indices: number[], row: number, opener: HTMLElement | null, fromButton: boolean } | null>(null);
     /** Entry ids waiting on the "remove several" confirmation. */
     const [pendingRemoval, setPendingRemoval] = useState<string[] | null>(null);
     const listRef = useRef<HTMLDivElement>(null);
@@ -98,7 +102,12 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
             // Load actual track data. Entries that no longer resolve stay in
             // the list as unavailable rows rather than vanishing (#1793).
             const trackData: PlaylistEntry[] = await Promise.all(
-                p.trackIds.map(async (id) => ({ id, track: await getTrack(id) })),
+                p.trackIds.map(async (id) => {
+                    const track = await getTrack(id);
+                    // Copies saved without a length showed "--:--" here while
+                    // the shared page, read from the server, had it.
+                    return { id, track: track ? await withKnownDuration(track) : null };
+                }),
             );
             setEntries(trackData);
 
@@ -152,13 +161,6 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         });
     }, [playQueue, playlistId, playableTracks, playlist]);
 
-    const handleRemoveTrack = async (trackId: string) => {
-        if (!confirm("Remove this track from the playlist?")) return;
-        await removeTrackFromPlaylist(playlistId, trackId);
-        await loadPlaylistData();
-        addToast({ type: "success", title: "Removed", message: "Track removed from playlist" });
-    };
-
     const confirmRemoveEntries = async () => {
         const ids = pendingRemoval ?? [];
         setPendingRemoval(null);
@@ -178,6 +180,22 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         if (ids.length > 0) setPendingRemoval(ids);
     }, [entries]);
 
+    // Opened from the keyboard: anchor the menu on the row's "⋯" button.
+    // `contextTargets` is read through a ref because the selection hook
+    // needs this callback before it returns.
+    const contextTargetsRef = useRef<(index: number) => number[]>((index) => [index]);
+    const openMenuFromKeyboard = useCallback((index: number) => {
+        const row = listRef.current?.querySelector<HTMLElement>(`[data-row-index="${index}"]`);
+        const button = row?.querySelector<HTMLElement>(".pl-track-menu-btn");
+        const anchor = button ?? row;
+        if (!anchor) return;
+        const position = button ? menuPositionFor(button) : (() => {
+            const rect = anchor.getBoundingClientRect();
+            return { x: rect.left + 24, y: rect.bottom };
+        })();
+        setContextMenu({ ...position, indices: contextTargetsRef.current(index), row: index, opener: listRef.current, fromButton: false });
+    }, []);
+
     // Shift/Ctrl/Cmd+click and the keyboard select rows; a plain click still plays.
     const rowSelection = useListSelection({
         count: entries.length,
@@ -185,12 +203,31 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         listRef,
         onActivate: playEntryRow,
         onRemove: requestRemoveRows,
+        onMenu: openMenuFromKeyboard,
+    });
+    useEffect(() => {
+        contextTargetsRef.current = rowSelection.contextTargets;
     });
 
     const handleContextMenu = (e: React.MouseEvent, index: number) => {
         e.preventDefault();
-        setContextMenu({ x: e.clientX, y: e.clientY, indices: rowSelection.contextTargets(index) });
+        setContextMenu({ x: e.clientX, y: e.clientY, indices: rowSelection.contextTargets(index), row: index, opener: null, fromButton: false });
     };
+
+    const openRowMenu = (button: HTMLButtonElement, index: number) => {
+        setContextMenu({ ...menuPositionFor(button), indices: rowSelection.contextTargets(index), row: index, opener: button, fromButton: true });
+    };
+
+    /** The row's "⋯" button: same menu as a right-click on it. */
+    const rowMenuButton = (index: number, title: string) => (
+        <RowMenuButton
+            label={`More options for ${title}`}
+            expanded={contextMenu?.row === index && contextMenu.fromButton}
+            onOpen={(button) => openRowMenu(button, index)}
+            onClose={() => setContextMenu(null)}
+            tabbable={false}
+        />
+    );
 
     /** Everything that applies to several playlist rows at once. */
     const getSelectionItems = (indices: number[]): ContextMenuItem[] => {
@@ -220,13 +257,14 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         const entry = entries[indices[0]];
         if (!entry) return [];
         if (!entry.track) {
-            return [{ label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => handleRemoveTrack(entry.id) }];
+            return [{ label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => requestRemoveRows(indices) }];
         }
         const track = entry.track;
         return [
             ...queueActions.contextMenuItems(track),
             { separator: true, label: "", onClick: () => { } },
-            { label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => handleRemoveTrack(track.id) },
+            { label: "Add to Playlist", icon: <AddToPlaylistIcon />, onClick: () => setTracksToAddToPlaylist([track]) },
+            { label: "Remove from Playlist", icon: <RemoveIcon />, variant: "destructive", onClick: () => requestRemoveRows(indices) },
         ];
     };
 
@@ -250,6 +288,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            // Space on a button or a menu item (the track menu) is theirs.
+            if (e.target instanceof HTMLElement && e.target.closest('button, a, [role="menu"]')) return;
 
             const focused = rowSelection.selection.focus;
             if (e.code === "Space" && !e.ctrlKey && !e.metaKey && focused !== null) {
@@ -317,49 +357,51 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
 
     const totalDuration = tracks.reduce((acc, t) => acc + (t.duration || 0), 0);
     const heroArt = tracks.length > 0 ? artworkUrls.get(tracks[0].id) : null;
+    const isLocalOnly = playlist.id.startsWith("playlist_");
+
+    const rowStateClasses = (index: number) => [
+        rowSelection.isSelected(index) ? "selected" : "",
+        rowSelection.isFocused(index) ? "is-focused" : "",
+        contextMenu?.row === index ? "menu-open" : "",
+    ].filter(Boolean).join(" ");
 
     return (
-        <div className="library-detail">
+        <div className="library-detail pl-owner">
             <div className="library-detail-back">
                 <Button variant="ghost" onClick={onBack}>← Back to Playlists</Button>
             </div>
 
-            <div className="detail-hero">
-                {heroArt ? (
+            <PlaylistHero
+                artUrl={heroArt}
+                name={playlist.name}
+                onRename={() => setShowRenameModal(true)}
+                label={
                     <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={heroArt} alt={playlist.name} className="detail-hero-artwork" />
-                    </>
-                ) : (
-                    <div className="detail-hero-artwork" style={{ background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "80px" }}>
-                        🎶
-                    </div>
-                )}
-                <div className="detail-hero-content">
-                    <div className="detail-hero-label">
-                        Playlist
+                        <span className="pl-hero-kind">Playlist</span>
                         {playlist.visibility === "public" && (
                             <span className="pl-visibility-badge" title="Anyone with the link can listen">
                                 Public
                             </span>
                         )}
-                    </div>
-                    <h1
-                        className="detail-hero-title cursor-pointer hover:text-accent"
-                        onClick={() => setShowRenameModal(true)}
-                        title="Click to rename"
-                    >
-                        {playlist.name}
-                    </h1>
-                    <div className="detail-hero-meta">
-                        {entries.length} track{entries.length !== 1 ? "s" : ""} • {formatDuration(totalDuration)}
+                    </>
+                }
+                meta={
+                    <>
+                        {entries.length} track{entries.length !== 1 ? "s" : ""}
+                        <PlaylistMetaDot />
+                        {formatDuration(totalDuration)}
                         {playableTracks.length < entries.length && (
-                            <> • {entries.length - playableTracks.length} unavailable</>
+                            <>
+                                <PlaylistMetaDot />
+                                {entries.length - playableTracks.length} unavailable
+                            </>
                         )}
-                    </div>
-                    <div className="detail-hero-actions">
+                    </>
+                }
+                actions={
+                    <>
                         <Button variant="primary" onClick={handlePlayAll} disabled={playableTracks.length === 0}>
-                            Play All
+                            <PlayIcon /> Play
                         </Button>
                         <QueueActionsButton
                             tracks={playableTracks}
@@ -368,36 +410,35 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                             disabled={playableTracks.length === 0}
                         />
                         {/* Seeded AI DJ session (#2244): server playlists only, the server cannot read a local one. */}
-                        {!playlist.id.startsWith("playlist_") && (
+                        {!isLocalOnly && (
                             <StartDjFromSeedButton seed={{ kind: "playlist", id: playlist.id, label: playlist.name }} />
                         )}
                         <PlaylistShareControl
                             playlistId={playlist.id}
                             visibility={playlist.visibility}
-                            localOnly={playlist.id.startsWith("playlist_")}
+                            localOnly={isLocalOnly}
                             onVisibilityChange={(visibility: PlaylistVisibility) =>
                                 setPlaylist((prev) => (prev ? { ...prev, visibility } : prev))
                             }
                         />
-                    </div>
-                </div>
-            </div>
+                    </>
+                }
+            />
 
-            <div className="detail-tracks">
-                <h2 className="detail-section-title">Tracks</h2>
+            <div className="pl-tracks">
                 <TrackSelectionBar
                     count={rowSelection.selected.length}
                     items={getSelectionItems(rowSelection.selected)}
                     onClear={rowSelection.clear}
                 />
                 {entries.length === 0 ? (
-                    <div className="home-subtitle">This playlist is empty. Add some tracks from your library!</div>
+                    <div className="pl-public-empty-list">This playlist is empty. Add some tracks from your library!</div>
                 ) : (
                     <div
                         ref={listRef}
                         className="library-list"
                         tabIndex={0}
-                        aria-label="Playlist tracks. Shift or Ctrl-click to select several tracks."
+                        aria-label="Playlist tracks. Shift or Ctrl-click to select several tracks. Shift+F10 opens a track's options."
                         {...rowSelection.listProps}
                     >
                         {entries.map((entry, index) => {
@@ -408,44 +449,78 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                             // its place, says so, and can still be removed (#1793).
                             if (!track) {
                                 return (
-                                    <div
+                                    <PlaylistTrackRow
                                         key={`${entry.id}-${index}`}
-                                        className={`library-item playlist-track-item is-unplayable ${rowSelection.isSelected(index) ? "selected" : ""} ${rowSelection.isFocused(index) ? "is-focused" : ""}`}
+                                        index={index}
+                                        title="Unavailable track"
+                                        meta={<TrackUnavailableNote availability={availability} />}
+                                        duration={undefined}
+                                        playable={false}
+                                        stateClassName={rowStateClasses(index)}
+                                        tooltip={availability.reason ?? undefined}
+                                        menu={rowMenuButton(index, "unavailable track")}
                                         {...rowSelection.rowProps(index)}
                                         onContextMenu={(e) => handleContextMenu(e, index)}
                                         aria-disabled="true"
-                                        title={availability.reason ?? undefined}
-                                        style={{ opacity: 0.55 }}
-                                    >
-                                        <div className="library-item-drag-handle" />
-                                        <div className="library-item-artwork">
-                                            <div className="library-item-artwork-placeholder">🎵</div>
-                                        </div>
-                                        <div className="library-item-info">
-                                            <div className="library-item-title">Unavailable track</div>
-                                            <div className="library-item-meta">
-                                                <TrackUnavailableNote availability={availability} />
-                                            </div>
-                                        </div>
-                                        <div className="library-item-duration">—</div>
-                                        <div className="library-item-actions">
-                                            <Button variant="ghost" onClick={(e) => { e.stopPropagation(); handleRemoveTrack(entry.id); }}>Remove</Button>
-                                        </div>
-                                    </div>
+                                    />
                                 );
                             }
 
-                            const artUrl = artworkUrls.get(track.id);
-                            const isCurrent = currentTrack?.id === track.id;
+                            const progress = trackProgress.get(track.id);
+                            const isStem = Boolean(track.stemType && track.stemType.toLowerCase() !== "original");
 
                             return (
-                                <div
+                                <PlaylistTrackRow
                                     key={`${track.id}-${index}`}
-                                    draggable
-                                    className={`library-item playlist-track-item ${rowSelection.isSelected(index) ? "selected" : ""} ${rowSelection.isFocused(index) ? "is-focused" : ""} ${isCurrent ? "playing" : ""} ${draggingTrackId === track.id ? "dragging" : ""} ${dragOverIndex === index ? "drag-before" : ""} ${dragOverIndex === index + 1 && index === entries.length - 1 ? "drag-after" : ""} ${availability.playable ? "" : "is-unplayable"}`}
+                                    index={index}
+                                    title={track.title}
+                                    duration={track.duration}
+                                    artUrl={artworkUrls.get(track.id)}
+                                    artBadge={isStem ? (
+                                        <div className="absolute top-0 right-0 bg-accent text-white text-[9px] px-1 py-0.5 rounded-bl font-bold shadow-md">
+                                            STEM
+                                        </div>
+                                    ) : null}
+                                    meta={
+                                        <>
+                                            <span
+                                                className="clickable hover:underline"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const target = track.artist;
+                                                    if (target) router.push(libraryArtistHref(target));
+                                                }}
+                                            >
+                                                {track.artist || "Unknown Artist"}
+                                            </span>
+                                            {track.album && ` • ${track.album}`}
+                                            {isStem && (
+                                                <span className="text-accent text-xs ml-2 font-medium border border-accent/30 px-1.5 py-0.5 rounded-full">
+                                                    {track.stemType}
+                                                </span>
+                                            )}
+                                            <TrackUnavailableNote availability={availability} />
+                                        </>
+                                    }
+                                    extra={progress !== undefined && progress < 100 ? (
+                                        <div className="track-progress-container">
+                                            <div className="track-progress-bar" style={{ width: `${progress}%` }} />
+                                            <span className="track-progress-label">Separating Stems: {progress}%</span>
+                                        </div>
+                                    ) : null}
+                                    isCurrent={currentTrack?.id === track.id}
+                                    playable={availability.playable}
+                                    reorderable
+                                    menu={rowMenuButton(index, track.title)}
+                                    stateClassName={[
+                                        rowStateClasses(index),
+                                        draggingTrackId === track.id ? "dragging" : "",
+                                        dragOverIndex === index ? "drag-before" : "",
+                                        dragOverIndex === index + 1 && index === entries.length - 1 ? "drag-after" : "",
+                                    ].filter(Boolean).join(" ")}
                                     aria-disabled={availability.playable ? undefined : true}
-                                    title={availability.playable ? undefined : availability.reason ?? undefined}
-                                    style={availability.playable ? undefined : { opacity: 0.55 }}
+                                    tooltip={availability.playable ? undefined : availability.reason ?? undefined}
+                                    draggable
                                     {...rowSelection.rowProps(index)}
                                     onContextMenu={(e) => handleContextMenu(e, index)}
                                     onDragStart={(e) => {
@@ -508,67 +583,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                             void handleInsertDrop(request, finalToIndex);
                                         }
                                     }}
-                                >
-                                    <div className="library-item-drag-handle">
-                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <circle cx="9" cy="12" r="1" />
-                                            <circle cx="9" cy="5" r="1" />
-                                            <circle cx="9" cy="19" r="1" />
-                                            <circle cx="15" cy="12" r="1" />
-                                            <circle cx="15" cy="5" r="1" />
-                                            <circle cx="15" cy="19" r="1" />
-                                        </svg>
-                                    </div>
-                                    <div className="library-item-artwork">
-                                        {artUrl ? (
-                                            <>
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img src={artUrl} alt={track.title} />
-                                            </>
-                                        ) : (
-                                            <div className="library-item-artwork-placeholder">🎵</div>
-                                        )}
-                                        {track.stemType && track.stemType.toLowerCase() !== 'original' && (
-                                            <div className="absolute top-0 right-0 bg-accent text-white text-[9px] px-1 py-0.5 rounded-bl font-bold shadow-md">
-                                                STEM
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="library-item-info">
-                                        <div className="library-item-title">{track.title}</div>
-                                        <div className="library-item-meta">
-                                            <span
-                                                className="clickable hover:underline"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const target = track.artist;
-                                                    if (target) router.push(libraryArtistHref(target));
-                                                }}
-                                            >
-                                                {track.artist || "Unknown Artist"}
-                                            </span>
-                                            {track.album && ` • ${track.album}`}
-                                            {track.stemType && track.stemType.toLowerCase() !== 'original' && (
-                                                <span className="text-accent text-xs ml-2 font-medium border border-accent/30 px-1.5 py-0.5 rounded-full">
-                                                    {track.stemType}
-                                                </span>
-                                            )}
-                                            <TrackUnavailableNote availability={availability} />
-                                        </div>
-                                        {trackProgress.get(track.id) !== undefined && trackProgress.get(track.id)! < 100 && (
-                                            <div className="track-progress-container">
-                                                <div className="track-progress-bar" style={{ width: `${trackProgress.get(track.id)}%` }} />
-                                                <span className="track-progress-label">Separating Stems: {trackProgress.get(track.id)}%</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="library-item-duration">
-                                        {formatDuration(track.duration)}
-                                    </div>
-                                    <div className="library-item-actions">
-                                        <Button variant="ghost" onClick={(e) => { e.stopPropagation(); handleRemoveTrack(track.id); }}>Remove</Button>
-                                    </div>
-                                </div>
+                                />
                             );
                         })}
                     </div>
@@ -581,13 +596,19 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                     y={contextMenu.y}
                     items={getTrackContextMenuItems(contextMenu.indices)}
                     onClose={() => setContextMenu(null)}
+                    openerRef={contextMenu.opener ? { current: contextMenu.opener } : undefined}
+                    ariaLabel={contextMenu.indices.length > 1 ? `Options for ${contextMenu.indices.length} tracks` : "Track options"}
                 />
             )}
 
             <ConfirmDialog
                 isOpen={pendingRemoval !== null}
-                title={`Remove ${pendingRemoval?.length ?? 0} track${pendingRemoval?.length === 1 ? "" : "s"}?`}
-                message="They are removed from this playlist only, not from your library."
+                title={pendingRemoval?.length === 1
+                    ? `Remove “${entries.find((entry) => entry.id === pendingRemoval[0])?.track?.title ?? "this track"}”?`
+                    : `Remove ${pendingRemoval?.length ?? 0} tracks?`}
+                message={pendingRemoval?.length === 1
+                    ? "It is removed from this playlist only, not from your library."
+                    : "They are removed from this playlist only, not from your library."}
                 confirmLabel="Remove"
                 variant="danger"
                 onConfirm={confirmRemoveEntries}

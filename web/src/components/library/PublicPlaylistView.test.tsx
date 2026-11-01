@@ -100,7 +100,7 @@ describe("public playlist track row (#1793)", () => {
       .join("");
 
     // Three rows on screen…
-    expect(rendered.match(/pl-public-track-index/g) ?? []).toHaveLength(3);
+    expect(rendered.match(/pl-track-number/g) ?? []).toHaveLength(3);
     // …two tracks in the queue.
     expect(queueableTracks(tracks).map((t) => t.id)).toEqual(["a", "c"]);
   });
