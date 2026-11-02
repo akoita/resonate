@@ -1,8 +1,8 @@
 # Vision Sprint 51: Remix Pro on the grid
 
 **Status:** ✅ Approved 2026-11-02 by the owner. Starts after Sprint 50 closes.
-**Milestone:** Vision Sprint 51 (created by the owner once the scope is
-approved).
+**Milestone:** Vision Sprint 51 (the owner creates it). Each slice has its own
+sub-issue of #1903, so the milestone can close while #1903 stays open for S6f.
 **Goal:** In Remix Studio Pro mode an artist can fix the tempo and downbeat
 by ear, mark an intro and outro to loop or cue, and export a DJ extended
 version whose beat grid and cues land where they put them.
@@ -25,9 +25,9 @@ version whose beat grid and cues land where they put them.
 
 | Order | Tier | Axis | Issue | Outcome |
 | --- | --- | --- | --- | --- |
-| 1 | P0 | User feature | [#1903](https://github.com/akoita/resonate/issues/1903) S6c | Grid correction: tap tempo and a downbeat nudge (± one beat, ± 10 ms), stored as a project-level override of the measured section grid. The beat maker, AI parts and structure read the override. Preview and render agree (parity fixture) |
-| 2 | P1 | User feature | [#1903](https://github.com/akoita/resonate/issues/1903) S6d | Cue and loop points: intro and outro snapped to the (corrected) grid, loopable in the preview. A **DJ extended** export adds the intro and outro and writes the beat grid and cues alongside the audio |
-| 3 | P2 | User feature | [#1903](https://github.com/akoita/resonate/issues/1903) S6e | Stretch: per-stem level and filter automation lanes over the timeline, only if S6c and S6d land early |
+| 1 | P0 | User feature | [#2539](https://github.com/akoita/resonate/issues/2539) (S6c of #1903) | Grid correction: tap tempo and a downbeat nudge (± one beat, ± 10 ms), stored as a project-level override of the measured section grid. The beat maker, AI parts and structure read the override. Preview and render agree (parity fixture) |
+| 2 | P1 | User feature | [#2540](https://github.com/akoita/resonate/issues/2540) (S6d of #1903) | Cue and loop points: intro and outro snapped to the (corrected) grid, loopable in the preview. A **DJ extended** export adds the intro and outro and writes the beat grid and cues alongside the audio |
+| 3 | P2 | User feature | [#2541](https://github.com/akoita/resonate/issues/2541) (S6e of #1903) | Stretch: per-stem level and filter automation lanes over the timeline, only if S6c and S6d land early |
 
 ## Defaults taken (owner may override in review)
 
