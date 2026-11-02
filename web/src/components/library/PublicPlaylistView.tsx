@@ -24,6 +24,8 @@ import {
   type PublicPlaylistTrack,
 } from "../../lib/api";
 import { publicPlaylistTrackToLocal as toLocalTrack } from "../../lib/publicPlaylistTracks";
+import { catalogArtistHref, playerReleaseHref } from "../../lib/artistRoutes";
+import { TrackCredits } from "../content/TrackCredits";
 import {
   TrackUnavailableNote,
   isPlayableEntry,
@@ -76,8 +78,15 @@ export function PublicPlaylistTrackRow({
       title={track.title}
       meta={
         <>
-          {track.artist || "Unknown Artist"}
-          {track.album && ` • ${track.album}`}
+          <TrackCredits
+            as="span"
+            artist={track.artist}
+            artistFallback="Unknown Artist"
+            album={track.album}
+            artistHref={track.artist && track.catalogTrackId ? catalogArtistHref(track.artist) : null}
+            albumHref={playerReleaseHref(track)}
+            insideRow
+          />
           <TrackUnavailableNote availability={availability} />
         </>
       }

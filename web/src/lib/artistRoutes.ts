@@ -64,16 +64,36 @@ export function legacyArtistAliasSearchName(alias: string) {
     .replace(/[-_]+/g, " ");
 }
 
+/**
+ * Where a played track's artist name leads. A resolved credit id opens that
+ * artist's profile; otherwise a catalog track opens the catalog credit page
+ * for the name and a local file opens the Library artist. Never the release's
+ * own artist id: that is the uploader's profile, not the credited artist
+ * (#1419).
+ */
 export function playerArtistHref(track: {
   artist?: string | null;
   catalogTrackId?: string | null;
   releaseId?: string | null;
+  creditedArtistId?: string | null;
+  creditedArtistName?: string | null;
 }) {
   const artistName = track.artist?.trim();
   if (!artistName) return null;
+  const creditedId = track.creditedArtistId?.trim();
+  const creditedName = track.creditedArtistName?.trim().toLowerCase();
+  if (creditedId && (!creditedName || creditedName === artistName.toLowerCase())) {
+    return artistProfileHref(creditedId);
+  }
   return track.catalogTrackId || track.releaseId
     ? catalogArtistHref(artistName)
     : libraryArtistHref(artistName);
+}
+
+/** The release page for a played catalog track, or null for a local file. */
+export function playerReleaseHref(track: { releaseId?: string | null }) {
+  const releaseId = track.releaseId?.trim();
+  return releaseId ? publicReleaseHref(releaseId) : null;
 }
 
 export function legacyArtistAliasDestination(

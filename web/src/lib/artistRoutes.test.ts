@@ -11,6 +11,7 @@ import {
   legacyArtistAliasDestination,
   legacyArtistAliasSearchName,
   playerArtistHref,
+  playerReleaseHref,
   publicReleaseHref,
   sharedLibraryReleaseId,
   releaseArtistProfileHref,
@@ -59,6 +60,25 @@ describe("canonical artist and album destinations (#1820)", () => {
       "/library/artists/Aya%20Lune",
     );
     expect(playerArtistHref({ artist: null })).toBeNull();
+  });
+
+  it("links a played artist to its credit, never the uploader profile", () => {
+    expect(playerArtistHref({
+      artist: "Leona Lewis",
+      releaseId: "release-1",
+      creditedArtistId: "credit-1",
+      creditedArtistName: "Leona Lewis",
+    })).toBe("/artist/credit-1");
+    // A renamed local copy no longer matches the credit: use the name.
+    expect(playerArtistHref({
+      artist: "Someone Else",
+      releaseId: "release-1",
+      creditedArtistId: "credit-1",
+      creditedArtistName: "Leona Lewis",
+    })).toBe("/catalog/artists/Someone%20Else");
+    expect(playerReleaseHref({ releaseId: "r/1" })).toBe("/release/r%2F1");
+    expect(playerReleaseHref({ releaseId: " " })).toBeNull();
+    expect(playerReleaseHref({})).toBeNull();
   });
 
   it("resolves a legacy alias only from matching catalog evidence", () => {

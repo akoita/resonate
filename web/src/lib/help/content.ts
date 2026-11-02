@@ -862,7 +862,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Press play on any track in Discover, the catalog, a release page, or your library. The Player opens a Now Playing console with full transport controls and your live queue. For a catalog track, click the album name or the artwork to open the album, or the artist name to open the artist's page.",
+            text: "Press play on any track in Discover, the catalog, a release page, or your library. The Player opens a Now Playing console with full transport controls and your live queue. For a catalog track, click the album name or the artwork to open the album, or the artist name to open the artist's page. Artist names in the queue, and album and artist names on playlist rows, are links too.",
           },
           {
             kind: "figure",

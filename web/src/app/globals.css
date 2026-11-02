@@ -1354,14 +1354,14 @@ a {
   outline-offset: 4px;
 }
 
-.hero-credit-link {
+.track-credit-link {
   color: inherit;
   text-decoration: none;
   text-underline-offset: 3px;
 }
 
-.hero-credit-link:hover,
-.hero-credit-link:focus-visible {
+.track-credit-link:hover,
+.track-credit-link:focus-visible {
   color: var(--color-text);
   text-decoration: underline;
 }
