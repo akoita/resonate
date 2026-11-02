@@ -47,11 +47,14 @@ available right now?
 - API: `GET /catalog/tracks/:trackId/actions`
 - Web helper: `getPlayerTrackActions`
 - Player component: `PlayerActionPanel`
-- Now Playing credits: `NowPlayingCredits` links the album name (and the
-  artwork) to `/release/<releaseId>` and the artist name to `/artist/<artistId>`
-  for catalog tracks. The release id falls back to the stream URL and the
-  actions response, the same way the listening share recovers it; local files
-  keep plain text.
+- Track credits (`TrackCredits`, `playerArtistHref`, `playerReleaseHref`):
+  in Now Playing the album name and artwork open `/release/<releaseId>`; in
+  Now Playing and the queue the artist name opens the credited artist's
+  profile when the track carries a resolved credit id, otherwise the catalog
+  credit page for the name (or the Library artist for a local file). The
+  release's own artist id is never used, since it is the uploader's profile
+  (#1419). Playlist rows link the album to its release (or the Library album
+  for a local file) and the artist the same way.
 - Analytics:
   - `player.action_impression`
   - `player.action_selected`
