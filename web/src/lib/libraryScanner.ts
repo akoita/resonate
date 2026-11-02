@@ -13,6 +13,7 @@
 import { extractMetadata } from "./metadataExtractor";
 import {
     attachFileHandle,
+    recordSourceFolders,
     saveTrack,
     listTracks,
     listLocalTrackOmissions,
@@ -161,7 +162,7 @@ export async function scanAndIndex(
     dirHandle: FileSystemDirectoryHandle,
     onProgress?: ScanProgressCallback,
     onTrackAdded?: TrackAddedCallback
-): Promise<{ added: number; skipped: number; total: number }> {
+): Promise<{ added: number; skipped: number; total: number; linked: number }> {
     // Phase 1: Scan filesystem for audio files
     onProgress?.({
         phase: "scanning",
@@ -189,6 +190,9 @@ export async function scanAndIndex(
     // Identify which files need indexing
     const toIndex: { file: File; handle: FileSystemFileHandle; path: string }[] = [];
     let skipped = 0;
+    /** Rows that already existed and were linked on this device by this scan. */
+    let linked = 0;
+    const folderBackfill: Array<{ track: LocalTrack; folder: string }> = [];
 
     for (const { handle, path } of audioFiles) {
         const file = await handle.getFile();
@@ -202,7 +206,11 @@ export async function scanAndIndex(
         } else if (existing) {
             // Already in the library: make sure this device can play it, and
             // give rows imported before folder fallbacks their names and cover.
-            if (!existing.available) await attachFileHandle(existing, handle);
+            if (!existing.available) {
+                await attachFileHandle(existing, handle);
+                linked++;
+            }
+            if (!existing.sourceFolder) folderBackfill.push({ track: existing, folder: dirHandle.name });
             try {
                 await repairExisting(existing, path);
             } catch (error) {
@@ -232,6 +240,8 @@ export async function scanAndIndex(
         if (Object.keys(patch).length === 0 && !artwork) return;
         await updateLocalTrack(existing, patch, artwork);
     }
+
+    await recordSourceFolders(folderBackfill);
 
     // Phase 3: Index only new files
     let added = 0;
@@ -264,6 +274,7 @@ export async function scanAndIndex(
                 duration: metadata.duration,
                 sourcePath: path,
                 fileSize: file.size,
+                sourceFolder: dirHandle.name,
             }, artwork);
 
             // Notify UI immediately after saving
@@ -284,7 +295,7 @@ export async function scanAndIndex(
         currentFile: "",
     });
 
-    return { added, skipped, total: audioFiles.length };
+    return { added, skipped, total: audioFiles.length, linked };
 }
 
 /**

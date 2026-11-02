@@ -19,17 +19,22 @@ export interface LibrarySettings {
     /** Display names of configured source folders (parallel to stored handles) */
     sourceFolderNames: string[];
     /**
-     * Show local files imported on another device, greyed out and not
-     * playable here (#2503). Off hides them from library lists.
+     * Show local files this device cannot reach (their folder is not added
+     * here), greyed out and not playable. Off, the default, hides them from
+     * library lists. Per device.
+     *
+     * Named apart from the old `showOtherDeviceTracks`, which defaulted to on
+     * and was saved with every settings write: reusing it would have kept the
+     * old default on every device that already had settings.
      */
-    showOtherDeviceTracks: boolean;
+    showUnreachableFiles: boolean;
 }
 
 const DEFAULT_SETTINGS: LibrarySettings = {
     autoScanOnLoad: true,
     lastScanTime: null,
     sourceFolderNames: [],
-    showOtherDeviceTracks: true,
+    showUnreachableFiles: false,
 };
 
 /**
@@ -188,8 +193,10 @@ export async function clearLibrarySourceHandle(): Promise<void> {
  * Get library settings
  */
 export async function getSettings(): Promise<LibrarySettings> {
-    const stored = await settingsStore.getItem<Partial<LibrarySettings>>("settings");
-    const merged = { ...DEFAULT_SETTINGS, ...stored };
+    const stored = await settingsStore.getItem<Partial<LibrarySettings> & { showOtherDeviceTracks?: unknown }>("settings");
+    const { showOtherDeviceTracks: _retired, ...rest } = stored ?? {};
+    void _retired;
+    const merged: LibrarySettings = { ...DEFAULT_SETTINGS, ...rest };
     if ("sourceFolderName" in (stored || {})) {
         const legacy = (stored as { sourceFolderName?: string | null }).sourceFolderName;
         if (legacy && !merged.sourceFolderNames?.length) {

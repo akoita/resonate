@@ -652,6 +652,7 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       "album",
       "genre",
       "sourcePath",
+      "sourceFolder",
       "remoteUrl",
       "remoteArtworkUrl",
       "previewUrl",

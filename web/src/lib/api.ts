@@ -6715,6 +6715,8 @@ export type APILibraryTrack = {
   duration?: number | null;
   sourcePath?: string | null;
   fileSize?: number | null;
+  /** Name of the library folder the file was found in (never a full path). */
+  sourceFolder?: string | null;
   catalogTrackId?: string | null;
   /** Authoritative catalog identity, enriched when listing saved catalog tracks. */
   releaseId?: string | null;

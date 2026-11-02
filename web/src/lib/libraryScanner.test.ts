@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     listLocalTrackOmissions: vi.fn().mockResolvedValue(["song.mp3:123"]),
     saveTrack: vi.fn(),
     attachFileHandle: vi.fn(),
+    recordSourceFolders: vi.fn(),
     updateLocalTrack: vi.fn(),
     extractMetadata: vi.fn(),
 }));
@@ -39,7 +40,7 @@ describe("library folder scan", () => {
             },
         } as unknown as FileSystemDirectoryHandle;
 
-        await expect(scanAndIndex(directory)).resolves.toEqual({ added: 0, skipped: 1, total: 1 });
+        await expect(scanAndIndex(directory)).resolves.toEqual({ added: 0, skipped: 1, total: 1, linked: 0 });
         expect(mocks.saveTrack).not.toHaveBeenCalled();
     });
 
@@ -50,7 +51,7 @@ describe("library folder scan", () => {
         const handle = { kind: "file", name: "song.mp3", getFile: async () => ({ name: "song.mp3", size: 123 }) };
         const directory = { async *values() { yield handle; } } as unknown as FileSystemDirectoryHandle;
 
-        await expect(scanAndIndex(directory)).resolves.toEqual({ added: 0, skipped: 1, total: 1 });
+        await expect(scanAndIndex(directory)).resolves.toEqual({ added: 0, skipped: 1, total: 1, linked: 1 });
         expect(mocks.attachFileHandle).toHaveBeenCalledWith(existing, handle);
         expect(mocks.saveTrack).not.toHaveBeenCalled();
     });
@@ -122,9 +123,32 @@ describe("library folder scan", () => {
         mocks.updateLocalTrack.mockClear();
         const root = folder("Caravelle", [file("03 Gelati.mp3", 70)]) as unknown as FileSystemDirectoryHandle;
 
-        await expect(scanAndIndex(root)).resolves.toEqual({ added: 0, skipped: 1, total: 1 });
+        await expect(scanAndIndex(root)).resolves.toEqual({ added: 0, skipped: 1, total: 1, linked: 0 });
         expect(mocks.saveTrack).not.toHaveBeenCalled();
         expect(mocks.updateLocalTrack).not.toHaveBeenCalled();
+    });
+
+    it("records the folder name on a new file, so other devices can offer to add the folder", async () => {
+        mocks.listTracks.mockResolvedValueOnce([]);
+        mocks.listLocalTrackOmissions.mockResolvedValueOnce([]);
+        mocks.extractMetadata.mockResolvedValueOnce(NO_TAGS);
+        mocks.saveTrack.mockResolvedValueOnce({ id: "local-7" });
+        const root = folder("Caravelle", [file("Sovrano.mp3", 31)]) as unknown as FileSystemDirectoryHandle;
+
+        await scanAndIndex(root);
+        expect(mocks.saveTrack.mock.calls.at(-1)![1]).toMatchObject({ sourcePath: "Sovrano.mp3", sourceFolder: "Caravelle" });
+    });
+
+    it("backfills the folder name of files imported before names were kept", async () => {
+        const older = { id: "local-8", source: "local", title: "Uragano", sourcePath: "Uragano.mp3", fileSize: 12, available: true, artworkKey: "a" };
+        const named = { ...older, id: "local-9", sourcePath: "Coliseum.mp3", fileSize: 13, sourceFolder: "Caravelle" };
+        mocks.listTracks.mockResolvedValueOnce([older, named]);
+        mocks.listLocalTrackOmissions.mockResolvedValueOnce([]);
+        mocks.recordSourceFolders.mockClear();
+        const root = folder("Caravelle", [file("Uragano.mp3", 12), file("Coliseum.mp3", 13)]) as unknown as FileSystemDirectoryHandle;
+
+        await scanAndIndex(root);
+        expect(mocks.recordSourceFolders).toHaveBeenCalledWith([{ track: older, folder: "Caravelle" }]);
     });
 
     it("imports a file found twice in one scan only once", async () => {
@@ -138,7 +162,7 @@ describe("library folder scan", () => {
             folder("Copy", [file("01.mp3", 10)]),
         ]) as unknown as FileSystemDirectoryHandle;
 
-        await expect(scanAndIndex(root)).resolves.toEqual({ added: 1, skipped: 1, total: 2 });
+        await expect(scanAndIndex(root)).resolves.toEqual({ added: 1, skipped: 1, total: 2, linked: 0 });
         expect(mocks.saveTrack).toHaveBeenCalledTimes(1);
     });
 
