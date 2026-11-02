@@ -42,6 +42,7 @@ import {
 import { AddToPlaylistIcon, AddToQueueIcon, LoopIcon, PlayIcon, PlayNextIcon, RemoveIcon, RepeatIcon } from "../ui/MenuIcons";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TrackSelectionBar } from "../player/TrackSelectionBar";
+import { FeatureTip } from "../ui/FeatureTip";
 import { useListSelection } from "../../lib/useListSelection";
 import { PlaylistHero, PlaylistMetaDot, PlaylistTrackRow, RowMenuButton, menuPositionFor } from "./PlaylistLayout";
 import { useUIStore } from "../../lib/uiStore";
@@ -430,6 +431,11 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                     count={rowSelection.selected.length}
                     items={getSelectionItems(rowSelection.selected)}
                     onClear={rowSelection.clear}
+                />
+                <FeatureTip
+                    tipId="select-several-tracks"
+                    anchorRef={listRef}
+                    eligible={entries.length >= 3 && rowSelection.selected.length === 0}
                 />
                 {entries.length === 0 ? (
                     <div className="pl-public-empty-list">This playlist is empty. Add some tracks from your library!</div>

@@ -33,6 +33,7 @@ import { useDjSet } from "../../lib/agentDjSet";
 import { launchRemixStudio } from "../../components/remix/remixStudioLauncher";
 import { AddToPlaylistIcon, LoopIcon, PlayNextIcon, RemoveIcon, RepeatIcon } from "../../components/ui/MenuIcons";
 import { TrackSelectionBar } from "../../components/player/TrackSelectionBar";
+import { FeatureTip } from "../../components/ui/FeatureTip";
 import { useListSelection } from "../../lib/useListSelection";
 import { useUIStore } from "../../lib/uiStore";
 
@@ -710,6 +711,11 @@ function PlayerContent() {
             count={queueSelection.selected.length}
             items={getSelectionItems(queueSelection.selected)}
             onClear={queueSelection.clear}
+          />
+          <FeatureTip
+            tipId="select-several-tracks"
+            anchorRef={queueListRef}
+            eligible={queue.length >= 3 && queueSelection.selected.length === 0}
           />
           <div
             ref={queueListRef}
