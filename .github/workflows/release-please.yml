@@ -37,6 +37,21 @@ jobs:
             exit 1
           fi
 
+      # The next steps execute repository code from candidate_sha. Refuse any
+      # commit that is not already on main, so a dispatch can never run
+      # unmerged code with this workflow's default-branch cache scope.
+      - name: Require candidate SHA on main
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${CANDIDATE_SHA}...main" --jq .status)"
+          if [[ "${status}" != "ahead" && "${status}" != "identical" ]]; then
+            echo "::error::candidate_sha is not reachable from main (compare status: ${status})."
+            exit 1
+          fi
+
       - name: Check out candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

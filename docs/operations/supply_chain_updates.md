@@ -104,6 +104,23 @@ Triage order:
    `@x402/*`, wallet, and signing libraries) never ride in a bulk lockfile
    refresh. They get their own pull request and the full validation ladder.
 
+Three checkpoints keep the queue small:
+
+- **Every pull request.** CodeQL analyzes the change, and the `Dependency
+  Review` job in `security.yml` fails when the PR adds or changes a dependency
+  with a high or critical advisory. Both block merge only when the `main`
+  ruleset marks them required (code scanning: "Require code scanning results",
+  High or higher).
+- **Every week.** Advisories published against code already on `main` arrive
+  as Dependabot alerts and grouped security PRs. Review the Security tab
+  alongside the Monday Dependency Train and apply the targets above.
+- **Every release.** `Software Release` runs
+  `scripts/check-release-advisories.mjs`, which fails on any high or critical
+  advisory in the production dependencies of `backend`, `web`, or `desktop`
+  unless `scripts/release-advisory-exceptions.json` holds a matching exception
+  with a reason, a tracking note, and an expiry date. Expired exceptions fail;
+  unused ones produce a warning so they get removed.
+
 Code scanning alerts follow the same table. Fix the finding, or dismiss it as
 **False positive** or **Used in tests** with the reasoning in the dismissal
 comment, so the next scan does not reopen the discussion.

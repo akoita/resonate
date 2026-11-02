@@ -166,6 +166,12 @@ jobs:
             echo "release_pr_url=${release_pr_url}"
           } >> "${GITHUB_OUTPUT}"
 
+      # Backstop for advisories published against code already on main:
+      # production dependencies of shipped projects must have no high or
+      # critical advisory without a reviewed, unexpired exception.
+      - name: Check production dependency advisories
+        run: node scripts/check-release-advisories.mjs
+
       - name: Download deploy manifest
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
