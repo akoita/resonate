@@ -73,6 +73,8 @@ import {
 } from "../../lib/ownedStems";
 import { PlaylistTab } from "../../components/library/PlaylistTab";
 import { EditLocalDetailsDialog, FileLocationDialog } from "../../components/library/LocalFileDialogs";
+import { OtherDeviceFilesNotice } from "../../components/library/OtherDeviceFilesNotice";
+import { summarizeOtherDeviceFolders } from "../../lib/otherDeviceFolders";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { PublicPlaylistView } from "../../components/library/PublicPlaylistView";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
@@ -199,22 +201,20 @@ function LibraryPageContent() {
     }, [tracks, ownedStems]);
 
     const [showStems, setShowStems] = useState(false);
-    // Local files imported on another device: greyed out, or hidden (#2503).
-    const [showOtherDeviceTracks, setShowOtherDeviceTracks] = useState(true);
+    // Your own files this device cannot reach: hidden by default, or shown
+    // greyed out (per device). Adding their folder here makes them play here.
+    const [showOtherDeviceTracks, setShowOtherDeviceTracks] = useState(false);
     useEffect(() => {
         let active = true;
         void getLibrarySettings()
-            .then((settings) => { if (active) setShowOtherDeviceTracks(settings.showOtherDeviceTracks); })
+            .then((settings) => { if (active) setShowOtherDeviceTracks(settings.showUnreachableFiles); })
             .catch(() => undefined);
         return () => { active = false; };
     }, []);
-    const otherDeviceTrackCount = useMemo(
-        () => unifiedTracks.filter(isOnOtherDevice).length,
-        [unifiedTracks],
-    );
+    const otherDeviceFolders = useMemo(() => summarizeOtherDeviceFolders(unifiedTracks), [unifiedTracks]);
     const handleToggleOtherDeviceTracks = (show: boolean) => {
         setShowOtherDeviceTracks(show);
-        void updateLibrarySettings({ showOtherDeviceTracks: show }).catch(() => undefined);
+        void updateLibrarySettings({ showUnreachableFiles: show }).catch(() => undefined);
     };
     // Tracks tab: everything, Resonate tracks, or the listener's own files.
     const [originFilter, setOriginFilter] = useState<LibraryOriginFilter>("all");
@@ -1382,23 +1382,18 @@ function LibraryPageContent() {
                                     />
                                     Show Stems
                                 </label>
-                                {otherDeviceTrackCount > 0 && (
-                                    <label
-                                        className="library-switch"
-                                        title="Files you added on another device. They stay greyed out here and play only on that device."
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={showOtherDeviceTracks}
-                                            onChange={(e) => handleToggleOtherDeviceTracks(e.target.checked)}
-                                            className="library-switch__input"
-                                        />
-                                        Show files on other devices ({otherDeviceTrackCount})
-                                    </label>
-                                )}
                             </div>
                         )}
                     </div>
+
+                    {(activeTab === "tracks" || activeTab === "artists" || activeTab === "albums") && (
+                        <OtherDeviceFilesNotice
+                            folders={otherDeviceFolders}
+                            showing={showOtherDeviceTracks}
+                            onToggleShowing={handleToggleOtherDeviceTracks}
+                            onLinked={loadTracks}
+                        />
+                    )}
 
                     {/* Sidebar + Content Layout */}
                     <div className="library-layout">

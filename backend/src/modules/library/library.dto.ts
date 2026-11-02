@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   ValidateNested,
 } from "class-validator";
 
@@ -61,6 +62,11 @@ export class SaveLibraryTrackDto {
   @IsOptional()
   @IsInt()
   fileSize?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  sourceFolder?: string | null;
 
   @IsOptional()
   @IsString()

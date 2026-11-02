@@ -30,7 +30,9 @@ import {
     LibrarySettings,
 } from "../../lib/librarySettings";
 import { scanAndIndex, ScanProgress } from "../../lib/libraryScanner";
-import { clearLibrary } from "../../lib/localLibrary";
+import { clearLibrary, listTracks } from "../../lib/localLibrary";
+import { summarizeOtherDeviceFolders, type OtherDeviceFolder } from "../../lib/otherDeviceFolders";
+import { OtherDeviceFilesNotice } from "../../components/library/OtherDeviceFilesNotice";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
@@ -139,13 +141,16 @@ export default function SettingsPage() {
     const [scanSourceIndex, setScanSourceIndex] = useState<number>(0);
     const [scanSourceTotal, setScanSourceTotal] = useState<number>(0);
     const [isSupported, setIsSupported] = useState(true);
+    const [otherDeviceFolders, setOtherDeviceFolders] = useState<OtherDeviceFolder[]>([]);
 
     const loadState = async () => {
-        const [s, handles] = await Promise.all([
+        const [s, handles, tracks] = await Promise.all([
             getSettings(),
             getLibrarySourceHandles(),
+            listTracks().catch(() => []),
         ]);
         setSettings(s);
+        setOtherDeviceFolders(summarizeOtherDeviceFolders(tracks));
         // Drive list from actual handles so it stays in sync after add/remove
         setSourceNames(handles.map((h) => h.name));
     };
@@ -344,7 +349,7 @@ export default function SettingsPage() {
 
     const handleToggleOtherDeviceTracks = async () => {
         if (!settings) return;
-        const updated = await updateSettings({ showOtherDeviceTracks: !settings.showOtherDeviceTracks });
+        const updated = await updateSettings({ showUnreachableFiles: !settings.showUnreachableFiles });
         setSettings(updated);
     };
 
@@ -416,15 +421,23 @@ export default function SettingsPage() {
                                             automatically when the app opens.
                                         </p>
                                         <p className="settings-copy">
-                                            Your files stay on this device. Resonate links to them and reads them
-                                            when you press play; it never uploads or copies the audio. Each file
-                                            plays only on the device where you added its folder.
+                                            Your files stay on your devices. Resonate links to them and reads them
+                                            when you press play; it never uploads or copies the audio. Your library
+                                            list follows your account, so a file plays on any device where you add
+                                            the folder that holds it.
                                         </p>
                                     </div>
                                     <Button variant="primary" onClick={handleAddFolder} disabled={scanning}>
                                         Add Folder
                                     </Button>
                                 </div>
+
+                                <OtherDeviceFilesNotice
+                                    folders={otherDeviceFolders}
+                                    showing={settings?.showUnreachableFiles ?? false}
+                                    showToggle={false}
+                                    onLinked={loadState}
+                                />
 
                                 <div className="settings-library-grid">
                                     <div className="settings-source">
@@ -496,12 +509,12 @@ export default function SettingsPage() {
                                         <label className="settings-toggle">
                                             <input
                                                 type="checkbox"
-                                                checked={settings?.showOtherDeviceTracks ?? true}
+                                                checked={settings?.showUnreachableFiles ?? false}
                                                 onChange={handleToggleOtherDeviceTracks}
                                             />
                                             <span>
-                                                <strong>Show files from other devices</strong>
-                                                <small>Files added on another device appear greyed out in your library. Turn off to hide them.</small>
+                                                <strong>Show files that are not on this device</strong>
+                                                <small>Your files whose folder is not added here are hidden. Turn on to see them greyed out.</small>
                                             </span>
                                         </label>
                                     </aside>

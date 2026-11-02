@@ -739,3 +739,62 @@
     transform: none;
   }
 }
+
+/* ---------- Your files on another device ---------------------------------- */
+
+.other-device-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+.other-device-files__text {
+  flex: 1 1 320px;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.other-device-files__text strong {
+  color: #fff;
+}
+
+.other-device-files__folder {
+  color: #fff;
+  font-weight: 600;
+}
+
+.other-device-files__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.other-device-files__add {
+  padding: 6px 12px;
+  border: 1px solid rgba(124, 92, 255, 0.6);
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.16);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.other-device-files__add:hover:not(:disabled) {
+  background: rgba(124, 92, 255, 0.28);
+}
+
+.other-device-files__add:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
