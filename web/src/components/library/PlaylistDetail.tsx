@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import {
     Playlist,
@@ -32,7 +31,9 @@ import {
     playlistSourceType,
     type PlaylistAddRequest,
 } from "../layout/playlistDrop";
-import { libraryArtistHref } from "../../lib/artistRoutes";
+import { libraryAlbumHref, libraryArtistHref, playerReleaseHref } from "../../lib/artistRoutes";
+import { releaseIdFromStreamUrl } from "../../lib/listeningShare";
+import { TrackCredits } from "../content/TrackCredits";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 import {
     TrackUnavailableNote,
@@ -60,8 +61,20 @@ interface PlaylistDetailProps {
  */
 type PlaylistEntry = { id: string; track: LocalTrack | null };
 
+/**
+ * A playlist row's album: the catalog release page when the track has one,
+ * otherwise the album in the listener's Library.
+ */
+function playlistAlbumHref(track: LocalTrack): string | null {
+    const releaseHref = playerReleaseHref({
+        releaseId: track.releaseId || releaseIdFromStreamUrl(track.remoteUrl),
+    });
+    if (releaseHref) return releaseHref;
+    const album = track.album?.trim();
+    return album ? libraryAlbumHref(album, track.albumArtist || track.artist || "") : null;
+}
+
 export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
-    const router = useRouter();
     const [playlist, setPlaylist] = useState<Playlist | null>(null);
     const [entries, setEntries] = useState<PlaylistEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -483,17 +496,15 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                     ) : null}
                                     meta={
                                         <>
-                                            <span
-                                                className="clickable hover:underline"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const target = track.artist;
-                                                    if (target) router.push(libraryArtistHref(target));
-                                                }}
-                                            >
-                                                {track.artist || "Unknown Artist"}
-                                            </span>
-                                            {track.album && ` • ${track.album}`}
+                                            <TrackCredits
+                                                as="span"
+                                                artist={track.artist}
+                                                artistFallback="Unknown Artist"
+                                                album={track.album}
+                                                artistHref={track.artist ? libraryArtistHref(track.artist) : null}
+                                                albumHref={playlistAlbumHref(track)}
+                                                insideRow
+                                            />
                                             {isStem && (
                                                 <span className="text-accent text-xs ml-2 font-medium border border-accent/30 px-1.5 py-0.5 rounded-full">
                                                     {track.stemType}
