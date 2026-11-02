@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ContextMenuItem } from "../ui/ContextMenu";
 import {
     Playlist,
@@ -28,6 +28,7 @@ import { LocalTrack, getTrack } from "../../lib/localLibrary";
 import { useUIStore } from "../../lib/uiStore";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
+import { FeatureTip } from "../ui/FeatureTip";
 import { ContextMenu } from "../ui/ContextMenu";
 import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
@@ -43,6 +44,7 @@ interface GlobalPlaylistPanelProps {
 export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProps) {
     const [playlists, setPlaylists] = useState<Playlist[]>([]);
     const [folders, setFolders] = useState<PlaylistFolder[]>([]);
+    const playlistListRef = useRef<HTMLDivElement | null>(null);
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
     const [expandedPlaylists, setExpandedPlaylists] = useState<Set<string>>(new Set());
     const [playlistTracks, setPlaylistTracks] = useState<Map<string, LocalTrack[]>>(new Map());
@@ -596,7 +598,13 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                     </div>
                 )}
 
-                <div className="gpp-list">
+                <FeatureTip
+                    tipId="drag-to-playlist"
+                    anchorRef={playlistListRef}
+                    eligible={isOpen && playlists.length > 0}
+                    placement="inside"
+                />
+                <div className="gpp-list" ref={playlistListRef}>
                     {/* Folders */}
                     {folders.map((folder) => {
                         const isExpanded = expandedFolders.has(folder.id);

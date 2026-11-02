@@ -35,7 +35,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Resonate uses a passkey instead of a password — set it up once and your device unlocks everything, including a built-in wallet.",
     category: "get-started",
     audiences: ["everyone"],
-    keywords: ["sign up", "log in", "passkey", "password", "register", "account", "connect wallet", "face id", "fingerprint"],
+    keywords: ["sign up", "log in", "passkey", "password", "register", "account", "connect wallet", "face id", "fingerprint", "tips", "hints", "turn off tips", "show tips again", "help & tips"],
     sections: [
       {
         id: "what-you-need",
@@ -91,6 +91,20 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "tip",
             title: "Browse before you sign in",
             text: "You can explore Discover, the catalog, Browse stems in Crates & Stems, and Shows campaigns without signing in. You'll be asked to connect only when you save, buy, pledge, or upload.",
+          },
+        ],
+      },
+      {
+        id: "tips",
+        heading: "Tips along the way",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Now and then, a small Tip card points out something that is easy to miss, right where you can use it: selecting several tracks at once, dropping tracks on a playlist, queueing a card without opening it, or looping a passage. Each tip appears once, never more than one a day. Choose Got it to close it, Learn more to read about the feature here, or Turn off tips to stop them.",
+          },
+          {
+            kind: "paragraph",
+            text: "To turn tips back on, or to see the ones you already closed again, open Settings › Help & tips. Tips are remembered in this browser only; Resonate never records which ones you saw.",
           },
         ],
       },

@@ -81,6 +81,7 @@ import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { ReleaseHeldDeliveryDialog } from "../../components/consent/ReleaseHeldDeliveryDialog";
 import { formatHoldDate } from "../../components/consent/deliveryConsent";
 import { MarqueeText } from "../../components/ui/MarqueeText";
+import { FeatureTip } from "../../components/ui/FeatureTip";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import Link from "next/link";
 import {
@@ -163,6 +164,7 @@ function LibraryPageContent() {
     const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
     const [removalRequest, setRemovalRequest] = useState<{ tracks: LocalTrack[]; title: string; message: string } | null>(null);
     const lastClickedTrackIdRef = useRef<string | null>(null);
+    const trackListRef = useRef<HTMLDivElement | null>(null);
     const { address, token, smartAccountAddress } = useAuth();
     useZeroDev();
     
@@ -699,7 +701,12 @@ function LibraryPageContent() {
         const removableTracks = trackList.filter(track => !track.isOwned);
         const selectedRemovable = removableTracks.filter(track => selectedTrackIds.has(track.id));
         return (
-        <div className="library-list">
+        <div className="library-list" ref={trackListRef}>
+            <FeatureTip
+                tipId="select-several-tracks"
+                anchorRef={trackListRef}
+                eligible={removableTracks.length >= 3 && selectedTrackIds.size === 0}
+            />
             {selectedRemovable.length > 0 && (
                 <div className="library-selection-bar">
                     <span>{selectedRemovable.length} track{selectedRemovable.length === 1 ? "" : "s"} selected</span>

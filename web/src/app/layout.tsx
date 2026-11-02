@@ -17,6 +17,7 @@ import "../styles/review-queue.css";
 import "../styles/admin-users.css";
 import "../styles/admin-agent-sessions.css";
 import "../styles/admin-notices.css";
+import "../styles/feature-tips.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
 import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";

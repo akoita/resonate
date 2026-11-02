@@ -1,7 +1,8 @@
 "use client";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { usePlayer } from "../../lib/playerContext";
 import { stepRepeatCount } from "../../lib/listeningSession";
+import { FeatureTip } from "../ui/FeatureTip";
 
 /** Console copy shows clock time; the fields stay in seconds so a passage can be set to a tenth. */
 function clock(seconds: number) {
@@ -30,11 +31,14 @@ export function ListeningControls() {
   const [segmentError, setSegmentError] = useState("");
   const [repeatError, setRepeatError] = useState("");
   const ids = useId();
+  const summaryRef = useRef<HTMLElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const knownDuration = Number.isFinite(duration) && duration > 0;
   if (!currentTrack) return null;
-  return <details className="listening-controls">
+  return <details className="listening-controls" onToggle={e => setExpanded(e.currentTarget.open)}>
+    <FeatureTip tipId="loop-passage" anchorRef={summaryRef} eligible={!expanded && !segmentLoop && !finiteRepeat} />
     {/* Reads as another console module: mono kicker, status LEDs, hairline rules — not a boxed form. */}
-    <summary className="lc-kicker-row">
+    <summary className="lc-kicker-row" ref={summaryRef}>
       <span className="studio-label">Loop and Repeat</span>
       <span className="lc-leds">
         {segmentLoop && <span className="lc-led-chip"><span className="lc-led" aria-hidden="true" />A–B on</span>}

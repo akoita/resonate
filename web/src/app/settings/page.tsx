@@ -12,6 +12,7 @@ import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSetti
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
 import DataExportPanel from "../../components/settings/DataExportPanel";
 import EmailNoticesPanel from "../../components/settings/EmailNoticesPanel";
+import FeatureTipsSettingsPanel from "../../components/settings/FeatureTipsSettingsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import UsageBillingPanel from "../../components/settings/UsageBillingPanel";
 import { useToast } from "../../components/ui/Toast";
@@ -34,7 +35,7 @@ import { clearLibrary } from "../../lib/localLibrary";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
-type SettingsSectionId = "library" | "artist" | "taste" | "dj" | "privacy" | "community" | "cohorts" | "usage" | "notifications" | "email" | "troubleshooting";
+type SettingsSectionId = "library" | "artist" | "taste" | "dj" | "privacy" | "community" | "cohorts" | "usage" | "notifications" | "email" | "tips" | "troubleshooting";
 
 const SETTINGS_SECTIONS: Array<{
     id: SettingsSectionId;
@@ -101,6 +102,12 @@ const SETTINGS_SECTIONS: Array<{
         label: "Email notices",
         eyebrow: "Platform notices",
         description: "An optional address for notices from Resonate. Never marketing.",
+    },
+    {
+        id: "tips",
+        label: "Help & tips",
+        eyebrow: "Getting around",
+        description: "Occasional tips about features that are easy to miss.",
     },
     {
         id: "troubleshooting",
@@ -617,6 +624,22 @@ export default function SettingsPage() {
                                     </div>
                                 </div>
                                 <EmailNoticesPanel token={token} addToast={addToast} />
+                            </div>
+                        ) : null}
+
+                        {activeSection === "tips" ? (
+                            <div className="settings-section">
+                                <div className="settings-section-header">
+                                    <div>
+                                        <span className="settings-kicker">Getting around</span>
+                                        <h2 className="settings-section-title">Help &amp; tips</h2>
+                                        <p className="settings-copy">
+                                            Tips are remembered in this browser only; Resonate never records which
+                                            ones you saw. The full User Guide is always in Help.
+                                        </p>
+                                    </div>
+                                </div>
+                                <FeatureTipsSettingsPanel />
                             </div>
                         ) : null}
 
