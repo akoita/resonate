@@ -52,7 +52,9 @@ on 2026-11-01. Waiting on the owner: Stripe test keys
 (resonate-iac#325), the #1421 pricing sign-off, legal review of the consent,
 refund and cancellation wording, and the #2367 remix-challenge decision.
 The #2436 idle-GPU follow-up continues in its own thread.
-Current: none. Vision Sprint 49 closed on 2026-11-01.
+Current: none. Vision Sprint 49 closed on 2026-11-01. Proposed next, waiting
+for the owner's OK: [Vision Sprint 50](2026-11-03-vision-sprint-50-light-while-you-use-it.md)
+and [Vision Sprint 51](2026-11-17-vision-sprint-51-remix-pro-on-the-grid.md).
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -106,3 +108,5 @@ Current: none. Vision Sprint 49 closed on 2026-11-01.
 | [2026-10-31](2026-10-31-vision-sprint-47-share-and-show-support.md) | Vision Sprint 47 — Share what you did, show who you back (licence and remix shares, supporter/collector badges, listing cancellation) | ✅ Closed 2026-10-31 — #1915 closed (#2485), #1106 (#2483), #284 (#2479) and follow-up #2480 edit listing (#2482) |
 | [2026-10-31](2026-10-31-vision-sprint-48-golden-moments.md) | Vision Sprint 48 — Golden moments in every genre (any source layer and the full mix for collectible moments, genre skins) | ✅ Closed 2026-10-31 — #1476 slices 1 and 2 (#2489): any stem or the full mix (10 s cap), moment kinds; slice 3 open |
 | [2026-11-02](2026-11-02-vision-sprint-49-owned-and-named.md) | Vision Sprint 49 — Owned means owned, every moment named (library ownership from holdings, moment kinds on every surface, idle-cost check, suggested moment ranges) | ✅ Closed 2026-11-01 — #2511 (#2524, closes epic #2503), #2522 (#2525), #1476 slice 3 (#2526, closes #1476); #2436 owner check done, follow-up in its own thread |
+| [2026-11-03](2026-11-03-vision-sprint-50-light-while-you-use-it.md) | Vision Sprint 50 — Light while you use it, nothing left red (GPU while in use, mutation testing green, web x402/zod bump, album details lookup) | 📝 Proposed 2026-11-02 |
+| [2026-11-17](2026-11-17-vision-sprint-51-remix-pro-on-the-grid.md) | Vision Sprint 51 — Remix Pro on the grid (grid correction, cue and loop points with DJ extended export, automation stretch) | 📝 Proposed 2026-11-02 |
