@@ -20,3 +20,19 @@ describe("library folder names (local files across devices)", () => {
         ).toThrow(BadRequestException);
     });
 });
+
+describe("library tags for your own files", () => {
+    it("never lets a catalog row carry a track number or credits", () => {
+        for (const field of ["trackNumber", "discNumber", "label", "copyright", "isrc", "composer", "producer"]) {
+            expect(() =>
+                validateLibraryTrackInput({ source: "remote", title: "x", catalogTrackId: "t1", [field]: field.endsWith("Number") ? 2 : "v" }),
+            ).toThrow(BadRequestException);
+        }
+    });
+
+    it("accepts them on a local file", () => {
+        expect(validateLibraryTrackInput({
+            source: "local", id: "local_1", title: "Uragano", trackNumber: 2, discNumber: 1, label: "L", isrc: "FR1",
+        })).toEqual({ source: "local", clientKey: "local_1" });
+    });
+});

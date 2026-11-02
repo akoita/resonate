@@ -72,7 +72,8 @@ import {
     type StemLicenseFilter,
 } from "../../lib/ownedStems";
 import { PlaylistTab } from "../../components/library/PlaylistTab";
-import { EditLocalDetailsDialog, FileLocationDialog } from "../../components/library/LocalFileDialogs";
+import { EditLocalDetailsDialog, FileLocationDialog, type EditMode } from "../../components/library/LocalFileDialogs";
+import { sortByAlbumPosition } from "../../lib/albumTrackOrder";
 import { OtherDeviceFilesNotice } from "../../components/library/OtherDeviceFilesNotice";
 import { summarizeOtherDeviceFolders } from "../../lib/otherDeviceFolders";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
@@ -122,7 +123,7 @@ function LibraryPageContent() {
     const [artworkUrls, setArtworkUrls] = useState<Map<string, string>>(new Map());
     // The listener's own files: where one lives, and editing names and covers.
     const [locationTrack, setLocationTrack] = useState<LocalTrack | null>(null);
-    const [editRequest, setEditRequest] = useState<{ tracks: LocalTrack[]; mode: "track" | "album" } | null>(null);
+    const [editRequest, setEditRequest] = useState<{ tracks: LocalTrack[]; mode: EditMode } | null>(null);
     const handleLocalEditsSaved = async (updated: LocalTrack[]) => {
         const byId = new Map(updated.map((t) => [t.id, t]));
         setTracks((previous) => previous.map((t) => byId.get(t.id) ?? t));
@@ -133,7 +134,7 @@ function LibraryPageContent() {
             return next;
         });
         // Renaming an album moves its files to another album page.
-        if (editRequest?.mode === "album" && updated[0]?.album) {
+        if (editRequest?.mode === "album" && updated[0]?.album && selectedAlbum) {
             const albumArtist = updated[0].albumArtist || updated[0].artist || "Unknown Artist";
             router.replace(libraryAlbumHref(updated[0].album, albumArtist));
         }
@@ -700,6 +701,7 @@ function LibraryPageContent() {
     const renderTrackList = (trackList: LocalTrack[]) => {
         const removableTracks = trackList.filter(track => !track.isOwned);
         const selectedRemovable = removableTracks.filter(track => selectedTrackIds.has(track.id));
+        const selectedLocal = selectedRemovable.filter(isLocalFileTrack);
         return (
         <div className="library-list" ref={trackListRef}>
             <FeatureTip
@@ -713,6 +715,15 @@ function LibraryPageContent() {
                     <button type="button" onClick={() => setTracksToAddToPlaylist(selectedRemovable)}>
                         Add {selectedRemovable.length} to playlist
                     </button>
+                    {selectedLocal.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setEditRequest({ tracks: selectedLocal, mode: selectedLocal.length === 1 ? "track" : "tracks" })}
+                            title={selectedLocal.length < selectedRemovable.length ? "Only your own files can be edited" : undefined}
+                        >
+                            Edit {selectedLocal.length === 1 ? "details" : `${selectedLocal.length} files`}
+                        </button>
+                    )}
                     <button type="button" onClick={() => requestRemoval(selectedRemovable, `${selectedRemovable.length} selected track${selectedRemovable.length === 1 ? "" : "s"}`)}>
                         Remove {selectedRemovable.length} track{selectedRemovable.length === 1 ? "" : "s"}
                     </button>
@@ -1141,12 +1152,13 @@ function LibraryPageContent() {
 
     const renderAlbumDetail = () => {
         if (!selectedAlbum) return null;
-        const albumTracks = filteredTracks.filter(
+        // Own files play in their disc and track order.
+        const albumTracks = sortByAlbumPosition(filteredTracks.filter(
             t => selectedAlbum.releaseId
                 ? t.releaseId === selectedAlbum.releaseId
                 : (t.album || "Unknown Album") === selectedAlbum.name &&
                     (t.albumArtist || t.artist || "Unknown Artist") === selectedAlbum.artist
-        );
+        ));
         const catalogReleaseId = selectedAlbum.releaseId || sharedLibraryReleaseId(albumTracks);
 
         // Find cover art

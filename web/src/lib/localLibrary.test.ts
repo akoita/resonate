@@ -8,14 +8,18 @@ const mocks = vi.hoisted(() => {
     const listRemote = vi.fn();
     const getLibraryTrack = vi.fn();
     const getCatalogTrack = vi.fn();
-    return { tracks, omissions, deleteOne, deleteMany, listRemote, getLibraryTrack, getCatalogTrack };
+    const saveMany = vi.fn();
+    return { tracks, omissions, deleteOne, deleteMany, listRemote, getLibraryTrack, getCatalogTrack, saveMany };
 });
 
 vi.mock("localforage", () => ({
     default: {
         createInstance: ({ storeName }: { storeName: string }) => ({
             getItem: async (key: string) => storeName === "tracks" ? mocks.tracks.get(key) ?? null : mocks.omissions.get(key) ?? null,
-            setItem: async (key: string, value: unknown) => { if (storeName === "libraryOmissions") mocks.omissions.set(key, value); },
+            setItem: async (key: string, value: unknown) => {
+                if (storeName === "libraryOmissions") mocks.omissions.set(key, value);
+                if (storeName === "tracks") mocks.tracks.set(key, value);
+            },
             keys: async () => storeName === "libraryOmissions" ? [...mocks.omissions.keys()] : [],
             removeItem: async (key: string) => { if (storeName === "tracks") mocks.tracks.delete(key); },
         }),
@@ -28,6 +32,7 @@ vi.mock("./api", () => ({
     },
     deleteLibraryTrackAPI: mocks.deleteOne,
     deleteLibraryTracksAPI: mocks.deleteMany,
+    saveLibraryTracksAPI: mocks.saveMany,
     listLibraryTracksAPI: mocks.listRemote,
     getLibraryTrackAPI: mocks.getLibraryTrack,
     getTrack: mocks.getCatalogTrack,
@@ -37,7 +42,19 @@ vi.mock("./api", () => ({
 }));
 
 import { ApiRequestError } from "./api";
-import { deleteTrack, deleteTracks, getTrack, getTrackUrl, listLocalTrackOmissions, withKnownDuration } from "./localLibrary";
+import {
+    deleteTrack,
+    deleteTracks,
+    fillMissingTags,
+    getTrack,
+    getTrackUrl,
+    listLocalTrackOmissions,
+    LOCAL_TAGS_VERSION,
+    missingTagsPatch,
+    needsTagRefresh,
+    updateLocalTracks,
+    withKnownDuration,
+} from "./localLibrary";
 import type { LocalTrack } from "./localLibrary";
 
 describe("library removal", () => {
@@ -249,5 +266,60 @@ describe("withKnownDuration", () => {
         mocks.getCatalogTrack.mockRejectedValue(new Error("offline"));
         const remote = { ...base, duration: null, source: "remote", catalogTrackId: "trk-1" } as LocalTrack;
         expect(await withKnownDuration(remote)).toBe(remote);
+    });
+});
+
+describe("editing your own files", () => {
+    const own = (id: string, extra: Partial<LocalTrack> = {}): LocalTrack => ({
+        id, source: "local", title: id, artist: "Furax Barbarossa", albumArtist: null, album: "Caravelle",
+        year: null, genre: null, duration: 1, createdAt: "2026-01-01", sourcePath: `${id}.wav`, fileSize: 1, ...extra,
+    });
+
+    beforeEach(() => {
+        mocks.tracks.clear();
+        mocks.saveMany.mockReset();
+        mocks.saveMany.mockResolvedValue([]);
+        vi.stubGlobal("window", {});
+        vi.stubGlobal("localStorage", { getItem: () => "session-token" });
+    });
+
+    it("saves several tracks in one request and never touches catalog rows", async () => {
+        const updated = await updateLocalTracks([
+            { track: own("local_a"), edit: { year: 2022, genre: " Rap ", trackNumber: 1 } },
+            { track: own("local_b"), edit: { year: 2022, genre: "Rap", trackNumber: 2 } },
+        ]);
+        expect(updated.map((t) => [t.year, t.genre, t.trackNumber])).toEqual([[2022, "Rap", 1], [2022, "Rap", 2]]);
+        expect(mocks.saveMany).toHaveBeenCalledTimes(1);
+        const [, sent] = mocks.saveMany.mock.calls[0]!;
+        expect(sent[0]).toMatchObject({ id: "local_a", source: "local", year: 2022, trackNumber: 1 });
+
+        await expect(updateLocalTracks([{ track: { ...own("t1"), source: "remote" }, edit: { year: 1 } }]))
+            .rejects.toThrow("Only your own files");
+    });
+
+    it("keeps a title when an edit clears it", async () => {
+        const [updated] = await updateLocalTracks([{ track: own("local_c"), edit: { title: "  " } }]);
+        expect(updated?.title).toBe("local_c");
+    });
+
+    it("fills only empty fields from re-read tags", () => {
+        const patch = missingTagsPatch(own("local_d", { genre: "Mine", trackNumber: null }), {
+            genre: "From file", trackNumber: 4, year: 2022, label: null,
+        });
+        expect(patch).toEqual({ trackNumber: 4, year: 2022 });
+    });
+
+    it("reads a file's tags once per device", async () => {
+        const track = own("local_e");
+        expect(await needsTagRefresh(track)).toBe(true);
+        await fillMissingTags([{ track, tags: { trackNumber: 5 } }]);
+        expect(mocks.tracks.get("local_e")).toMatchObject({ trackNumber: 5, tagsVersion: LOCAL_TAGS_VERSION });
+        expect(await needsTagRefresh(track)).toBe(false);
+        expect(mocks.saveMany).toHaveBeenCalledTimes(1);
+
+        // A file without new tags is marked read but not sent.
+        await fillMissingTags([{ track: own("local_f"), tags: null }]);
+        expect(mocks.saveMany).toHaveBeenCalledTimes(1);
+        expect(mocks.tracks.get("local_f")).toMatchObject({ tagsVersion: LOCAL_TAGS_VERSION });
     });
 });

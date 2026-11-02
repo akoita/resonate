@@ -2386,6 +2386,16 @@ model LibraryTrack {
   year        Int?
   genre       String?
   duration    Float?
+  // Position on the album and credits, from the file's tags or the listener's
+  // own edit (never written to the file). Local files only: a catalog track's
+  // order and credits belong to its release.
+  trackNumber Int?
+  discNumber  Int?
+  label       String?
+  copyright   String?
+  isrc        String?
+  composer    String?
+  producer    String?
 
   // Local source fields
   sourcePath String?

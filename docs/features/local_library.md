@@ -23,7 +23,7 @@ music on Resonate for others stays an artist operation (release upload).
 
 | Piece | Where it lives |
 | --- | --- |
-| Library row (title, tags, duration, `sourcePath`, `fileSize`, `sourceFolder`) | `LibraryTrack` with `source: "local"`, via `/library/tracks` |
+| Library row (title, tags, track/disc numbers, credits, duration, `sourcePath`, `fileSize`, `sourceFolder`) | `LibraryTrack` with `source: "local"`, via `/library/tracks` |
 | Link to the file on disk | `FileSystemFileHandle` in IndexedDB (`fileHandles` store), this device only |
 | Cover art | Thumbnail (≤ 320 px) in IndexedDB, this device only |
 | Audio | **Stays on disk.** Read with `handle.getFile()` when it plays |
@@ -73,10 +73,32 @@ music on Resonate for others stays an artist operation (release upload).
 - **Duplicates.** A file reached from two added folders (a parent and its
   subfolder) is matched by file name + size as well as by path, and a folder
   inside another added folder is scanned only from the outer one.
-- **Editing.** *Edit details* on a track and *Edit album* on a local album
-  change the title, artist, album and cover of the listener's own files only
-  (`updateLocalTrack`, which refuses catalog rows). Names sync to the library;
-  the cover stays on the device. Files on disk are not changed.
+- **Tags read on import.** Besides title, artist, album artist, album, year
+  and genre, the scanner reads track and disc numbers, label, ISRC, the ℗/©
+  line, composer and producer (`tagsFromCommon` in `metadataExtractor.ts`,
+  shared with release upload). The year falls back to the release and
+  original dates. These columns exist on `LibraryTrack` for local rows only;
+  the server rejects them on catalog rows. Files imported before a tag was
+  read get it on the next scan of their folder: each device re-reads an older
+  file once (`tagsVersion` in the device cache, `LOCAL_TAGS_VERSION`) and
+  fills only fields that are still empty (`fillMissingTags`), so nothing the
+  listener edited is replaced. A file that has no year tag (common for CD rips)
+  still shows *Unknown year* until the listener sets it.
+- **Album order.** A local album plays and lists in disc, then track order
+  (`sortByAlbumPosition`); tracks without a number follow in their usual order.
+- **Editing.** *Edit details* on a track, *Edit album* on a local album, and
+  *Edit N files* on a multi-selection open one editor (`EditLocalDetailsDialog`)
+  grouped as Track (title, artist, track, disc), Album (album, album artist,
+  year, genre) and Credits (composer, producer, label, ℗/©, ISRC). Each mode
+  shows only the fields that make sense for it (no track number or ISRC on an
+  album). With several tracks, fields that differ show *Mixed* and are kept
+  per track unless the listener types a value; only changed fields are saved,
+  in one batch (`updateLocalTracks`, which refuses catalog rows).
+- **Edits stay in Resonate.** Edits are saved to the account's library rows
+  and follow it to every device; the files on disk are never written, so a
+  rescan does not undo an edit and nothing can damage a file. The cover stays
+  on the device. Writing tags back into files could become an opt-in for the
+  desktop app later; the browser cannot do it safely.
 - **File location.** The track menu shows the file's path starting at the
   added folder (browsers never expose the drive or the folders above it),
   copies it, and *Open folder* opens the system file picker in that folder

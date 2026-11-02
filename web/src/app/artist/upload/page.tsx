@@ -889,7 +889,8 @@ export default function ArtistUploadPage() {
             // only a self-managed profile name may prefill ahead of it.
             primaryArtist: prev.primaryArtist || creditPrefillName || meta.artist || meta.albumArtist || "",
             genre: prev.genre || meta.genre || "",
-            label: prev.label || meta.label || "",
+            // No copyright field on a release: a ℗ line beats an empty label.
+            label: prev.label || meta.label || meta.copyright || "",
             releaseDate: meta.year ? `${meta.year}-01-01` : prev.releaseDate,
             artworkUrl: prev.artworkUrl || extractedArtworkUrl || "",
             artworkBlob: prev.artworkBlob || meta.artworkBlob || undefined,
