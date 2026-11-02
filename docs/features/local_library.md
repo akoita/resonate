@@ -23,7 +23,7 @@ music on Resonate for others stays an artist operation (release upload).
 
 | Piece | Where it lives |
 | --- | --- |
-| Library row (title, tags, duration, `sourcePath`, `fileSize`) | `LibraryTrack` with `source: "local"`, via `/library/tracks` |
+| Library row (title, tags, duration, `sourcePath`, `fileSize`, `sourceFolder`) | `LibraryTrack` with `source: "local"`, via `/library/tracks` |
 | Link to the file on disk | `FileSystemFileHandle` in IndexedDB (`fileHandles` store), this device only |
 | Cover art | Thumbnail (≤ 320 px) in IndexedDB, this device only |
 | Audio | **Stays on disk.** Read with `handle.getFile()` when it plays |
@@ -38,10 +38,27 @@ music on Resonate for others stays an artist operation (release upload).
   `other_device`, `needs_permission` (browser read permission lapsed after a
   restart; pressing play asks again) or `missing` (moved, renamed, deleted).
   The player shows a message for each. Only a few object URLs are kept alive.
-- **Other devices.** Rows with no link on this device resolve to
-  `available: false` and render greyed out as **On another device**. The
-  library toggle *Show files on other devices* (also in Settings › Library,
-  stored per device) hides them.
+- **Across devices.** The library list follows the account; the audio does
+  not. A file plays on any device that can reach it: adding a folder there
+  links every row whose path inside the folder and size match (or file name
+  and size, for a parent or subfolder), and those rows become playable on that
+  device. Rows with no link on this device resolve to `available: false`.
+  They are **hidden by default**; *Show them greyed out* (in the library
+  notice, and *Show files that are not on this device* in Settings › Library,
+  stored per device as `showUnreachableFiles`) shows them greyed out as
+  **On another device**. The older `showOtherDeviceTracks` setting, which
+  defaulted to on, is retired so every device starts hidden.
+- **Which folder to add.** Each row records `sourceFolder`, the name of the
+  library folder it was found in (a name only: browsers never reveal where a
+  folder sits on disk, and the server drops anything before the last path
+  separator). The library and Settings › Library show a notice listing the
+  folders this device is missing with an *Add “Caravelle” here* button
+  (`otherDeviceFolders.ts`, `OtherDeviceFilesNotice`), which opens the folder
+  picker, adds and scans the folder, and reports how many files now play here.
+  Browsers cannot open a folder by name, so the listener still picks it.
+  Rows imported before `sourceFolder` existed get it on their device's next
+  scan. Playlists keep unreachable rows in place, greyed out, so their order
+  and length never change by device.
 - **Telling them apart.** Every own file shows a **My file** badge, and the
   Tracks tab has an *All / Resonate / My files* filter once the library holds
   any (`matchesLibraryOriginFilter`, `isOwnFileTrack` in `trackIdentity.ts`).

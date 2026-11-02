@@ -2390,6 +2390,9 @@ model LibraryTrack {
   // Local source fields
   sourcePath String?
   fileSize   Int?
+  // Name of the library folder the file was found in (a name, never a full
+  // path). Lets another device offer to add the same folder.
+  sourceFolder String?
 
   // Remote source fields
   catalogTrackId   String?

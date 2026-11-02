@@ -296,6 +296,17 @@ describe('LibraryService (integration)', () => {
       expect(await prisma.libraryTrack.count({ where: { userId, clientKey: 'local_boundary_victim' } })).toBe(1);
     });
 
+    it('keeps the folder name another device recorded when a save leaves it out', async () => {
+      await service.saveTrack(userId, {
+        id: 'local_boundary_folder', source: 'local', title: 'Gelati', sourcePath: 'Gelati.flac', fileSize: 77,
+        sourceFolder: 'D:\\Discs\\Caravelle',
+      });
+      await service.saveTrack(userId, { id: 'local_boundary_folder', source: 'local', title: 'Gelati (edit)' });
+      const row = await prisma.libraryTrack.findFirstOrThrow({ where: { userId, clientKey: 'local_boundary_folder' } });
+      expect(row.sourceFolder).toBe('Caravelle');
+      expect(row.title).toBe('Gelati (edit)');
+    });
+
     it('lets two listeners keep the same owned stem', async () => {
       const stemId = `${TEST_PREFIX}stem_shared`;
       const stem = { id: stemId, source: 'remote', title: 'Vocals', stemType: 'vocals', isOwned: true,

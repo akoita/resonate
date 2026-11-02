@@ -166,6 +166,8 @@ export interface SaveTrackInput {
     duration?: number | null;
     sourcePath?: string | null;
     fileSize?: number | null;
+    /** The library folder's name on the device that found the file. */
+    sourceFolder?: string | null;
     catalogTrackId?: string | null;
     remoteUrl?: string | null;
     remoteArtworkUrl?: string | null;
@@ -203,6 +205,17 @@ const CATALOG_ONLY_FIELDS = [
     "listingId",
     "purchaseDate",
 ] as const;
+
+/**
+ * A folder name, not a path: anything before the last separator is dropped,
+ * so a client can never store where on a disk the folder sits.
+ */
+export function cleanFolderName(value: string | null | undefined): string | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    const name = value.split(/[\\/]/).filter(Boolean).pop()?.trim() ?? "";
+    return name ? name.slice(0, 255) : null;
+}
 
 function present(value: unknown): boolean {
     return value !== undefined && value !== null && value !== "";
@@ -242,7 +255,7 @@ export function validateLibraryTrackInput(data: SaveTrackInput): { source: Libra
         return { source, clientKey };
     }
 
-    if (present(data.sourcePath) || present(data.fileSize)) {
+    if (present(data.sourcePath) || present(data.fileSize) || present(data.sourceFolder)) {
         throw new BadRequestException("A catalog track cannot carry local file fields");
     }
     if (clientKey && LOCAL_CLIENT_KEY.test(clientKey)) {
@@ -310,6 +323,9 @@ export class LibraryService {
             duration: data.duration,
             sourcePath: source === "local" ? data.sourcePath : null,
             fileSize: source === "local" ? data.fileSize : null,
+            // Left alone when a client does not send it, so an older client's
+            // save never erases the folder another device recorded.
+            sourceFolder: source === "local" ? cleanFolderName(data.sourceFolder) : null,
             catalogTrackId: source === "remote" ? data.catalogTrackId : null,
             remoteUrl: source === "remote" ? data.remoteUrl : null,
             remoteArtworkUrl: source === "remote" ? data.remoteArtworkUrl : null,

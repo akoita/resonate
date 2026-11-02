@@ -134,6 +134,11 @@ export interface LocalTrack {
     }>;
     sourcePath?: string;
     fileSize?: number;
+    /**
+     * Name of the library folder the file was found in, synced to the account
+     * so another device can offer to add the same folder. A name, never a path.
+     */
+    sourceFolder?: string;
 
     // Source type: "local" (device file) or "remote" (platform-hosted)
     source?: "local" | "remote";
@@ -194,6 +199,7 @@ function apiTrackToLocal(apiTrack: APILibraryTrack): LocalTrack {
         createdAt: apiTrack.createdAt,
         sourcePath: apiTrack.sourcePath ?? undefined,
         fileSize: apiTrack.fileSize ?? undefined,
+        sourceFolder: apiTrack.sourceFolder ?? undefined,
         catalogTrackId: apiTrack.catalogTrackId ?? null,
         releaseId: apiTrack.releaseId ?? null,
         creditedArtistId: apiTrack.creditedArtistId ?? null,
@@ -229,6 +235,9 @@ function localTrackToApi(
         duration: track.duration,
         sourcePath: track.sourcePath ?? null,
         fileSize: track.fileSize ?? null,
+        // Omitted, not null, when unknown: an older row keeps the folder
+        // another device recorded.
+        ...(track.sourceFolder ? { sourceFolder: track.sourceFolder } : {}),
         catalogTrackId: track.catalogTrackId ?? null,
         remoteUrl: track.remoteUrl ?? null,
         remoteArtworkUrl: track.remoteArtworkUrl ?? null,
@@ -346,6 +355,30 @@ export async function attachFileHandle(track: LocalTrack, handle: FileSystemFile
         const { available: _available, ...rest } = track;
         void _available;
         await trackStore.setItem(track.id, rest);
+    }
+}
+
+/**
+ * Record which library folder holds files imported before folder names were
+ * synced, so the account's other devices can offer to add that folder. One
+ * batch per scan; a failure only means the hint waits for the next scan.
+ */
+export async function recordSourceFolders(entries: Array<{ track: LocalTrack; folder: string }>): Promise<void> {
+    const updated: LocalTrack[] = [];
+    for (const { track, folder } of entries) {
+        if (!isLocalFileTrack(track) || !track.id || track.sourceFolder) continue;
+        const cached = await trackStore.getItem<LocalTrack>(track.id);
+        const { available: _available, ...base } = { ...(cached ?? {}), ...track, sourceFolder: folder };
+        void _available;
+        await trackStore.setItem(track.id, base);
+        updated.push(base);
+    }
+    const token = getToken();
+    if (!token || updated.length === 0) return;
+    try {
+        await saveLibraryTracksAPI(token, updated.map((t) => localTrackToApi(t, "local")));
+    } catch (err) {
+        console.warn("[Library] Could not record library folder names:", err);
     }
 }
 
