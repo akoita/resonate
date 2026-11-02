@@ -164,6 +164,16 @@ export interface SaveTrackInput {
     year?: number | null;
     genre?: string | null;
     duration?: number | null;
+    /** Position on the album; local files only. */
+    trackNumber?: number | null;
+    /** Disc of a multi-disc album; local files only. */
+    discNumber?: number | null;
+    /** Credits read from a local file's tags or set in the editor; local files only. */
+    label?: string | null;
+    copyright?: string | null;
+    isrc?: string | null;
+    composer?: string | null;
+    producer?: string | null;
     sourcePath?: string | null;
     fileSize?: number | null;
     /** The library folder's name on the device that found the file. */
@@ -205,6 +215,12 @@ const CATALOG_ONLY_FIELDS = [
     "listingId",
     "purchaseDate",
 ] as const;
+
+/**
+ * Tags only a listener's own file carries. A catalog track's credits and
+ * order belong to its release, so a catalog row never stores its own.
+ */
+const LOCAL_TAG_FIELDS = ["trackNumber", "discNumber", "label", "copyright", "isrc", "composer", "producer"] as const;
 
 /**
  * A folder name, not a path: anything before the last separator is dropped,
@@ -255,7 +271,10 @@ export function validateLibraryTrackInput(data: SaveTrackInput): { source: Libra
         return { source, clientKey };
     }
 
-    if (present(data.sourcePath) || present(data.fileSize) || present(data.sourceFolder)) {
+    if (
+        present(data.sourcePath) || present(data.fileSize) || present(data.sourceFolder)
+        || LOCAL_TAG_FIELDS.some((field) => present(data[field]))
+    ) {
         throw new BadRequestException("A catalog track cannot carry local file fields");
     }
     if (clientKey && LOCAL_CLIENT_KEY.test(clientKey)) {
@@ -321,6 +340,14 @@ export class LibraryService {
             year: data.year,
             genre: data.genre,
             duration: data.duration,
+            // Left alone when a client does not send them, like sourceFolder.
+            trackNumber: source === "local" ? data.trackNumber : null,
+            discNumber: source === "local" ? data.discNumber : null,
+            label: source === "local" ? data.label : null,
+            copyright: source === "local" ? data.copyright : null,
+            isrc: source === "local" ? data.isrc : null,
+            composer: source === "local" ? data.composer : null,
+            producer: source === "local" ? data.producer : null,
             sourcePath: source === "local" ? data.sourcePath : null,
             fileSize: source === "local" ? data.fileSize : null,
             // Left alone when a client does not send it, so an older client's

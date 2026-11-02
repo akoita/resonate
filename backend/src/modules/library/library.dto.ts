@@ -7,7 +7,9 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
+  Min,
   ValidateNested,
 } from "class-validator";
 
@@ -54,6 +56,45 @@ export class SaveLibraryTrackDto {
   @IsOptional()
   @IsNumber()
   duration?: number | null;
+
+  /** Position on the album (local files only). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  trackNumber?: number | null;
+
+  /** Disc of a multi-disc album (local files only). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(99)
+  discNumber?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  label?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  copyright?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  isrc?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  composer?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  producer?: string | null;
 
   @IsOptional()
   @IsString()

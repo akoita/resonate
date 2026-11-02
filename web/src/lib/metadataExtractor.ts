@@ -2,9 +2,10 @@
  * Metadata Extractor - Client-side audio metadata extraction
  * Uses music-metadata to parse ID3 tags and other audio metadata
  */
-import type { IAudioMetadata } from "music-metadata";
+import type { IAudioMetadata, ICommonTagsResult } from "music-metadata";
 
-export interface ExtractedMetadata {
+/** The tags Resonate reads from a file, shared by release upload and the local library. */
+export interface ExtractedTags {
     title: string | null;
     artist: string | null;
     albumArtist: string | null;
@@ -13,8 +14,82 @@ export interface ExtractedMetadata {
     genre: string | null;
     label: string | null;
     isrc: string | null;
+    /** Position on the album, from "2" or "2/18". */
+    trackNumber: number | null;
+    discNumber: number | null;
+    /** The ℗/© line. */
+    copyright: string | null;
+    composer: string | null;
+    producer: string | null;
+}
+
+export interface ExtractedMetadata extends ExtractedTags {
     duration: number | null;
     artworkBlob: Blob | null;
+}
+
+const EMPTY_TAGS: Omit<ExtractedTags, "title"> = {
+    artist: null,
+    albumArtist: null,
+    album: null,
+    year: null,
+    genre: null,
+    label: null,
+    isrc: null,
+    trackNumber: null,
+    discNumber: null,
+    copyright: null,
+    composer: null,
+    producer: null,
+};
+
+/** A four-digit year from a year or date tag ("2022", "2022-07-08", 2022). */
+function yearFrom(value: unknown): number | null {
+    if (value === undefined || value === null) return null;
+    const match = /(\d{4})/.exec(String(value));
+    if (!match) return null;
+    const year = Number(match[1]);
+    return year >= 1000 && year <= 2999 ? year : null;
+}
+
+function positionFrom(value: number | null | undefined, max: number): number | null {
+    return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= max ? value : null;
+}
+
+function text(value: string | string[] | null | undefined): string | null {
+    const first = Array.isArray(value) ? value.find((v) => v && v.trim()) : value;
+    const trimmed = first?.trim();
+    return trimmed ? trimmed : null;
+}
+
+/** Join a multi-value credit ("A", "B") into one line. */
+function credit(values: string[] | undefined): string | null {
+    const names = (values ?? []).map((v) => v.trim()).filter(Boolean);
+    return names.length > 0 ? [...new Set(names)].join(", ") : null;
+}
+
+/**
+ * Map music-metadata's common tags to Resonate's. The year falls back from the
+ * recording year to the release and original dates, which some rippers and
+ * stores write instead.
+ */
+export function tagsFromCommon(common: Partial<ICommonTagsResult>, fileName: string): ExtractedTags {
+    return {
+        title: text(common.title) || fileName.replace(/\.[^/.]+$/, ""),
+        artist: text(common.artist) || text(common.albumartist),
+        albumArtist: text(common.albumartist),
+        album: text(common.album),
+        year: yearFrom(common.year) ?? yearFrom(common.date) ?? yearFrom(common.releasedate)
+            ?? yearFrom(common.originalyear) ?? yearFrom(common.originaldate),
+        genre: text(common.genre),
+        label: text(common.label),
+        isrc: text(common.isrc),
+        trackNumber: positionFrom(common.track?.no, 999),
+        discNumber: positionFrom(common.disk?.no, 99),
+        copyright: text(common.copyright),
+        composer: credit(common.composer),
+        producer: credit(common.producer),
+    };
 }
 
 /**
@@ -73,19 +148,9 @@ export async function extractMetadata(file: File): Promise<ExtractedMetadata> {
             });
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const dateStr = common.year?.toString() || (common as any).date?.toString();
-        const year = dateStr ? parseInt(dateStr.substring(0, 4)) : null;
-
+        const tags = tagsFromCommon(common, file.name);
         return {
-            title: common.title || file.name.replace(/\.[^/.]+$/, ""),
-            artist: common.artist || common.albumartist || null,
-            albumArtist: common.albumartist || null,
-            album: common.album || null,
-            year: year,
-            genre: common.genre?.[0] || null,
-            label: common.label?.[0] || common.copyright || null,
-            isrc: common.isrc?.[0] || null,
+            ...tags,
             duration: format.duration || null,
             artworkBlob: extractArtworkFromMetadata(metadata),
         };
@@ -93,17 +158,26 @@ export async function extractMetadata(file: File): Promise<ExtractedMetadata> {
         console.error("[MetadataExtractor] Failed to parse metadata:", error);
         // Fallback to filename if parsing fails
         return {
+            ...EMPTY_TAGS,
             title: file.name.replace(/\.[^/.]+$/, ""),
-            artist: null,
-            albumArtist: null,
-            album: null,
-            year: null,
-            genre: null,
-            label: null,
-            isrc: null,
             duration: null,
             artworkBlob: null,
         };
+    }
+}
+
+/**
+ * Read only the tags of a file: no cover, no full scan for the duration. Used
+ * to fill in tags on files imported before Resonate read them.
+ */
+export async function extractTags(file: File): Promise<ExtractedTags | null> {
+    try {
+        const { parseBlob } = await import("music-metadata");
+        const metadata = await parseBlob(file, { duration: false, skipCovers: true });
+        return tagsFromCommon(metadata.common, file.name);
+    } catch (error) {
+        console.warn("[MetadataExtractor] Could not read tags:", error);
+        return null;
     }
 }
 

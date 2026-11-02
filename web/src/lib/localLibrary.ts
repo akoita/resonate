@@ -112,6 +112,20 @@ export interface LocalTrack {
     year: number | null;
     genre: string | null;
     duration: number | null;
+    /** Local files only: position on the album, from tags or the listener's edit. */
+    trackNumber?: number | null;
+    discNumber?: number | null;
+    /** Local files only: credits, from tags or the listener's edit. */
+    label?: string | null;
+    copyright?: string | null;
+    isrc?: string | null;
+    composer?: string | null;
+    producer?: string | null;
+    /**
+     * Device cache only, never synced: the version of tag reading this device
+     * last applied to the file, so older imports fill in new tags once.
+     */
+    tagsVersion?: number;
     blobKey?: string; // Optional for remote tracks
     artworkKey?: string | null;
     createdAt: string;
@@ -186,6 +200,9 @@ export function isOnOtherDevice(track: Pick<LocalTrack, "source" | "available">)
 /**
  * Convert an API LibraryTrack to a LocalTrack
  */
+/** Tags only the listener's own files carry; a catalog track's belong to its release. */
+export const LOCAL_TAG_FIELDS = ["trackNumber", "discNumber", "label", "copyright", "isrc", "composer", "producer"] as const;
+
 function apiTrackToLocal(apiTrack: APILibraryTrack): LocalTrack {
     return {
         id: apiTrack.id,
@@ -196,6 +213,9 @@ function apiTrackToLocal(apiTrack: APILibraryTrack): LocalTrack {
         year: apiTrack.year ?? null,
         genre: apiTrack.genre ?? null,
         duration: apiTrack.duration ?? null,
+        ...(apiTrack.source === "local"
+            ? Object.fromEntries(LOCAL_TAG_FIELDS.map((field) => [field, apiTrack[field] ?? null]))
+            : {}),
         createdAt: apiTrack.createdAt,
         sourcePath: apiTrack.sourcePath ?? undefined,
         fileSize: apiTrack.fileSize ?? undefined,
@@ -233,6 +253,11 @@ function localTrackToApi(
         year: track.year,
         genre: track.genre,
         duration: track.duration,
+        // Local tags are sent only when known, so a row cached before they
+        // existed never erases what another device read.
+        ...(source === "local"
+            ? Object.fromEntries(LOCAL_TAG_FIELDS.filter((f) => track[f] !== undefined).map((f) => [f, track[f]]))
+            : {}),
         sourcePath: track.sourcePath ?? null,
         fileSize: track.fileSize ?? null,
         // Omitted, not null, when unknown: an older row keeps the folder
@@ -307,6 +332,7 @@ export async function saveTrack(
         artworkKey,
         source: "local",
         createdAt: new Date().toISOString(),
+        tagsVersion: LOCAL_TAGS_VERSION,
     };
 
     // Device cache first, so the row stays playable here even if the API is down.
@@ -388,51 +414,141 @@ export async function getFileHandle(trackId: string): Promise<FileSystemFileHand
 }
 
 /** The fields a listener may edit on one of their own files. */
-export type LocalTrackEdit = Partial<Pick<LocalTrack, "title" | "artist" | "albumArtist" | "album" | "year" | "genre">>;
+export const EDITABLE_LOCAL_FIELDS = [
+    "title", "artist", "albumArtist", "album", "year", "genre", ...LOCAL_TAG_FIELDS,
+] as const;
+export type EditableLocalField = (typeof EDITABLE_LOCAL_FIELDS)[number];
+export type LocalTrackEdit = Partial<Pick<LocalTrack, EditableLocalField>>;
+
+/** Trim text and drop empty values; a track always keeps a title. */
+export function normalizeLocalEdit(edit: LocalTrackEdit): LocalTrackEdit {
+    const patch: LocalTrackEdit = {};
+    for (const key of EDITABLE_LOCAL_FIELDS) {
+        const value = edit[key];
+        if (value === undefined) continue;
+        const normalized = typeof value === "string" ? value.trim() || null : value;
+        if (key === "title" && !normalized) continue;
+        (patch as Record<string, unknown>)[key] = normalized;
+    }
+    return patch;
+}
 
 /**
- * Edit one of the listener's own files: its names, and its cover on this
- * device. Catalog tracks are never edited here; a release's metadata belongs
- * to its artist.
+ * Bump when tag reading learns new fields: each device then reads the tags of
+ * files it imported earlier once more, on the next scan of their folder.
  */
+export const LOCAL_TAGS_VERSION = 2;
+
+async function storeArtwork(trackId: string, previousKey: string | null, thumbnail: Blob): Promise<string> {
+    const artworkKey = `artwork_${trackId}_${Date.now()}`;
+    await artworkStore.setItem(artworkKey, thumbnail);
+    if (previousKey) {
+        await artworkStore.removeItem(previousKey);
+        const url = artworkUrlCache.get(previousKey);
+        if (url) URL.revokeObjectURL(url);
+        artworkUrlCache.delete(previousKey);
+    }
+    return artworkKey;
+}
+
+/**
+ * Edit the listener's own files: their tags in Resonate, and their cover on
+ * this device. The files on disk are never written. Each track gets its own
+ * edit (a track number differs per track, an album name does not), and the
+ * whole batch reaches the API in one request. Catalog tracks are never edited
+ * here; a release's metadata belongs to its artist.
+ */
+export async function updateLocalTracks(
+    edits: Array<{ track: LocalTrack; edit: LocalTrackEdit }>,
+    artworkBlob?: Blob | null,
+): Promise<LocalTrack[]> {
+    if (edits.some(({ track }) => !isLocalFileTrack(track))) throw new Error("Only your own files can be edited");
+    const thumbnail = artworkBlob ? await makeArtworkThumbnail(artworkBlob) : null;
+    const updated: LocalTrack[] = [];
+    const changed: LocalTrack[] = [];
+    for (const { track, edit } of edits) {
+        const cached = await trackStore.getItem<LocalTrack>(track.id);
+        const { available, ...base } = { ...(cached ?? {}), ...track };
+        const patch = normalizeLocalEdit(edit);
+        const artworkKey = thumbnail
+            ? await storeArtwork(track.id, base.artworkKey ?? null, thumbnail)
+            : base.artworkKey ?? null;
+        const next: LocalTrack = { ...base, ...patch, artworkKey, source: "local" };
+        await trackStore.setItem(track.id, next);
+        if (Object.keys(patch).length > 0) changed.push(next);
+        updated.push({ ...next, available });
+    }
+
+    const token = getToken();
+    if (token && changed.length > 0) {
+        await saveLibraryTracksAPI(token, changed.map((t) => localTrackToApi(t, "local")));
+    }
+    return updated;
+}
+
+/** Edit one of the listener's own files. See updateLocalTracks. */
 export async function updateLocalTrack(
     track: LocalTrack,
     edit: LocalTrackEdit,
     artworkBlob?: Blob | null,
 ): Promise<LocalTrack> {
-    if (!isLocalFileTrack(track)) throw new Error("Only your own files can be edited");
+    const [updated] = await updateLocalTracks([{ track, edit }], artworkBlob);
+    return updated!;
+}
+
+/** Whether this device still has to read the newer tags of an imported file. */
+export async function needsTagRefresh(track: LocalTrack): Promise<boolean> {
+    if (!isLocalFileTrack(track) || !track.id) return false;
     const cached = await trackStore.getItem<LocalTrack>(track.id);
-    const { available, ...base } = { ...(cached ?? {}), ...track };
+    return (cached?.tagsVersion ?? 0) < LOCAL_TAGS_VERSION;
+}
 
-    const patch: LocalTrackEdit = {};
-    for (const [key, value] of Object.entries(edit) as Array<[keyof LocalTrackEdit, unknown]>) {
-        if (value === undefined) continue;
-        const normalized = typeof value === "string" ? value.trim() || null : value;
-        if (key === "title" && !normalized) continue; // a track always has a title
-        (patch as Record<string, unknown>)[key] = normalized;
+/** Tags a refresh may fill in. Names the listener sees first (title, artist, album) are left as they are. */
+const REFRESHABLE_TAGS = ["albumArtist", "year", "genre", ...LOCAL_TAG_FIELDS] as const;
+
+function isEmpty(value: unknown): boolean {
+    return value === undefined || value === null || value === "";
+}
+
+/** The tags read from a file that fill a row's empty fields; never one already set. */
+export function missingTagsPatch(
+    track: LocalTrack,
+    tags: Partial<Record<(typeof REFRESHABLE_TAGS)[number], string | number | null>>,
+): LocalTrackEdit {
+    const patch: Record<string, unknown> = {};
+    for (const field of REFRESHABLE_TAGS) {
+        if (isEmpty(track[field]) && !isEmpty(tags[field])) patch[field] = tags[field];
     }
+    return patch as LocalTrackEdit;
+}
 
-    let artworkKey = base.artworkKey ?? null;
-    if (artworkBlob) {
-        const previousKey = artworkKey;
-        artworkKey = `artwork_${track.id}_${Date.now()}`;
-        await artworkStore.setItem(artworkKey, await makeArtworkThumbnail(artworkBlob));
-        if (previousKey) {
-            await artworkStore.removeItem(previousKey);
-            const url = artworkUrlCache.get(previousKey);
-            if (url) URL.revokeObjectURL(url);
-            artworkUrlCache.delete(previousKey);
+/**
+ * Fill in tags read again from files imported earlier: only fields that are
+ * still empty, so nothing the listener edited is replaced. Marks each file as
+ * read on this device either way, and sends the batch in one request.
+ */
+export async function fillMissingTags(
+    entries: Array<{ track: LocalTrack; tags: Parameters<typeof missingTagsPatch>[1] | null }>,
+): Promise<LocalTrack[]> {
+    const changed: LocalTrack[] = [];
+    for (const { track, tags } of entries) {
+        const cached = await trackStore.getItem<LocalTrack>(track.id);
+        const { available: _available, ...base } = { ...(cached ?? {}), ...track };
+        void _available;
+        const patch = tags ? normalizeLocalEdit(missingTagsPatch(base, tags)) : {};
+        const next: LocalTrack = { ...base, ...patch, tagsVersion: LOCAL_TAGS_VERSION };
+        await trackStore.setItem(track.id, next);
+        if (Object.keys(patch).length > 0) changed.push(next);
+    }
+    const token = getToken();
+    if (token && changed.length > 0) {
+        try {
+            await saveLibraryTracksAPI(token, changed.map((t) => localTrackToApi(t, "local")));
+        } catch (err) {
+            console.warn("[Library] Could not save tags read from files:", err);
         }
     }
-
-    const updated: LocalTrack = { ...base, ...patch, artworkKey, source: "local" };
-    await trackStore.setItem(track.id, updated);
-
-    const token = getToken();
-    if (token && Object.keys(patch).length > 0) {
-        await saveLibraryTrackAPI(token, localTrackToApi(updated, "local"));
-    }
-    return { ...updated, available };
+    return changed;
 }
 
 /** Mark a local track available only when this device links its file. */

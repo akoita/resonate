@@ -7,15 +7,19 @@ const mocks = vi.hoisted(() => ({
     attachFileHandle: vi.fn(),
     recordSourceFolders: vi.fn(),
     updateLocalTrack: vi.fn(),
+    needsTagRefresh: vi.fn().mockResolvedValue(false),
+    fillMissingTags: vi.fn(),
     extractMetadata: vi.fn(),
+    extractTags: vi.fn(),
 }));
 
 vi.mock("./localLibrary", () => mocks);
-vi.mock("./metadataExtractor", () => ({ extractMetadata: mocks.extractMetadata }));
+vi.mock("./metadataExtractor", () => ({ extractMetadata: mocks.extractMetadata, extractTags: mocks.extractTags }));
 
 const NO_TAGS = {
     title: null, artist: null, albumArtist: null, album: null, year: null, genre: null,
-    label: null, isrc: null, duration: 120, artworkBlob: null,
+    label: null, isrc: null, trackNumber: null, discNumber: null, copyright: null,
+    composer: null, producer: null, duration: 120, artworkBlob: null,
 };
 
 function file(name: string, size: number) {
@@ -194,5 +198,35 @@ describe("library folder scan", () => {
             { title: "The lighthouse", album: "Ocean", artist: "Jennifer" },
             cover,
         );
+    });
+
+    it("imports track and disc numbers and credits with a new file", async () => {
+        mocks.listTracks.mockResolvedValueOnce([]);
+        mocks.listLocalTrackOmissions.mockResolvedValueOnce([]);
+        mocks.extractMetadata.mockResolvedValueOnce({
+            ...NO_TAGS, title: "Uragano", trackNumber: 2, discNumber: 1, label: "L", composer: "C",
+        });
+        mocks.saveTrack.mockClear();
+        mocks.saveTrack.mockResolvedValue({ id: "local-10" });
+        const root = folder("Caravelle", [file("02 Uragano.wav", 50)]) as unknown as FileSystemDirectoryHandle;
+
+        await scanAndIndex(root);
+        expect(mocks.saveTrack.mock.calls[0]?.[1]).toMatchObject({ trackNumber: 2, discNumber: 1, label: "L", composer: "C" });
+    });
+
+    it("reads the tags of files imported earlier once, through fillMissingTags", async () => {
+        const older = { id: "local-11", source: "local", title: "Uragano", sourcePath: "02 Uragano.wav", fileSize: 51, available: true, artworkKey: "a", sourceFolder: "Caravelle" };
+        const current = { ...older, id: "local-12", sourcePath: "09 LVDI.wav", fileSize: 52 };
+        mocks.listTracks.mockResolvedValueOnce([older, current]);
+        mocks.listLocalTrackOmissions.mockResolvedValueOnce([]);
+        mocks.needsTagRefresh.mockImplementation(async (track: { id: string }) => track.id === "local-11");
+        mocks.extractTags.mockResolvedValueOnce({ trackNumber: 2 });
+        mocks.fillMissingTags.mockClear();
+        const root = folder("Caravelle", [file("02 Uragano.wav", 51), file("09 LVDI.wav", 52)]) as unknown as FileSystemDirectoryHandle;
+
+        await scanAndIndex(root);
+        expect(mocks.extractTags).toHaveBeenCalledTimes(1);
+        expect(mocks.fillMissingTags).toHaveBeenCalledWith([{ track: older, tags: { trackNumber: 2 } }]);
+        mocks.needsTagRefresh.mockResolvedValue(false);
     });
 });

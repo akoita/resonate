@@ -307,6 +307,16 @@ describe('LibraryService (integration)', () => {
       expect(row.title).toBe('Gelati (edit)');
     });
 
+    it('stores track numbers and credits on a local file and keeps them when a save leaves them out', async () => {
+      await service.saveTrack(userId, {
+        id: 'local_boundary_tags', source: 'local', title: 'Uragano', trackNumber: 2, discNumber: 1,
+        label: 'Label', copyright: '℗ 2022 Label', isrc: 'FR0000000001', composer: 'C', producer: 'P',
+      });
+      await service.saveTrack(userId, { id: 'local_boundary_tags', source: 'local', title: 'Uragano' });
+      const row = await prisma.libraryTrack.findFirstOrThrow({ where: { userId, clientKey: 'local_boundary_tags' } });
+      expect(row).toMatchObject({ trackNumber: 2, discNumber: 1, label: 'Label', isrc: 'FR0000000001', producer: 'P' });
+    });
+
     it('lets two listeners keep the same owned stem', async () => {
       const stemId = `${TEST_PREFIX}stem_shared`;
       const stem = { id: stemId, source: 'remote', title: 'Vocals', stemType: 'vocals', isOwned: true,

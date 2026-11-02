@@ -6713,6 +6713,14 @@ export type APILibraryTrack = {
   year?: number | null;
   genre?: string | null;
   duration?: number | null;
+  /** Local files only: position on the album and credits, from tags or the listener's edit. */
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  label?: string | null;
+  copyright?: string | null;
+  isrc?: string | null;
+  composer?: string | null;
+  producer?: string | null;
   sourcePath?: string | null;
   fileSize?: number | null;
   /** Name of the library folder the file was found in (never a full path). */

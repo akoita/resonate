@@ -10,9 +10,11 @@
  * already in the library (a rescan, or the same folder on a second device)
  * links those rows to this device instead of importing them again.
  */
-import { extractMetadata } from "./metadataExtractor";
+import { extractMetadata, extractTags } from "./metadataExtractor";
 import {
     attachFileHandle,
+    fillMissingTags,
+    needsTagRefresh,
     recordSourceFolders,
     saveTrack,
     listTracks,
@@ -193,6 +195,7 @@ export async function scanAndIndex(
     /** Rows that already existed and were linked on this device by this scan. */
     let linked = 0;
     const folderBackfill: Array<{ track: LocalTrack; folder: string }> = [];
+    const tagBackfill: Parameters<typeof fillMissingTags>[0] = [];
 
     for (const { handle, path } of audioFiles) {
         const file = await handle.getFile();
@@ -213,6 +216,12 @@ export async function scanAndIndex(
             if (!existing.sourceFolder) folderBackfill.push({ track: existing, folder: dirHandle.name });
             try {
                 await repairExisting(existing, path);
+                // Files imported before Resonate read track numbers and
+                // credits: read their tags once on this device, filling only
+                // what is still empty.
+                if (await needsTagRefresh(existing)) {
+                    tagBackfill.push({ track: existing, tags: await extractTags(file) });
+                }
             } catch (error) {
                 console.warn(`[Scanner] Could not refresh ${path}:`, error);
             }
@@ -242,6 +251,7 @@ export async function scanAndIndex(
     }
 
     await recordSourceFolders(folderBackfill);
+    await fillMissingTags(tagBackfill);
 
     // Phase 3: Index only new files
     let added = 0;
@@ -271,6 +281,13 @@ export async function scanAndIndex(
                 album: metadata.album ?? fallback.album,
                 year: metadata.year,
                 genre: metadata.genre,
+                trackNumber: metadata.trackNumber,
+                discNumber: metadata.discNumber,
+                label: metadata.label,
+                copyright: metadata.copyright,
+                isrc: metadata.isrc,
+                composer: metadata.composer,
+                producer: metadata.producer,
                 duration: metadata.duration,
                 sourcePath: path,
                 fileSize: file.size,

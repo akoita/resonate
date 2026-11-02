@@ -66,26 +66,6 @@
   color: #fca5a5;
 }
 
-.local-file-dialog__art {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.local-file-dialog__art canvas,
-.local-file-dialog__art > .ms-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 8px;
-  object-fit: cover;
-  background: rgba(255, 255, 255, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  color: rgba(255, 255, 255, 0.4);
-}
-
 .local-file-dialog__file {
   position: absolute;
   width: 1px;
@@ -155,11 +135,123 @@
   background: #6a4ae8;
 }
 
-.local-file-dialog__art canvas[hidden] {
+.local-file-dialog--wide {
+  width: min(600px, 100%);
+}
+
+/* Cover and what is being edited. */
+.local-file-dialog__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.local-file-dialog__cover {
+  flex: 0 0 auto;
+  width: 112px;
+  height: 112px;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.25), rgba(255, 255, 255, 0.04));
+  color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.local-file-dialog__cover canvas,
+.local-file-dialog__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.local-file-dialog__cover canvas[hidden] {
   display: none;
 }
 
-.local-file-dialog__art input:focus-visible + label,
-.local-file-dialog__art label:focus-within {
+.local-file-dialog__header-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.local-file-dialog__subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.75);
+  overflow-wrap: anywhere;
+}
+
+.local-file-dialog__btn--small {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+.local-file-dialog__file:focus + label {
   outline: 2px solid #7c5cff;
+  outline-offset: 2px;
+}
+
+/* Field groups: Track, Album, Credits. */
+.local-file-dialog__section {
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.local-file-dialog__section legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.local-file-dialog__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.local-file-dialog__grid > .local-file-dialog__field {
+  grid-column: span var(--span, 6);
+}
+
+.local-file-dialog__field input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.local-file-dialog__field input:disabled {
+  opacity: 0.6;
+}
+
+.local-file-dialog__footnote {
+  flex: 1 1 220px;
+  align-self: center;
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+@media (max-width: 480px) {
+  .local-file-dialog {
+    padding: 18px;
+  }
+
+  .local-file-dialog__cover {
+    width: 80px;
+    height: 80px;
+  }
+
+  .local-file-dialog__grid > .local-file-dialog__field {
+    grid-column: span 6;
+  }
 }
