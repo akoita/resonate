@@ -1,7 +1,6 @@
 # Vision Sprint 51: Remix Pro on the grid
 
-**Status:** 📝 Proposed 2026-11-02. Starts after Sprint 50 closes; waiting for
-the owner's OK on scope.
+**Status:** ✅ Approved 2026-11-02 by the owner. Starts after Sprint 50 closes.
 **Milestone:** Vision Sprint 51 (created by the owner once the scope is
 approved).
 **Goal:** In Remix Studio Pro mode an artist can fix the tempo and downbeat
@@ -22,7 +21,7 @@ version whose beat grid and cues land where they put them.
   S6f stem export and mashups depend on the export-rights work #1903 names (#891 E) and stay
   out.
 
-## Proposed scope and order
+## Approved scope and order
 
 | Order | Tier | Axis | Issue | Outcome |
 | --- | --- | --- | --- | --- |

@@ -1,7 +1,7 @@
 # Vision Sprint 50: Light while you use it, nothing left red
 
-**Status:** 📝 Proposed 2026-11-02. Waiting for the owner's OK on scope. The
-#2534 design call is made (isolate the loops first, fill only if needed).
+**Status:** ✅ Approved 2026-11-02 by the owner, with the #2534 design call
+(isolate the loops first, fill only if needed).
 **Milestone:** Vision Sprint 50 (created by the owner once the scope is
 approved).
 **Goal:** Using Home, the player and Shows no longer keeps a laptop's GPU near
@@ -29,14 +29,14 @@ them.
   types them by hand. An opt-in lookup closes that loop without writing to
   the files.
 
-## Proposed scope and order
+## Approved scope and order
 
 | Order | Tier | Axis | Issue | Outcome |
 | --- | --- | --- | --- | --- |
 | 1 | P0 | Known issue (CI) | [#2535](https://github.com/akoita/resonate/issues/2535) | Mutation testing green again: ContentProtection gets more interleaved shards (4 → 6) so each leg finishes well under the timeout. Verified by a manual `workflow_dispatch` run. Closes #2535 |
 | 2 | P0 | Usability / cost | [#2534](https://github.com/akoita/resonate/issues/2534) | GPU while interacting with Home, Player and Shows cut, measured before and after with `docs/engineering/idle-cost-harness.md`, with before and after screenshots. Approach per the owner's design call below |
-| 3 | P1 | Security | New issue: web `@x402/*` 2.29 | `web/` moves to `@x402/core` and `@x402/evm` 2.29.x (zod 4), on or after 2026-11-04. Validated on the payment path (x402 checkout unit tests, smart-account checkout e2e). Closes the last Dependabot alert |
-| 4 | P1 | Usability | New issue: look up album details | In Edit album, **Look up details** searches MusicBrainz by artist, album and track count, shows the best matches, and fills only empty fields (year, genre, label) after the owner picks one. Opt-in per album; sends only artist, album and track count; never writes to the files (#2533 decision) |
+| 3 | P1 | Security | [#2537](https://github.com/akoita/resonate/issues/2537) | `web/` moves to `@x402/core` and `@x402/evm` 2.29.x (zod 4), on or after 2026-11-04. Validated on the payment path (x402 checkout unit tests, smart-account checkout e2e). Closes the last Dependabot alert |
+| 4 | P1 | Usability | [#2538](https://github.com/akoita/resonate/issues/2538) | In Edit album, **Look up details** searches MusicBrainz by artist, album and track count, shows the best matches, and fills only empty fields (year, genre, label) after the owner picks one. Opt-in per album; sends only artist, album and track count; never writes to the files (#2533 decision) |
 
 ### #2534 design call (owner's choice, 2026-11-02)
 
@@ -76,6 +76,6 @@ them.
 
 ## Revenue line
 
-- **#2535, #2534, x402 web bump, album lookup:** vision-neutral
+- **#2535, #2534, #2537, #2538:** vision-neutral
   infrastructure and quality. No money moves, no fee or split change. The
   x402 bump keeps the existing on-chain artist path (ADR-BM-4) unchanged.
