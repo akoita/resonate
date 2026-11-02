@@ -26,6 +26,7 @@ import { CatalogArtistCard } from "../../components/catalog/CatalogArtistCard";
 import { CatalogPlaylistCard } from "../../components/catalog/CatalogPlaylistCard";
 import { CatalogReleaseCard } from "../../components/catalog/CatalogReleaseCard";
 import { CatalogStemTrackRow } from "../../components/catalog/CatalogStemTrackRow";
+import { FeatureTip } from "../../components/ui/FeatureTip";
 import { useCatalogReleaseActions } from "../../components/catalog/useCatalogReleaseActions";
 
 type CatalogView = "releases" | "artists" | "stems" | "playlists";
@@ -49,6 +50,7 @@ function GlobalCatalogPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const catalogPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,8 +245,17 @@ function GlobalCatalogPageContent() {
               </div>
             )}
 
+            <FeatureTip
+              tipId="queue-from-cards"
+              anchorRef={catalogPanelRef}
+              eligible={
+                !loading && !error && view !== "stems" &&
+                (view === "releases" ? filteredReleases.length : view === "artists" ? filteredArtists.length : filteredPlaylists.length) > 0
+              }
+            />
             {!error && (
               <div
+                ref={catalogPanelRef}
                 role="tabpanel"
                 id={`catalog-panel-${view}`}
                 aria-labelledby={`catalog-tab-${view}`}
