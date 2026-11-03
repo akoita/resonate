@@ -441,4 +441,16 @@ describe("RemixDraftsPanel — delete previous versions (#1910)", () => {
     find(element)?.();
     expect(onRequestDeleteVersion).toHaveBeenCalledWith(JOB_V1);
   });
+
+  it("offers Export stems with Pro and says why it is locked (#2550)", () => {
+    expect(render()).not.toContain("Export stems");
+    const stems = { enabled: true, reason: null, busy: false, onClick: vi.fn(), onLockedClick: vi.fn() };
+    const open = render({ stemsExport: stems });
+    expect(buttonTag(open, "remix-action-export-stems")).not.toContain("aria-disabled");
+    const locked = render({
+      stemsExport: { ...stems, enabled: false, reason: "This draft has no stems." },
+    });
+    expect(buttonTag(locked, "remix-action-export-stems")).toContain('aria-disabled="true"');
+    expect(locked).toContain("This draft has no stems.");
+  });
 });

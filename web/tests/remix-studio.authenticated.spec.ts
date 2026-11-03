@@ -812,6 +812,88 @@ test.describe("Remix Studio session view (#1879)", () => {
     expect(pageErrors).toEqual([]);
   });
 
+  test("pro mode: also render stems and export them as a zip (#2550)", async ({
+    authenticatedPage: page,
+  }) => {
+    await mockRemixApi(page, {
+      project: {
+        generationJobId: "job-stems",
+        generationMetadata: {
+          status: "completed",
+          mode: "stem_mix",
+          grounding: "stem_audio",
+          renderStems: true,
+          output: { outputUri: "local://draft.mp3", mimeType: "audio/mpeg" },
+          completedAt: new Date().toISOString(),
+          stems: {
+            schemaVersion: "resonate-stems/v1",
+            files: [
+              { name: "01-vocals.flac", kind: "stem", label: "Vocals", bytes: 4 },
+              { name: "02-drums.flac", kind: "stem", label: "Drums", bytes: 4 },
+            ],
+          },
+        },
+        stemsExport: { available: true, reason: null },
+      },
+    });
+    // The export right (a commercial license) for this test.
+    await page.route("**/remix/eligibility**", (route) =>
+      route.fulfill({
+        json: {
+          allowed: true,
+          requiredLicense: "commercial",
+          allowedActions: ["draft", "publish_resonate", "export"],
+          reasons: [],
+          policyVersion: "2026-07-03.v6",
+          stems: [],
+        },
+      }),
+    );
+    const generates: unknown[] = [];
+    await page.route(`**/remix/projects/${PROJECT_ID}/generate`, async (route) => {
+      generates.push(route.request().postDataJSON());
+      await route.fulfill({ status: 503, json: { message: "Rendering is paused in this test." } });
+    });
+    const exports: unknown[] = [];
+    await page.route(`**/remix/projects/${PROJECT_ID}/export`, async (route) => {
+      exports.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/zip",
+        headers: {
+          "Content-Disposition": 'attachment; filename="Night-Drive-Stems.zip"',
+          "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+        body: Buffer.from("PK"),
+      });
+    });
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    const option = page.getByRole("checkbox", { name: /^Also render stems/ });
+    await expect(option).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Export stems/ })).toHaveCount(0);
+    await page.getByRole("switch", { name: /^Pro/ }).click();
+
+    // The option starts as the last render asked for, and travels with Render.
+    await expect(option).toBeChecked();
+    await page.getByRole("button", { name: /render mix/i }).click();
+    await expect.poll(() => generates.at(-1), { timeout: 10_000 }).toMatchObject({ renderStems: true });
+    await option.uncheck();
+    await page.getByRole("button", { name: /render mix/i }).click();
+    await expect.poll(() => generates.length, { timeout: 10_000 }).toBe(2);
+    expect(generates[1]).not.toHaveProperty("renderStems");
+
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export stems" }).click();
+    expect((await download).suggestedFilename()).toBe("Night-Drive-Stems.zip");
+    expect(exports).toEqual([{ variant: "stems" }]);
+    expect(pageErrors).toEqual([]);
+  });
+
   test("studio polish: listening volume, reset to original, delete a draft version (#1910)", async ({
     authenticatedPage: page,
   }) => {

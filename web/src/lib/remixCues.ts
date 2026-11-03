@@ -5,7 +5,7 @@
  * and `remix-cues-v1.parity.json` pins both engines to the same downbeats
  * and loop spans. The DJ extended export itself is made by the server.
  */
-import type { RemixCueLoop, RemixCues, RemixDjExportReason } from "./api";
+import type { RemixCueLoop, RemixCues, RemixDjExportReason, RemixStemsExportReason } from "./api";
 import { beatBarPhase, type RemixBeatGrid, type RemixBeatSegment } from "./remixBeat";
 
 export const REMIX_CUES_SCHEMA_VERSION = "remix-cues/v1" as const;
@@ -152,6 +152,27 @@ export function djExportReasonText(reason: RemixDjExportReason | null | undefine
       return "This draft has no beat grid yet. Render the mix again to export a DJ version.";
     case "cues_outside_draft":
       return "The loops don't fit this draft. Render the mix again after changing the arrangement.";
+    default:
+      return null;
+  }
+}
+
+/** Why the stems can't be exported, in plain words (#2550). */
+export function stemsExportReasonText(
+  reason: RemixStemsExportReason | null | undefined,
+  skipped?: "pro_required" | "export_not_allowed" | null,
+): string | null {
+  if (reason === "no_stems" && skipped === "export_not_allowed") {
+    return "The stems weren't rendered: they need a commercial license on the source stems.";
+  }
+  if (reason === "no_stems" && skipped === "pro_required") {
+    return "The stems weren't rendered: Pro wasn't available for this account.";
+  }
+  switch (reason) {
+    case "no_draft":
+      return "Render the mix first, with Also render stems on.";
+    case "no_stems":
+      return "This draft has no stems. Turn on Also render stems and render the mix again.";
     default:
       return null;
   }

@@ -965,4 +965,11 @@ describe("RemixCreatePanel — Tempo & key (#1898)", () => {
       /aria-pressed="true"[^>]*remix-vibe-none/,
     );
   });
+
+  it("shows Also render stems on the mix side only when offered (#2550)", () => {
+    expect(render()).not.toContain("Also render stems");
+    const html = render({ renderStems: { checked: true, onChange: noop } });
+    expect(html).toContain("Also render stems");
+    expect(html).toMatch(/<input type="checkbox"[^>]*checked=""/);
+  });
 });

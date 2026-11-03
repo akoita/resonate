@@ -80,6 +80,10 @@ export const EXPERIMENTAL_AI_LABEL = "Experimental: change the whole track";
 export const EXPERIMENTAL_AI_NOTE =
   "These re-generate the whole song with AI in one go. They take longer, cost more and are harder to steer than adding a part.";
 
+/** Under "Also render stems" (#2550). */
+export const RENDER_STEMS_NOTE =
+  "Each layer as its own 24-bit FLAC file, before the master, for a DAW or a DJ set. Download them with Export stems; that needs a commercial license on the source stems.";
+
 export type RemixCreatePrimaryAction = {
   label: string;
   enabled: boolean;
@@ -140,6 +144,11 @@ export type RemixCreatePanelProps = {
   beatAvailable?: boolean;
   onBeatChange?(beat: RemixBeatRecipe | null): void;
   primary: RemixCreatePrimaryAction;
+  /**
+   * "Also render stems" (#2550, Pro, Mix stems only): shown above Render
+   * mix on the mix side; absent = hidden.
+   */
+  renderStems?: { checked: boolean; onChange(checked: boolean): void };
   creditMeter: ReactNode;
   attribution: ReactNode;
   /** Published remix: everything is read-only. */
@@ -1174,6 +1183,7 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
     beatAvailable,
     onBeatChange,
     primary,
+    renderStems,
     creditMeter,
     attribution,
     locked,
@@ -1472,6 +1482,23 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
             <p className="mt-5 text-xs text-zinc-400 remix-create-parts-render-note">
               {PARTS_RENDER_NOTE}
             </p>
+          )}
+          {renderStems && !ai && (
+            <label className="mt-5 flex items-start gap-2 text-sm text-zinc-300 remix-render-stems">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={renderStems.checked}
+                disabled={locked}
+                onChange={(event) => renderStems.onChange(event.target.checked)}
+              />
+              <span>
+                Also render stems
+                <span className="block text-xs text-zinc-500">
+                  {RENDER_STEMS_NOTE}
+                </span>
+              </span>
+            </label>
           )}
           <PrimaryButton
             primary={primary}
