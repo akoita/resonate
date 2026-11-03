@@ -10,9 +10,22 @@
  * applies it in S6f-3b (#2559); see docs/rfc/remix-mashups.md.
  */
 import { REMIX_FX_SEMITONES_MAX, REMIX_FX_SEMITONES_MIN } from "./remix-fx";
-import { GRID_OVERRIDE_MAX_FIRST_BEAT_SEC } from "./remix-arrangement";
+import {
+  GRID_OVERRIDE_MAX_FIRST_BEAT_SEC,
+  type SectionGrid,
+} from "./remix-arrangement";
+import { timelineDownbeats } from "./remix-cues";
+import { structureTimeline } from "./remix-structure";
 
 export const REMIX_MASHUP_SCHEMA_VERSION = "remix-mashup/v1" as const;
+/**
+ * How the render and the preview conform B (#2559): each B stem is
+ * stretched by B's ratio and key (the pinned Signalsmith engine), shifted
+ * by whole samples onto A's bar and cut at A's end, in A's source time;
+ * the master's tempo and key then apply to it like any stem. Changing any
+ * of it changes every mashup render, so it needs a new version.
+ */
+export const REMIX_MASHUP_DSP_VERSION = "remix-mashup-dsp/v1" as const;
 
 /**
  * Stretch range for B (owner decision D5): beyond about ±4 semitones' worth
@@ -148,4 +161,99 @@ export function mashupChanged(
   stored: RemixMashup | null,
 ): boolean {
   return next !== null && JSON.stringify(next) !== JSON.stringify(stored);
+}
+
+/**
+ * How one of B's stems is conformed to A's source time (#2559): stretched by
+ * `tempo` with its key moved `semitones`, then shifted by `shiftSec` (a
+ * positive shift delays it, a negative one trims its start) and cut at
+ * `endSec`, A's length. All in A's source time, before the master stretch.
+ */
+export type MashupConform = {
+  tempo: number;
+  semitones: number;
+  shiftSec: number;
+  endSec: number | null;
+};
+
+export type MashupConformSkip =
+  | "no_lead_grid"
+  | "offset_past_end";
+
+/**
+ * The conform plan for B (#2559), or why the render plays B as it is:
+ * A needs a bar grid, and B's bar 1 must land on one of A's downbeats.
+ * B's first downbeat is the recipe's correction, else its measured one,
+ * else 0. A's downbeats are the unstructured timeline's, the same bars the
+ * studio, the cues and the beat count.
+ */
+export function mashupConformPlan(input: {
+  leadGrid: SectionGrid | null;
+  secondaryStems: Array<{ audioFeatures?: unknown }>;
+  mashup: RemixMashup;
+}): { conform: MashupConform } | { skipped: MashupConformSkip } {
+  const { leadGrid, mashup } = input;
+  if (!leadGrid || leadGrid.kind !== "bars" || !leadGrid.bpm) {
+    return { skipped: "no_lead_grid" };
+  }
+  const downbeats = timelineDownbeats(
+    leadGrid,
+    structureTimeline(leadGrid, null),
+  );
+  const target = downbeats[mashup.secondary.offsetBars];
+  if (target === undefined) return { skipped: "offset_past_end" };
+  const secondaryFirstBeat =
+    mashup.secondary.firstBeatSec ??
+    measuredTempo(input.secondaryStems).firstBeatSec ??
+    0;
+  const { tempoRatio, semitones } = mashup.secondary;
+  return {
+    conform: {
+      tempo: tempoRatio,
+      semitones,
+      shiftSec: round9(target - secondaryFirstBeat / tempoRatio),
+      endSec: leadGrid.durationSeconds,
+    },
+  };
+}
+
+/**
+ * A source's measured tempo and first downbeat (#2559): the stem with the
+ * most confident measured tempo, as the section grid picks it.
+ */
+export function measuredTempo(stems: Array<{ audioFeatures?: unknown }>): {
+  bpm: number | null;
+  firstBeatSec: number | null;
+} {
+  let best: { bpm: number; firstBeatSec: number | null; confidence: number } | null =
+    null;
+  for (const stem of stems) {
+    const features = stem.audioFeatures as Record<string, unknown> | null | undefined;
+    if (!features || typeof features !== "object") continue;
+    const bpm = features.tempoBpm;
+    if (typeof bpm !== "number" || !Number.isFinite(bpm) || bpm < 30 || bpm > 300) {
+      continue;
+    }
+    const confidence =
+      typeof features.tempoConfidence === "number" &&
+      Number.isFinite(features.tempoConfidence)
+        ? features.tempoConfidence
+        : 0;
+    const first = features.firstBeatSec;
+    if (!best || confidence > best.confidence) {
+      best = {
+        bpm,
+        firstBeatSec:
+          typeof first === "number" && Number.isFinite(first) && first >= 0
+            ? first
+            : null,
+        confidence,
+      };
+    }
+  }
+  return { bpm: best?.bpm ?? null, firstBeatSec: best?.firstBeatSec ?? null };
+}
+
+function round9(value: number): number {
+  return Math.round(value * 1e9) / 1e9;
 }

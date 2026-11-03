@@ -85,6 +85,8 @@ import {
 import { StoredZipWriter, storeZip } from "../shared/store_zip";
 import {
   mashupChanged,
+  mashupConformPlan,
+  REMIX_MASHUP_DSP_VERSION,
   normalizeRemixMashupInput,
   parseRemixMashup,
   RemixMashupValidationError,
@@ -2088,6 +2090,30 @@ export class RemixProjectService {
                 structureTimeline(sectionGrid, null),
             )
           : [];
+      // Mashups (#2559): B's stems are conformed to A's bars when the
+      // project has a recipe; without one (or without a bar grid on A) B
+      // plays as it is, and the render records why.
+      const projectMashup = project.secondarySourceTrackId
+        ? parseRemixMashup(project.mashup)
+        : null;
+      const mashupPlan = projectMashup
+        ? mashupConformPlan({
+            leadGrid: sectionGrid,
+            secondaryStems: project.stems
+              .filter(
+                (stem) => stem.stem.trackId === project.secondarySourceTrackId,
+              )
+              .map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
+            mashup: projectMashup,
+          })
+        : null;
+      const mashupConform =
+        mashupPlan && "conform" in mashupPlan ? mashupPlan.conform : null;
+      if (mashupPlan && "skipped" in mashupPlan) {
+        this.logger.warn(
+          `Remix project ${project.id}: second source not conformed (${mashupPlan.skipped})`,
+        );
+      }
       const liveStemArrangement = project.stems.map((stem) => {
         const mask = sectionGrid
           ? renderStructure
@@ -2111,6 +2137,10 @@ export class RemixProjectService {
           muted: stem.muted,
           ...(mask !== null ? { activeIntervals: mask } : {}),
           ...(automation ? { automation } : {}),
+          ...(mashupConform &&
+          stem.stem.trackId === project.secondarySourceTrackId
+            ? { conform: mashupConform }
+            : {}),
         };
       });
       // Shared effects recipe (#1897), read live at process time like the
@@ -2248,10 +2278,19 @@ export class RemixProjectService {
         } else {
           renderStemsInput = {
             stemLabels: Object.fromEntries(
-              project.stems.map((stem) => [
-                stem.stemId,
-                stem.stem.title?.trim() || stem.stem.type?.trim() || "Stem",
-              ]),
+              project.stems.map((stem) => {
+                const label =
+                  stem.stem.title?.trim() || stem.stem.type?.trim() || "Stem";
+                // Mashups (#2559): B's stems say which track they are from.
+                const fromSecondary =
+                  project.secondarySourceTrackId &&
+                  stem.stem.trackId === project.secondarySourceTrackId;
+                const trackTitle = project.secondarySourceTrack?.title?.trim();
+                return [
+                  stem.stemId,
+                  fromSecondary && trackTitle ? `${trackTitle} ${label}` : label,
+                ];
+              }),
             ),
           };
         }
@@ -2357,7 +2396,22 @@ export class RemixProjectService {
           ? { sourceArrangement: providerJob.sourceArrangement }
           : {}),
         ...(providerJob.renderMetadata
-          ? { renderMetadata: providerJob.renderMetadata }
+          ? {
+              renderMetadata: {
+                ...providerJob.renderMetadata,
+                // Mashups (#2559): the recipe and how B was placed, or why
+                // it was not.
+                ...(mashupPlan && projectMashup
+                  ? {
+                      mashup: projectMashup,
+                      mashupDspVersion: REMIX_MASHUP_DSP_VERSION,
+                      ...("conform" in mashupPlan
+                        ? { mashupConform: mashupPlan.conform }
+                        : { mashupSkipped: mashupPlan.skipped }),
+                    }
+                  : {}),
+              },
+            }
           : {}),
         ...(providerJob.conditioningEffects
           ? { conditioningEffects: providerJob.conditioningEffects }
@@ -3677,7 +3731,17 @@ export class RemixProjectService {
         ? {
             secondarySourceTrackId: project.secondarySourceTrackId,
             sources,
-            ...(project.mashup ? { mashup: parseRemixMashup(project.mashup) } : {}),
+            // #2559: what the published draft's render did with B (from
+            // its render metadata, not the live project).
+            ...(renderMetadataRecord.mashup
+              ? {
+                  mashup: renderMetadataRecord.mashup,
+                  mashupDspVersion: renderMetadataRecord.mashupDspVersion,
+                  ...(renderMetadataRecord.mashupConform
+                    ? { mashupConform: renderMetadataRecord.mashupConform }
+                    : { mashupSkipped: renderMetadataRecord.mashupSkipped }),
+                }
+              : {}),
           }
         : {}),
       attribution,
@@ -4084,6 +4148,14 @@ export class RemixProjectService {
           remixProjectId: project.id,
           sourceTrackId: project.sourceTrackId,
           sourceReleaseId: project.sourceTrack.release.id ?? null,
+          // Mashups (#2559): the second source, when there is one.
+          ...(project.secondarySourceTrackId
+            ? {
+                secondarySourceTrackId: project.secondarySourceTrackId,
+                secondarySourceReleaseId:
+                  project.secondarySourceTrack?.release.id ?? null,
+              }
+            : {}),
           generationJobId: project.generationJobId,
           policyVersion: eligibility.policyVersion,
         },

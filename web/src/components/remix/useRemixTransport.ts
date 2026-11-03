@@ -1,5 +1,6 @@
 "use client";
 
+import type { MashupConform } from "../../lib/remixMashup";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchRemixPartTakeAudio,
@@ -72,6 +73,11 @@ export type RemixTransportInput = {
    * muted full-mix reference is left out: it never plays in the arrangement.
    */
   stretchStemIds?: string[];
+  /**
+   * Mashups (#2559): how each second-source stem is conformed to the lead
+   * source (by stem id; absent = played as it is). See `mashupConformPlan`.
+   */
+  conforms?: Record<string, MashupConform> | null;
   /** Bar-grid tempo (bars grids only) for tempo-synced echo. */
   bpm?: number | null;
   /**
@@ -1207,6 +1213,28 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     [draftPeaks, input.currentDraftJobId],
   );
 
+  // Mashups (#2559): hand the conforms to the engine before preloading, so
+  // B's buffers (and waveforms) are the conformed ones. A changed conform
+  // drops that stem's buffers; its waveform is recomputed.
+  const conformsKey = JSON.stringify(
+    Object.entries(input.conforms ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+  );
+  const appliedConformsRef = useRef<string>("[]");
+  useEffect(() => {
+    const entries = JSON.parse(conformsKey) as Array<[string, MashupConform]>;
+    const previous = new Map(
+      (JSON.parse(appliedConformsRef.current) as Array<[string, MashupConform]>).map(
+        ([stemId, conform]) => [stemId, JSON.stringify(conform)],
+      ),
+    );
+    const next = new Map(entries.map(([stemId, conform]) => [stemId, JSON.stringify(conform)]));
+    for (const stemId of new Set([...previous.keys(), ...next.keys()])) {
+      if (previous.get(stemId) !== next.get(stemId)) peaksDoneRef.current.delete(stemId);
+    }
+    appliedConformsRef.current = conformsKey;
+    engine().setConforms(Object.fromEntries(entries));
+  }, [conformsKey, engine]);
+
   // Preload every project stem: waveforms fill in as they decode and the
   // first play starts without a download.
   const stemIdsKey = useMemo(
@@ -1233,7 +1261,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     return () => {
       cancelled = true;
     };
-  }, [engine, stemIdsKey]);
+  }, [conformsKey, engine, stemIdsKey]);
 
   // Tempo/key (#1898): stretch the arrangement's stems for the edited
   // recipe's plan (debounced for slider drags), including stems added later.
@@ -1336,6 +1364,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       .map((part) => [part.takeId, part.role]),
   );
 
+  const preparedConformsRef = useRef(conformsKey);
   useEffect(() => {
     const parts: PreviewStretchPart[] = previewPartsFor(
       inputRef.current.parts,
@@ -1346,7 +1375,13 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       stretchIdsKey ? stretchIdsKey.split("\n") : [],
       parts,
     );
-  }, [preparer, stretchIdsKey, stretchPlanKey, stretchPartsKey]);
+    // Mashups (#2559): a changed conform dropped B's stretched buffers, so
+    // the same plan is prepared again.
+    if (preparedConformsRef.current !== conformsKey) {
+      preparedConformsRef.current = conformsKey;
+      preparer().retry();
+    }
+  }, [conformsKey, preparer, stretchIdsKey, stretchPlanKey, stretchPartsKey]);
   const retryStretch = useCallback(() => preparer().retry(), [preparer]);
 
   // Live mixer edits while the engine plays: gains (and the arrangement ↔

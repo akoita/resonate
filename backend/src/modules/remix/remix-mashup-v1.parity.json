@@ -1,0 +1,515 @@
+{
+  "schemaVersion": "remix-mashup/v1",
+  "dspVersion": "remix-mashup-dsp/v1",
+  "note": "Conform plans for B (#2559), pinned for the backend (remix-mashup.ts) and the studio (web/src/lib/remixMashup.ts). leadGrid is deriveSectionGrid(leadStems, leadOverride).",
+  "cases": [
+    {
+      "name": "B slower, on bar 2",
+      "leadGrid": {
+        "kind": "bars",
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 16
+          },
+          {
+            "startSec": 16,
+            "endSec": 32
+          },
+          {
+            "startSec": 32,
+            "endSec": 48
+          },
+          {
+            "startSec": 48,
+            "endSec": 64
+          }
+        ],
+        "sectionSeconds": 16,
+        "durationSeconds": 64,
+        "bpm": 120,
+        "firstBeatSec": 0,
+        "overridden": false,
+        "measured": {
+          "bpm": 120,
+          "firstBeatSec": 0
+        }
+      },
+      "secondaryStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 100,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0.3,
+            "durationSeconds": 90
+          }
+        }
+      ],
+      "mashup": {
+        "schemaVersion": "remix-mashup/v1",
+        "secondary": {
+          "tempoRatio": 1.2,
+          "semitones": -2,
+          "offsetBars": 2
+        }
+      },
+      "leadStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 120,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0,
+            "durationSeconds": 64
+          }
+        }
+      ],
+      "leadOverride": null,
+      "expected": {
+        "conform": {
+          "tempo": 1.2,
+          "semitones": -2,
+          "shiftSec": 3.75,
+          "endSec": 64
+        }
+      }
+    },
+    {
+      "name": "lead pickup, B corrected downbeat later than its shift",
+      "leadGrid": {
+        "kind": "bars",
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 15.47
+          },
+          {
+            "startSec": 15.47,
+            "endSec": 30.47
+          },
+          {
+            "startSec": 30.47,
+            "endSec": 45.47
+          },
+          {
+            "startSec": 45.47,
+            "endSec": 60.47
+          },
+          {
+            "startSec": 60.47,
+            "endSec": 75.47
+          },
+          {
+            "startSec": 75.47,
+            "endSec": 90.47
+          },
+          {
+            "startSec": 90.47,
+            "endSec": 105.47
+          },
+          {
+            "startSec": 105.47,
+            "endSec": 120.47
+          },
+          {
+            "startSec": 120.47,
+            "endSec": 135.47
+          },
+          {
+            "startSec": 135.47,
+            "endSec": 150.47
+          },
+          {
+            "startSec": 150.47,
+            "endSec": 165.47
+          },
+          {
+            "startSec": 165.47,
+            "endSec": 180.47
+          },
+          {
+            "startSec": 180.47,
+            "endSec": 195.47
+          },
+          {
+            "startSec": 195.47,
+            "endSec": 200
+          }
+        ],
+        "sectionSeconds": 15,
+        "durationSeconds": 200,
+        "bpm": 128,
+        "firstBeatSec": 0.47,
+        "overridden": false,
+        "measured": {
+          "bpm": 128,
+          "firstBeatSec": 0.47
+        }
+      },
+      "secondaryStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 124,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 1.1,
+            "durationSeconds": 180
+          }
+        }
+      ],
+      "mashup": {
+        "schemaVersion": "remix-mashup/v1",
+        "secondary": {
+          "tempoRatio": 1.032258,
+          "semitones": 3,
+          "offsetBars": 0,
+          "firstBeatSec": 6.25
+        }
+      },
+      "leadStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 128,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0.47,
+            "durationSeconds": 200
+          }
+        }
+      ],
+      "leadOverride": null,
+      "expected": {
+        "conform": {
+          "tempo": 1.032258,
+          "semitones": 3,
+          "shiftSec": -5.584687878,
+          "endSec": 200
+        }
+      }
+    },
+    {
+      "name": "B faster, most confident B stem wins",
+      "leadGrid": {
+        "kind": "bars",
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 21.533333
+          },
+          {
+            "startSec": 21.533333,
+            "endSec": 42.866667
+          },
+          {
+            "startSec": 42.866667,
+            "endSec": 64.2
+          },
+          {
+            "startSec": 64.2,
+            "endSec": 85.533333
+          },
+          {
+            "startSec": 85.533333,
+            "endSec": 106.866667
+          },
+          {
+            "startSec": 106.866667,
+            "endSec": 128.2
+          },
+          {
+            "startSec": 128.2,
+            "endSec": 150
+          }
+        ],
+        "sectionSeconds": 21.333333,
+        "durationSeconds": 150,
+        "bpm": 90,
+        "firstBeatSec": 0.2,
+        "overridden": false,
+        "measured": {
+          "bpm": 90,
+          "firstBeatSec": 0.2
+        }
+      },
+      "secondaryStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 115,
+            "tempoConfidence": 0.3,
+            "firstBeatSec": 0.9,
+            "durationSeconds": 150
+          }
+        },
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 112,
+            "tempoConfidence": 0.95,
+            "firstBeatSec": 0.05,
+            "durationSeconds": 150
+          }
+        }
+      ],
+      "mashup": {
+        "schemaVersion": "remix-mashup/v1",
+        "secondary": {
+          "tempoRatio": 0.803571,
+          "semitones": 0,
+          "offsetBars": 8
+        }
+      },
+      "leadStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 90,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0.2,
+            "durationSeconds": 150
+          }
+        }
+      ],
+      "leadOverride": null,
+      "expected": {
+        "conform": {
+          "tempo": 0.803571,
+          "semitones": 0,
+          "shiftSec": 21.471110745,
+          "endSec": 150
+        }
+      }
+    },
+    {
+      "name": "lead grid override",
+      "leadGrid": {
+        "kind": "bars",
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 19.32
+          },
+          {
+            "startSec": 19.32,
+            "endSec": 38.52
+          },
+          {
+            "startSec": 38.52,
+            "endSec": 57.72
+          },
+          {
+            "startSec": 57.72,
+            "endSec": 76.92
+          },
+          {
+            "startSec": 76.92,
+            "endSec": 96.12
+          },
+          {
+            "startSec": 96.12,
+            "endSec": 120
+          }
+        ],
+        "sectionSeconds": 19.2,
+        "durationSeconds": 120,
+        "bpm": 100,
+        "firstBeatSec": 0.12,
+        "overridden": true,
+        "measured": {
+          "bpm": 97,
+          "firstBeatSec": 0.3
+        }
+      },
+      "secondaryStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 100,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0,
+            "durationSeconds": 120
+          }
+        }
+      ],
+      "mashup": {
+        "schemaVersion": "remix-mashup/v1",
+        "secondary": {
+          "tempoRatio": 1,
+          "semitones": -5,
+          "offsetBars": 4
+        }
+      },
+      "leadStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 97,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0.3,
+            "durationSeconds": 120
+          }
+        }
+      ],
+      "leadOverride": {
+        "schemaVersion": "remix-grid-override/v1",
+        "tempoBpm": 100,
+        "firstBeatSec": 0.12
+      },
+      "expected": {
+        "conform": {
+          "tempo": 1,
+          "semitones": -5,
+          "shiftSec": 9.72,
+          "endSec": 120
+        }
+      }
+    },
+    {
+      "name": "no bar grid on A",
+      "leadGrid": {
+        "kind": "time",
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 16
+          },
+          {
+            "startSec": 16,
+            "endSec": 32
+          },
+          {
+            "startSec": 32,
+            "endSec": 48
+          },
+          {
+            "startSec": 48,
+            "endSec": 64
+          },
+          {
+            "startSec": 64,
+            "endSec": 80
+          },
+          {
+            "startSec": 80,
+            "endSec": 96
+          },
+          {
+            "startSec": 96,
+            "endSec": 112
+          },
+          {
+            "startSec": 112,
+            "endSec": 120
+          }
+        ],
+        "sectionSeconds": 16,
+        "durationSeconds": 120,
+        "bpm": null,
+        "firstBeatSec": null,
+        "overridden": false,
+        "measured": {
+          "bpm": null,
+          "firstBeatSec": null
+        }
+      },
+      "secondaryStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 100,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0,
+            "durationSeconds": 120
+          }
+        }
+      ],
+      "mashup": {
+        "schemaVersion": "remix-mashup/v1",
+        "secondary": {
+          "tempoRatio": 1.1,
+          "semitones": 0,
+          "offsetBars": 0
+        }
+      },
+      "leadStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": null,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": null,
+            "durationSeconds": 120
+          }
+        }
+      ],
+      "leadOverride": null,
+      "expected": {
+        "skipped": "no_lead_grid"
+      }
+    },
+    {
+      "name": "offset past A's end",
+      "leadGrid": {
+        "kind": "bars",
+        "sections": [
+          {
+            "startSec": 0,
+            "endSec": 16
+          },
+          {
+            "startSec": 16,
+            "endSec": 32
+          },
+          {
+            "startSec": 32,
+            "endSec": 40
+          }
+        ],
+        "sectionSeconds": 16,
+        "durationSeconds": 40,
+        "bpm": 120,
+        "firstBeatSec": 0,
+        "overridden": false,
+        "measured": {
+          "bpm": 120,
+          "firstBeatSec": 0
+        }
+      },
+      "secondaryStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 100,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0,
+            "durationSeconds": 40
+          }
+        }
+      ],
+      "mashup": {
+        "schemaVersion": "remix-mashup/v1",
+        "secondary": {
+          "tempoRatio": 1.2,
+          "semitones": 0,
+          "offsetBars": 30
+        }
+      },
+      "leadStems": [
+        {
+          "audioFeatures": {
+            "schemaVersion": "stem-audio-features/v1",
+            "tempoBpm": 120,
+            "tempoConfidence": 0.9,
+            "firstBeatSec": 0,
+            "durationSeconds": 40
+          }
+        }
+      ],
+      "leadOverride": null,
+      "expected": {
+        "skipped": "offset_past_end"
+      }
+    }
+  ]
+}

@@ -2103,6 +2103,42 @@ function stretchSetup() {
   return { engine, contexts, ...stretch };
 }
 
+describe("mashup conforms (#2559)", () => {
+  const conform = { tempo: 1.2, semitones: -2, shiftSec: 0.5, endSec: 50 };
+
+  it("stretches a second-source stem by its ratio and key, then shifts and cuts it", async () => {
+    const { engine, runs } = stretchSetup();
+    engine.setConforms({ drums: conform });
+    const loaded = engine.preload(["drums", "vocals"]);
+    await tick();
+    // Only B's stem is conformed; A's decodes as it is.
+    expect(runs.map((run) => run.job)).toMatchObject([
+      { tempo: 1.2, semitones: -2, sampleRate: 100 },
+    ]);
+    // 60 s at 100 Hz stretched by 1.2 is 50 s; +0.5 s shift, cut at 50 s.
+    runs[0].resolve([new Float32Array(5000), new Float32Array(5000)]);
+    await loaded;
+    expect(engine.bufferDuration(["drums"])).toBe(50);
+    expect(engine.bufferDuration(["vocals"])).toBe(60);
+  });
+
+  it("a changed or removed conform drops the stem's buffer", async () => {
+    const { engine, runs } = stretchSetup();
+    engine.setConforms({ drums: conform });
+    const loaded = engine.preload(["drums"]);
+    await tick();
+    runs[0].resolve([new Float32Array(5000), new Float32Array(5000)]);
+    await loaded;
+    // The same conform keeps it.
+    engine.setConforms({ drums: { ...conform } });
+    expect(engine.bufferDuration(["drums"])).toBe(50);
+    engine.setConforms({});
+    await engine.preload(["drums"]);
+    expect(runs).toHaveLength(1);
+    expect(engine.bufferDuration(["drums"])).toBe(60);
+  });
+});
+
 describe("stretched-buffer store (#1898)", () => {
   const plan = { tempo: 0.85, semitones: 2 };
   const ids = ["vocals", "drums"];

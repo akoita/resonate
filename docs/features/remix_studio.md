@@ -1287,6 +1287,56 @@ from the JWT, never the request body.
     - B's revoked consent or quarantine blocking a render
     - the recipe range and Pro gate
     - removing B
+- Pro mode, S6f-3b (#2559, part of #1903, Sprint 53): mashups render and
+  preview conform. **Partial**: the studio controls are #2560.
+  - **Plan.** `mashupConformPlan` (backend `remix-mashup.ts`, web
+    `remixMashup.ts`, both pinned by `remix-mashup-v1.parity.json`) puts B's
+    first downbeat on A's bar `offsetBars`. The bar comes from A's downbeats
+    on the unstructured timeline, the same bars the cues and the beat use.
+    B's first downbeat is the recipe's `firstBeatSec`, else its most
+    confident measured one, else 0. The result is `{ tempo, semitones,
+    shiftSec, endSec }` in A's source time (`endSec` is A's length). It is
+    skipped, with B played as it is, when A has no bar grid
+    (`no_lead_grid`) or the offset is past A's last bar
+    (`offset_past_end`).
+  - **Render (`remix-mashup-dsp/v1`).** The worker gives each B stem its
+    `conform`. The mixer runs these steps before the master stage:
+    - stretches the stem by B's ratio and key (the pinned Signalsmith
+      engine)
+    - delays it (`adelay` in samples) or trims it (`atrim`), in whole
+      samples at 48 kHz
+    - cuts it at A's end
+
+    From there B is an A-time stem. The master's tempo and key, structure,
+    gates, automation and stem taps all apply unchanged. `renderMetadata`
+    records `mashup`, `mashupDspVersion` and either `mashupConform` or
+    `mashupSkipped`. The publish lineage copies them from the render, not
+    from the live project.
+  - **Preview.** `useRemixTransport` takes `conforms` (by stem id) and
+    hands them to the engine (`setConforms`). The engine conforms B's
+    decoded buffer the same way (stretch pool, `shiftConformedChannels`),
+    so the preview's master stretch, structure and gates treat it like an
+    A stem. Changing a conform drops that stem's buffers and waveform.
+  - **Stem export.** B's stem files are labelled with B's track title.
+    The `resonate-stems/v1` manifest's lineage adds
+    `secondarySourceTrackId` and `secondarySourceReleaseId`.
+  - **CPU (D1 go/no-go): go.** In Node, on one 2.8 GHz Xeon core, the
+    pinned WASM (byte-identical to the browser's) stretches a 60 s stereo
+    48 kHz stem in 1.5–2.2 s (27–41× realtime, key shift included). A
+    3.5-minute B stem costs about 6–8 s once, in the preview's two-worker
+    pool, each time its conform changes. Playback costs what any added stem
+    costs (one more buffer source), because B is prepared ahead and never
+    processed per frame.
+  - **Tests.**
+    - `remix-mashup-render.spec.ts` covers the plan, the parity fixture,
+      the stage and shift args, and a real-ffmpeg check that B's beats land
+      on A's beats within 12 ms, with and without a master keep-pitch tempo,
+      and are cut at A's end.
+    - `remix-mashup.integration.spec.ts` checks that the worker hands B's
+      stems their conform and records it.
+    - `remixMashup.test.ts` replays the fixture and checks the shift.
+    - `remixAudioPreview.test.ts` covers the engine's conform and
+      invalidation.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

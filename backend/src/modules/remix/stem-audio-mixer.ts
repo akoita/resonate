@@ -256,6 +256,17 @@ export type StemMixFfmpegInput = {
    */
   automation?: TimedStemAutomation | null;
   /**
+   * Mashups (#2559): a second-source stem's conform to the leading source
+   * (B's tempo ratio and key, composed with the master stretch, then a
+   * shift and a cut). Source stems only; see {@link conformMixInputs}.
+   */
+  conform?: {
+    tempo: number;
+    semitones: number;
+    shiftSec: number;
+    endSec: number | null;
+  };
+  /**
    * The input file's channel count, probed only for a source stem with a Pro
    * pan (#1903): 1 inserts the explicit unity mono → stereo up-mix before
    * the pan. Absent = stereo.
@@ -1133,6 +1144,109 @@ export function mixInputStretchStage(
   return plan;
 }
 
+/**
+ * The conform stage of a second-source stem (#2559): B's own tempo ratio
+ * and key, or null when that is the identity (or the input is not B's).
+ * It runs before, and separately from, the master stage, exactly like the
+ * preview, so B then takes the master's tempo and key like any stem.
+ */
+export function mixInputConformStage(
+  input: StemMixFfmpegInput,
+): StretchStage | null {
+  if (!input.conform) return null;
+  const { tempo, semitones } = input.conform;
+  return tempo === 1 && semitones === 0 ? null : { tempo, semitones };
+}
+
+/**
+ * ffmpeg args placing a conformed second-source stem on the leading
+ * source's time (#2559): resampled to the render rate in stereo, delayed by
+ * a positive shift or trimmed by a negative one (whole samples), then cut
+ * at A's end, all in A's source time.
+ */
+export function buildConformShiftArgs(
+  inputPath: string,
+  outputPath: string,
+  shiftSec: number,
+  endSec: number | null,
+): string[] {
+  const rate = REMIX_STRETCH_SAMPLE_RATE;
+  const shiftSamples = Math.round(shiftSec * rate);
+  const filters = [
+    `aresample=${rate}`,
+    "aformat=sample_fmts=fltp:channel_layouts=stereo",
+  ];
+  if (shiftSamples > 0) {
+    filters.push(`adelay=delays=${shiftSamples}S:all=1`);
+  } else if (shiftSamples < 0) {
+    filters.push(`atrim=start_sample=${-shiftSamples}`, "asetpts=PTS-STARTPTS");
+  }
+  if (endSec !== null && endSec > 0) {
+    filters.push(`atrim=end_sample=${Math.round(endSec * rate)}`);
+  }
+  return [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-y",
+    "-i",
+    inputPath,
+    "-af",
+    filters.join(","),
+    "-c:a",
+    "pcm_s16le",
+    "-ar",
+    String(rate),
+    "-ac",
+    String(REMIX_STRETCH_CHANNELS),
+    outputPath,
+  ];
+}
+
+/**
+ * Mashups (#2559): every second-source stem is stretched by B's own ratio
+ * and key ({@link mixInputConformStage}), then shifted onto A's bars and
+ * cut at A's end, replacing its input file. The result is in A's source
+ * time, so the master stage and the graph treat it like any stem.
+ */
+export async function conformMixInputs(
+  inputs: StemMixFfmpegInput[],
+  workDir: string,
+  logError: (message: string) => void = () => undefined,
+): Promise<number> {
+  await stretchMixInputs(inputs, workDir, mixInputConformStage, logError);
+  let conformed = 0;
+  for (const [index, input] of inputs.entries()) {
+    if (!input.conform) continue;
+    const outputPath = join(workDir, `conform-${index}.wav`);
+    try {
+      await execFileAsync(
+        "ffmpeg",
+        buildConformShiftArgs(
+          input.path,
+          outputPath,
+          input.conform.shiftSec,
+          input.conform.endSec,
+        ),
+        { timeout: FFMPEG_TIMEOUT_MS },
+      );
+    } catch (error) {
+      logError(
+        `ffmpeg mashup conform failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new RemixGenerationProviderError(
+        "provider_unavailable",
+        "The second track could not be fitted to the first. Please try again later.",
+        true,
+      );
+    }
+    await rm(input.path, { force: true });
+    input.path = outputPath;
+    conformed += 1;
+  }
+  return conformed;
+}
+
 /** Run `task` over `items` with at most `limit` in flight; fail fast. */
 async function runPooled<T>(
   items: T[],
@@ -1458,6 +1572,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           activeIntervals: stem.activeIntervals ?? null,
           fxStemId: stem.stemId,
           ...(stem.automation ? { automation: stem.automation } : {}),
+          ...(stem.conform ? { conform: stem.conform } : {}),
         });
       }
       for (const input of additionalInputs) {
@@ -1477,6 +1592,19 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       const partsRecord = renderParts
         ? await this.addPartInputs(renderParts, ffmpegInputs, workDir, label)
         : undefined;
+      if (ffmpegInputs.some((input) => input.conform)) {
+        // Mashups (#2559): B's stems are first fitted to A's tempo, key and
+        // bars, so everything after treats them as A-time stems.
+        const conformStarted = Date.now();
+        const conformed = await conformMixInputs(
+          ffmpegInputs,
+          workDir,
+          (message) => this.logger.error(`${label}: ${message}`),
+        );
+        this.logger.log(
+          `[mix] ${label}: fitted ${conformed} second-source stems to the lead grid in ${Date.now() - conformStarted}ms`,
+        );
+      }
       const stretchPlan = fx ? remixFxStretchPlan(fx.effects) : null;
       if (stretchPlan) {
         // #1898: every source stem and AI layer is time-stretched / pitch-
