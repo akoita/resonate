@@ -1029,6 +1029,24 @@ const REMIX_TARGETS = [
     },
   },
   {
+    file: "remix-studio-automation.png",
+    project: REMIX_WITH_DRAFTS,
+    prepare: async (page) => {
+      await page.getByRole("switch", { name: /^Pro/ }).click();
+      const panel = page.getByRole("group", { name: "Automation lanes" });
+      await panel.getByRole("combobox", { name: "Automation stem" }).selectOption({ label: "Bass" });
+      await panel.getByRole("button", { name: "Add point at bar 1" }).click();
+      const bar = panel.getByRole("spinbutton", { name: "Point bar (now 1)" });
+      await bar.fill("5");
+      await bar.press("Enter");
+      await panel.getByRole("button", { name: "Add point at bar 1" }).click();
+      await panel.getByRole("slider", { name: "Level at bar 1" }).fill("-24");
+      await panel.getByRole("img", { name: "Level lane: 2 points" }).waitFor();
+      await panel.scrollIntoViewIfNeeded();
+      return { locator: panel };
+    },
+  },
+  {
     file: "remix-studio-drafts.png",
     project: REMIX_WITH_DRAFTS,
     prepare: async (page) => {

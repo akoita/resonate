@@ -1143,6 +1143,46 @@ from the JWT, never the request body.
     natively; a cue loop across blocks is looped by the transport, which
     restarts at the loop start (`engineLoopsNatively`). The User Guide's
     Pro section explains it.
+- Pro mode, S6e (#2541, part of #1903): automation lanes. **Partial** like
+  the rest of S6 (S6f stem export and mashups remains on #1903).
+  - **Money.** Vision-neutral infrastructure on the same seam as S6a:
+    setting lanes needs `remix.pro` (free for everyone, no price; ADR-BM-6
+    line (2) seam only). Clearing them never needs the entitlement.
+  - **Recipe `remix-automation/v1`.** `RemixProject.automation` (JSONB,
+    nullable): `{ schemaVersion, stems: { <stemId>: { level?, filter? } } }`,
+    each lane a list of `{ bar, value }` points on whole bars of the
+    timeline's downbeats (0..2000, one point per bar, at most 32 per lane and
+    48 filter points in the whole project). Level is −24..+6 dB in 0.5 dB
+    steps; the filter is one DJ knob −1..1 in 0.01 steps (below 0 a
+    low-pass closes 20 kHz → 200 Hz, above 0 a high-pass opens 20 Hz →
+    2 kHz). Set or cleared through `PATCH /remix/projects/:id`; unknown stems
+    and out-of-range values are a 400.
+  - **Curves.** Values move in a straight line from point to point and hold
+    before the first and after the last; level is linear in dB, the knob
+    linear, so the cutoff sweeps exponentially. Points sit on
+    `timelineDownbeats`, so lanes follow the S6c grid correction and the
+    song shape; a point on a bar the timeline no longer has is dropped.
+  - **Render (`remix-automation-dsp/v1`).** Per stem, after the Pro stages
+    and before the section gate, in output time (timeline ÷ speed): a
+    per-frame `volume` expression for the level and an `asendcmd`-stepped
+    low-pass and high-pass (8 steps a second, at most 24 per segment) for
+    the filter. Automation alone forces the effects graph. The draft's
+    `renderMetadata` records `automationDspVersion` and
+    `automationStemIds`. `remix-automation-v1.parity.json` pins point times,
+    sampled values, cutoffs and render steps; the backend and web suites both
+    replay it, and a real-ffmpeg test measures the level and the filter cut.
+  - **Preview.** Per stem with lanes, a level gain → low-pass → high-pass
+    after the Pro stage, scheduled from the play offset with exponential
+    ramps (exactly the lane's curve; filter ramps are split where the knob
+    crosses 0). The preview plays the lanes being edited, before they are
+    saved; a change restarts the arrangement at the same position, and a
+    loop with lanes is looped by the transport (restart at the loop start).
+  - **UI.** With Pro on, an Automation panel under the Grid panel: pick a
+    stem and Level or Filter, see the lane as a line across the song, Add
+    point at the playhead's bar, set each point's bar and value, Remove or
+    Clear lane, then Save automation or Undo changes. "Reset to original"
+    leaves the lanes alone; clear them in the panel. The User Guide's Pro
+    section explains it.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

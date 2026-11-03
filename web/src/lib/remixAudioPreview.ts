@@ -1,4 +1,10 @@
 import {
+  automationAtSpeed,
+  createAutomationStage,
+  type AutomationStage,
+  type TimedStemAutomation,
+} from "./remixAutomation";
+import {
   biquadQDb,
   echoTaps,
   echoTapSpacing,
@@ -823,6 +829,16 @@ export type StemPreviewEngine = {
      */
     parts?: PreviewPart[] | null;
     partTimeline?: PreviewPartTimeline | null;
+    /**
+     * Automation lanes (#2541) by stem id, in TIMELINE time
+     * (`previewAutomation`). Null/absent keeps the graph unchanged.
+     * Otherwise each stem with lanes gets a level gain → low-pass →
+     * high-pass after its Pro stage and before its section gain, like the
+     * render, scheduled from the offset in output time (timeline ÷ speed).
+     * The lanes run on the context clock, so a loop with automation must be
+     * cycled by restarting play (the transport does that).
+     */
+    automation?: Record<string, TimedStemAutomation> | null;
   }): Promise<StemArrangementPreviewHandle>;
   /**
    * Time-stretch the stems for a plan (#1898) in the worker pool, ahead of
@@ -2188,18 +2204,39 @@ export function createStemPreviewEngine(input: {
 
     // Pro (#1903): gain → [EQ → up-mix → pan] → section gain, so the Pro
     // stages sit where the render puts them (before the section gate).
+    // Automation (#2541): level → low-pass → high-pass after the Pro stage,
+    // before the section gain; one stage per stem, scheduled once per play.
+    const automationTiming = { startAt, offsetOutSec: offset / speed };
+    const automationStages = new Map<string, AutomationStage | null>();
+    const automationStageFor = (stemId: string): AutomationStage | null => {
+      if (!automationStages.has(stemId)) {
+        automationStages.set(
+          stemId,
+          createAutomationStage(
+            audioContext,
+            automationAtSpeed(request.automation?.[stemId], speed),
+            automationTiming,
+            structureNodes,
+          ),
+        );
+      }
+      return automationStages.get(stemId) ?? null;
+    };
     const connectThroughPro = (
       stemId: string,
       gain: GainNode,
       sectionGain: GainNode,
     ): GainNode => {
       const stage = fx?.pro.get(stemId);
+      const automationStage = automationStageFor(stemId);
+      const into = automationStage ?? null;
       if (stage) {
         gain.connect(stage.input);
-        stage.output.connect(sectionGain);
+        stage.output.connect(into ? into.input : sectionGain);
       } else {
-        gain.connect(sectionGain);
+        gain.connect(into ? into.input : sectionGain);
       }
+      if (into) into.output.connect(sectionGain);
       return sectionGain;
     };
     const onSourceEnded = () => {
