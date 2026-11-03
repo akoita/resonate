@@ -94,6 +94,22 @@ music on Resonate for others stays an artist operation (release upload).
   album). With several tracks, fields that differ show *Mixed* and are kept
   per track unless the listener types a value; only changed fields are saved,
   in one batch (`updateLocalTracks`, which refuses catalog rows).
+- **Look up details (#2538).** In *Edit album*, *Look up details* asks
+  MusicBrainz for releases matching the album artist, album title and track
+  count, and lists up to five (title, artist, year, country, label, track
+  count; releases with the same number of tracks first). Picking one fills
+  only the year, genre (the most-voted genre of the release, or of its release
+  group) and label fields that are empty for the whole album; a typed value, a
+  file tag or a *Mixed* field is never replaced, and nothing is saved until
+  the listener presses Save. Privacy: nothing is sent before the click; the
+  request goes through the backend (`GET /library/lookup/releases`,
+  `GET /library/lookup/releases/:id`, signed in, 20 per minute per account),
+  so MusicBrainz sees only the server, the three search values and a
+  descriptive User-Agent, never the listener's address or account. The server
+  keeps MusicBrainz's one request per second for the whole process, shared
+  with artist enrichment (`shared/musicbrainz_queue.ts`), and caches answers
+  for six hours in memory. `album_lookup.service.ts`, `AlbumLookup.tsx`,
+  `albumLookup.ts`; tests `album-lookup.service.spec.ts`, `albumLookup.test.ts`.
 - **Edits stay in Resonate.** Edits are saved to the account's library rows
   and follow it to every device; the files on disk are never written, so a
   rescan does not undo an edit and nothing can damage a file. The cover stays

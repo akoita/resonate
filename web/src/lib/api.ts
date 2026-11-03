@@ -6789,6 +6789,44 @@ export async function clearLocalLibraryAPI(token: string) {
   return apiRequest<void>("/library/tracks/local", { method: "DELETE" }, token);
 }
 
+/** A MusicBrainz release offered by "Look up details" in Edit album (#2538). */
+export type AlbumLookupMatch = {
+  id: string;
+  title: string;
+  artist: string;
+  year: number | null;
+  country: string | null;
+  label: string | null;
+  trackCount: number | null;
+  trackCountMatches: boolean;
+  sourceUrl: string;
+};
+
+export type AlbumLookupDetails = {
+  id: string;
+  year: number | null;
+  genre: string | null;
+  label: string | null;
+  sourceUrl: string;
+};
+
+/**
+ * Searches MusicBrainz, through the backend, for an album of the listener's
+ * own files. Sends only the album artist, album title and track count.
+ */
+export async function lookupAlbumReleasesAPI(
+  token: string,
+  query: { artist: string; album: string; trackCount: number },
+) {
+  const params = new URLSearchParams({ album: query.album, tracks: String(query.trackCount) });
+  if (query.artist) params.set("artist", query.artist);
+  return apiRequest<{ matches: AlbumLookupMatch[] }>(`/library/lookup/releases?${params}`, {}, token);
+}
+
+export async function lookupAlbumReleaseDetailsAPI(token: string, releaseId: string) {
+  return apiRequest<AlbumLookupDetails>(`/library/lookup/releases/${encodeURIComponent(releaseId)}`, {}, token);
+}
+
 // ========== Generation API ==========
 
 export type GenerationStatusResponse = {

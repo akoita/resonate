@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { LibraryController } from '../modules/library/library.controller';
 import { LibraryService } from '../modules/library/library.service';
+import { AlbumLookupService } from '../modules/library/album_lookup.service';
 import { authToken, createControllerTestApp } from './e2e-helpers';
 
 const mockLibraryService = {
@@ -11,6 +12,11 @@ const mockLibraryService = {
   clearLocalTracks: jest.fn().mockResolvedValue({ count: 1 }),
 };
 
+const mockAlbumLookup = {
+  search: jest.fn().mockResolvedValue({ matches: [] }),
+  details: jest.fn().mockResolvedValue({ id: 'r', year: 2021, genre: null, label: null, sourceUrl: 'u' }),
+};
+
 describe('LibraryController (HTTP)', () => {
   let app: INestApplication;
   const token = authToken('user-1');
@@ -18,6 +24,7 @@ describe('LibraryController (HTTP)', () => {
   beforeAll(async () => {
     app = await createControllerTestApp(LibraryController, [
       { provide: LibraryService, useValue: mockLibraryService },
+      { provide: AlbumLookupService, useValue: mockAlbumLookup },
     ]);
   });
 
@@ -69,5 +76,26 @@ describe('LibraryController (HTTP)', () => {
       .send({ id: 'local_1', title: 'Song', source: 'local' })
       .expect(201);
     expect(mockLibraryService.saveTrack).toHaveBeenCalledWith('user-1', expect.objectContaining({ source: 'local' }));
+  });
+
+  it('routes the album lookup with only artist, album and track count (#2538)', async () => {
+    await request(app.getHttpServer())
+      .get('/library/lookup/releases')
+      .query({ artist: 'Furax Barbarossa', album: 'Caravelle', tracks: '15' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(mockAlbumLookup.search).toHaveBeenCalledWith({ artist: 'Furax Barbarossa', album: 'Caravelle', tracks: '15' });
+
+    const id = '0f6c1b7a-1d2e-4f3a-9b8c-7d6e5f4a3b2c';
+    await request(app.getHttpServer())
+      .get(`/library/lookup/releases/${id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(mockAlbumLookup.details).toHaveBeenCalledWith(id);
+  });
+
+  it('requires a signed-in listener for the album lookup', async () => {
+    await request(app.getHttpServer()).get('/library/lookup/releases').query({ album: 'x' }).expect(401);
+    expect(mockAlbumLookup.search).not.toHaveBeenCalled();
   });
 });
