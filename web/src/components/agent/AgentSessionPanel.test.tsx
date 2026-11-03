@@ -383,6 +383,54 @@ describe("AgentSessionPanel", () => {
       expect(JSON.stringify(started)).not.toContain("Late night");
     });
 
+    it("starts the session on its own once the seed is in the prompt, and only once", async () => {
+      hookState.config = config({ isActive: false });
+      adoptSeed(playlistSeed);
+      // The arrival render's effects ran before the seed was in state: nothing started yet.
+      expect(startSession).not.toHaveBeenCalled();
+
+      effects.forEach((run) => run());
+      await vi.waitFor(() => expect(startSession).toHaveBeenCalledTimes(1));
+      expect(startSession).toHaveBeenCalledWith({
+        preferences: expect.objectContaining({ seed: playlistSeed }),
+      });
+
+      render();
+      effects.forEach((run) => run());
+      expect(startSession).toHaveBeenCalledTimes(1);
+    });
+
+    it("waits for the DJ to load before starting from a seed", async () => {
+      hookState.config = null;
+      hookState.isLoading = true;
+      adoptSeed(playlistSeed);
+      effects.forEach((run) => run());
+      expect(startSession).not.toHaveBeenCalled();
+
+      hookState.config = config({ isActive: false });
+      hookState.isLoading = false;
+      render();
+      effects.forEach((run) => run());
+      await vi.waitFor(() => expect(startSession).toHaveBeenCalledTimes(1));
+    });
+
+    it("does not start a second session when one is already live, and says so when a start fails", async () => {
+      hookState.config = config({ isActive: true });
+      adoptSeed(playlistSeed);
+      effects.forEach((run) => run());
+      expect(startSession).not.toHaveBeenCalled();
+
+      hookState.config = config({ isActive: false });
+      startSession.mockRejectedValueOnce(new Error("This playlist is private."));
+      adoptSeed(playlistSeed);
+      effects.forEach((run) => run());
+      await vi.waitFor(() =>
+        expect(addToast).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "error", title: "Couldn't start the DJ", message: "This playlist is private." }),
+        ),
+      );
+    });
+
     it("keeps the seed on every pick of the session, and removing the chip clears it explicitly", async () => {
       hookState.config = config({ isActive: true });
       adoptSeed(playlistSeed);
