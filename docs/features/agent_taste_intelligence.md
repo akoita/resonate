@@ -3024,12 +3024,25 @@ retrieval (#2242) and the "More like this" seed (#2243).
     with `seedTrackId`); the seed itself is excluded.
   - *Artist:* `catalog.artist_seed` with the artist's display name: their own
     tracks, then the neighbours of the centroid of their stored vectors.
-  - *Playlist:* the neighbours of the centroid of the playlist's stored vectors
-    (`unitCentroid`, over its most recent 40 tracks), **plus its genre-family
-    mix** (tracks of its two most common families from stored descriptors, else
-    release-genre families; ranked by similarity to the centroid when vectors
-    exist), **plus at most 3 of the playlist's own tracks** (the nearest its
-    centroid). A playlist with no stored vectors seeds from the family mix alone.
+  - *Playlist:* the playlist's **pattern** over its most recent 40 tracks
+    (`playlist_seed_pockets.ts`): pockets of genre family (stored descriptor
+    families, else release-genre families) × groove (the measured energy band,
+    else the tempo band), each with its common release moods (on at least a
+    third of its tracks). Every pocket on at least 10% of the sampled tracks is
+    kept, at most five; a family's grooves too small on their own join one
+    "any groove" pocket when together they reach 10%. Each pocket asks for its
+    share of the neighbours (of the centroid of its own tracks' stored vectors)
+    and of the family candidates (its family, in its groove), ranked by
+    similarity to that pocket's centroid with a small nudge for a shared groove
+    (+0.05) or mood (+0.03 each, at most two); the source's order interleaves
+    the pockets by share, so a cut keeps the playlist's mix. **At most 3 of the
+    playlist's own tracks** are taken across the pockets, each the nearest its
+    pocket's sound. A playlist where no pocket reaches 10% falls back to its two
+    most common families and the centroid of the whole sample (the #2244
+    behaviour), and one with no stored vectors seeds from the family candidates
+    alone. Before this, a playlist kept only its two most common families and
+    one averaged sound, so a third genre was dropped and a mixed playlist
+    matched none of its genres well.
 - **Not a replay.** `PLAYLIST_SEED_OWN_TRACKS = 3` (`tool_registry.ts`): the
   source offers at most three of the playlist's own tracks, and the selector
   removes every other track of the playlist from the candidate pool, whichever
@@ -3040,7 +3053,11 @@ retrieval (#2242) and the "More like this" seed (#2243).
   mid-session change or removal.
 - **Analytics.** `agent.session_started` gains `seedKind` (`track`, `artist`,
   `playlist`; no id, no label).
-- **Evidence.** `agent_dj_seeded_sessions.integration.spec.ts` (Postgres/pgvector,
+- **Evidence.** `agent_dj_playlist_pattern.integration.spec.ts` (a 6 house,
+  3 jazz, 2 afrobeats, 1 metal playlist: all three large genres covered and kept
+  in a short batch, the metal one-off left out, own tracks across genres) and
+  `playlist_seed_pockets.spec.ts` (pockets, shares, fit nudge, interleave).
+  `agent_dj_seeded_sessions.integration.spec.ts` (Postgres/pgvector,
   hash embedder over a purpose-built fixture catalog): neighbours, the family
   mix, the cap on own tracks, exclusions, explicit and AI filters, the
   access rule (own, public, private of another listener, missing, anonymous),
