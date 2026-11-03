@@ -268,10 +268,12 @@ export function transportDurationSec(input: {
 }
 
 /**
- * Whether the engine can loop `loop` natively (#2540): always without a
- * structure; with one, only a loop inside a single block (the engine cycles
- * one block's source range). A cue loop across blocks is looped by the
- * transport instead: it plays unlooped and restarts at the loop start.
+ * Whether the engine can loop `loop` natively (#2540): only a loop inside a
+ * single block of the timeline (identity or rearranged), because the engine
+ * cycles one block's source range and holds one section gain per loop. A
+ * cue loop across blocks is looped by the transport instead: it plays
+ * unlooped (so section on/off follows the song) and restarts at the loop
+ * start. Without a timeline (no grid) every loop is native.
  */
 export function engineLoopsNatively(
   timeline: RemixStructureTimeline | null,
@@ -840,7 +842,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   ) => {
     const latest = inputRef.current;
     const engineTimeline = structureTimelineFor(latest.timeline);
-    const nativeLoop = engineLoopsNatively(engineTimeline, activeLoop);
+    const nativeLoop = engineLoopsNatively(latest.timeline ?? null, activeLoop);
     try {
       const handle = await engine().play({
         stems: enginePreviewStems(

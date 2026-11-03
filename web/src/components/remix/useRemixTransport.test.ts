@@ -179,6 +179,10 @@ describe("structure timeline in the transport (#1899)", () => {
     expect(engineLoopsNatively(reordered, null)).toBe(true);
     expect(engineLoopsNatively(reordered, { startSec: first.outStartSec, endSec: first.outEndSec })).toBe(true);
     expect(engineLoopsNatively(reordered, { startSec: first.outStartSec, endSec: second.outEndSec })).toBe(false);
+    // In the original order too: a loop over two sections can't hold one section gain.
+    const [a, b] = identity.segments;
+    expect(engineLoopsNatively(identity, { startSec: a.outStartSec, endSec: a.outEndSec })).toBe(true);
+    expect(engineLoopsNatively(identity, { startSec: a.outStartSec, endSec: b.outEndSec })).toBe(false);
   });
 
   it("uses the timeline duration for engine sources, never for drafts", () => {
