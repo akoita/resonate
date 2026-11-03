@@ -1014,6 +1014,21 @@ const REMIX_TARGETS = [
     },
   },
   {
+    file: "remix-studio-cues.png",
+    project: REMIX_WITH_DRAFTS,
+    prepare: async (page) => {
+      await page.getByRole("switch", { name: /^Pro/ }).click();
+      const panel = page.getByRole("group", { name: "Cue and loop points" });
+      await panel.getByRole("group", { name: "Intro loop" }).getByRole("checkbox").check();
+      await panel.getByRole("group", { name: "Outro loop" }).getByRole("checkbox").check();
+      await panel.getByRole("button", { name: "Save cues" }).click();
+      await panel.getByRole("button", { name: "Export DJ version" }).waitFor();
+      await page.waitForFunction(() => !document.querySelector(".remix-cues-panel")?.textContent?.includes("Save the cues"));
+      await panel.scrollIntoViewIfNeeded();
+      return { locator: panel };
+    },
+  },
+  {
     file: "remix-studio-drafts.png",
     project: REMIX_WITH_DRAFTS,
     prepare: async (page) => {

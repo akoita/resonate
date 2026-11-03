@@ -2943,6 +2943,45 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "cues-dj-version",
+        level: "pro",
+        heading: "Pro mode: cue loops and a DJ version",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "With Pro on, the Cues panel under the Session marks an intro loop and an outro loop in whole bars of the grid. Loop either one in the preview, then export a DJ version: your draft with each loop played again right after itself, so a DJ has room to mix in and out.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "from bar / for", description: "Where the loop starts and how long it is: 1, 2, 4, 8, 16 or 32 bars. Turning a loop on suggests the first or the last 8 bars." },
+              { term: "DJ version plays it", description: "How many more times the DJ version plays the loop, 1 to 8. The panel shows how much time that adds." },
+              { term: "Loop", description: "Loops that part of your arrangement in the preview. Stop loop (or Esc) ends it." },
+              { term: "Export DJ version", description: "Downloads a zip with the DJ version as an MP3 and a .cues.json file that lists every downbeat and the cues: Mix in, the intro loop, the outro loop and Mix out." },
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-cues.png`,
+              alt: "The Cues panel: Intro from bar 1 for 8 bars, played 2 more times, adding 32 seconds; Outro from bar 25 for 8 bars; Save cues and Export DJ version buttons.",
+              caption: "An intro and an outro loop, each played twice more in the DJ version.",
+              width: 659,
+              height: 272,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "list",
+            items: [
+              "Loops are inserted right after themselves, so the song keeps its own start and ending and every bar stays the same length.",
+              "The DJ version is made from your current draft. After you change the arrangement, render the mix again so the loops land on the right bars.",
+              "Like any export, it needs a commercial license on the source stems. Cues are part of Pro mode, free for now, and use no credits.",
+            ],
+          },
+        ],
+      },
+      {
         id: "shortcuts",
         level: "pro",
         heading: "Keyboard shortcuts",
@@ -2987,7 +3026,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Planned, not available yet",
-            text: "More engineer and DJ tools are planned for Pro mode: cue and loop points with a DJ extended export, automation lanes, and stem export and mashups where licenses allow.",
+            text: "More engineer and DJ tools are planned for Pro mode: automation lanes, and stem export and mashups where licenses allow.",
           },
         ],
       },

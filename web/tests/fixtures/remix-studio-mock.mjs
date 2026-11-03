@@ -194,7 +194,11 @@ function servedProject(project, fields) {
   const sectionGrid = override
     ? { ...project.sectionGrid, bpm: override.tempoBpm, firstBeatSec: override.firstBeatSec, overridden: true }
     : project.sectionGrid;
-  return { ...project, ...fields, sectionGrid };
+  // Cues (#2540): the mock's drafts always carry a grid the cues fit.
+  const djExport = fields.cues
+    ? { available: true, reason: null }
+    : { available: false, reason: "no_cues" };
+  return { ...project, ...fields, sectionGrid, djExport };
 }
 
 /**

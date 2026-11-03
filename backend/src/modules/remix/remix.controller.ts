@@ -23,6 +23,8 @@ import { RemixEligibilityService } from "./remix-eligibility.service";
 import {
   RemixProjectService,
   type RemixProjectStemUpdate,
+  REMIX_EXPORT_VARIANTS,
+  type RemixExportVariant,
 } from "./remix-project.service";
 import { RemixWorkerPrewarmService } from "./remix-worker-prewarm.service";
 import {
@@ -300,8 +302,24 @@ export class RemixController {
     @Req() req: any,
     @Param("id") id: string,
     @Res() res: Response,
+    @Body() body?: { variant?: unknown },
   ) {
-    const download = await this.projectService.exportDraft(req.user.userId, id);
+    // #2540: `{ variant: "dj_extended" }` returns a zip with the DJ extended
+    // audio and its beat grid + cues sidecar; no body = the draft as rendered.
+    const variant = body?.variant ?? "draft";
+    if (
+      typeof variant !== "string" ||
+      !(REMIX_EXPORT_VARIANTS as readonly string[]).includes(variant)
+    ) {
+      throw new BadRequestException(
+        `variant must be one of ${REMIX_EXPORT_VARIANTS.join(", ")}`,
+      );
+    }
+    const download = await this.projectService.exportDraft(
+      req.user.userId,
+      id,
+      variant as RemixExportVariant,
+    );
     this.sendDownloadResponse(download, res);
   }
 

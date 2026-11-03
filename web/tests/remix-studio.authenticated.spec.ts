@@ -687,6 +687,50 @@ test.describe("Remix Studio session view (#1879)", () => {
     expect(pageErrors).toEqual([]);
   });
 
+  test("pro mode: cue loops save, loop in the preview, and offer the DJ export (#2540)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    const panel = page.getByRole("group", { name: "Cue and loop points" });
+    await expect(panel).toHaveCount(0);
+    await page.getByRole("switch", { name: /^Pro/ }).click();
+    await expect(panel).toBeVisible();
+    // No draft yet: the DJ export says what it needs.
+    const djExport = panel.getByRole("button", { name: "Export DJ version" });
+    await expect(djExport).toBeDisabled();
+    await expect(panel).toContainText("Render or generate a draft");
+
+    // The mock song is 32 bars at 120 BPM: the suggestions are bars 1–8 and 25–32.
+    const intro = panel.getByRole("group", { name: "Intro loop" });
+    await intro.getByRole("checkbox").check();
+    await expect(intro).toContainText("bars 1–8 · 16.0 s · adds 32.0 s");
+    await intro.getByRole("combobox", { name: "Intro loop length" }).selectOption("4");
+    await intro.getByRole("combobox", { name: "Intro loop extra plays" }).selectOption("3");
+    await panel.getByRole("group", { name: "Outro loop" }).getByRole("checkbox").check();
+    await panel.getByRole("button", { name: "Save cues" }).click();
+    await expect
+      .poll(() => patches.find((patch) => patch.cues)?.cues, { timeout: 10_000 })
+      .toEqual({
+        schemaVersion: "remix-cues/v1",
+        intro: { startBar: 0, bars: 4, repeats: 3 },
+        outro: { startBar: 24, bars: 8, repeats: 2 },
+      });
+    await expect(panel.getByRole("button", { name: "Save cues" })).toBeDisabled();
+
+    // Loop the intro in the preview: the transport names it.
+    await intro.getByRole("button", { name: "Loop" }).click();
+    await expect(page.getByText("Looping the intro")).toBeVisible();
+    await intro.getByRole("button", { name: "Stop loop" }).click();
+    await expect(page.getByText("Looping the intro")).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+  });
+
   test("studio polish: listening volume, reset to original, delete a draft version (#1910)", async ({
     authenticatedPage: page,
   }) => {

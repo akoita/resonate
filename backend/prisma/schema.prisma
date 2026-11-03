@@ -1712,6 +1712,9 @@ model RemixProject {
   // tempoBpm, firstBeatSec }; null means the measured grid. Never rewrites
   // the stems' measured audio features.
   gridOverride       Json?
+  // Cue and loop points (#2540): remix-cues/v1 { schemaVersion, intro,
+  // outro } with { startBar, bars, repeats } in timeline bars; null = none.
+  cues               Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())

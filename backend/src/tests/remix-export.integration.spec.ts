@@ -26,6 +26,10 @@ import { RemixProjectService } from "../modules/remix/remix-project.service";
 import { stubGenerationCredits } from "./e2e-helpers";
 import { REMIX_POLICY_VERSION } from "../modules/remix/remix-eligibility.policy";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
+import { execFileSync, spawnSync } from "child_process";
+import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const TEST_PREFIX = `remix_export_${Date.now()}_`;
 
@@ -80,6 +84,7 @@ async function createProjectRow(input: {
   stemId: string;
   generationMetadata?: Record<string, unknown> | null;
   title?: string;
+  cues?: Record<string, unknown>;
 }) {
   return prisma.remixProject.create({
     data: {
@@ -97,8 +102,37 @@ async function createProjectRow(input: {
           }
         : {}),
       stems: { create: [{ stemId: input.stemId }] },
+      ...(input.cues ? { cues: input.cues as object } : {}),
     },
   });
+}
+
+const FFMPEG = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+// #2540: a 20 s draft at 120 BPM (a bar every 2 s from 0).
+const DRAFT_GRID = {
+  schemaVersion: "remix-draft-grid/v1",
+  bpm: 120,
+  downbeatsSec: Array.from({ length: 10 }, (_, i) => i * 2),
+  timelineEndSec: 20,
+};
+const DJ_CUES = {
+  schemaVersion: "remix-cues/v1",
+  intro: { startBar: 0, bars: 2, repeats: 1 },
+  outro: { startBar: 8, bars: 2, repeats: 2 },
+};
+
+/** Names of the entries in a stored ZIP, from its central directory. */
+function zipEntryNames(zip: Buffer): string[] {
+  const end = zip.length - 22;
+  const count = zip.readUInt16LE(end + 10);
+  let offset = zip.readUInt32LE(end + 16);
+  const names: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const nameLength = zip.readUInt16LE(offset + 28);
+    names.push(zip.subarray(offset + 46, offset + 46 + nameLength).toString("utf8"));
+    offset += 46 + nameLength;
+  }
+  return names;
 }
 
 async function seedListingAndPurchase(input: {
@@ -303,6 +337,78 @@ describe("Remix export (integration)", () => {
       policyVersion: REMIX_POLICY_VERSION,
     });
   });
+
+  it("DJ extended (#2540): refuses without cues before reading any audio", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      stemId: COMMERCIAL_STEM_ID,
+      generationMetadata: completedGenerationMetadata([COMMERCIAL_STEM_ID], { draftGrid: DRAFT_GRID }),
+    });
+    const attempt = projectService.exportDraft(CREATOR_ID, project.id, "dj_extended");
+    await expect(attempt).rejects.toThrow(ConflictException);
+    await attempt.catch((error: ConflictException) => {
+      expect(error.getResponse()).toMatchObject({ code: "dj_export_no_cues" });
+    });
+    expect(storageProvider.download).not.toHaveBeenCalled();
+  });
+
+  it("DJ extended (#2540): an older draft without a recorded grid asks for a new render", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      stemId: COMMERCIAL_STEM_ID,
+      cues: DJ_CUES,
+    });
+    const attempt = projectService.exportDraft(CREATOR_ID, project.id, "dj_extended");
+    await expect(attempt).rejects.toThrow(ConflictException);
+    await attempt.catch((error: ConflictException) => {
+      expect(error.getResponse()).toMatchObject({ code: "dj_export_no_draft_grid" });
+    });
+  });
+
+  it("DJ extended (#2540): still needs the commercial export right", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      stemId: REMIX_ONLY_STEM_ID,
+      generationMetadata: completedGenerationMetadata([REMIX_ONLY_STEM_ID], { draftGrid: DRAFT_GRID }),
+      cues: DJ_CUES,
+    });
+    await expect(
+      projectService.exportDraft(CREATOR_ID, project.id, "dj_extended"),
+    ).rejects.toThrow(ForbiddenException);
+    expect(storageProvider.download).not.toHaveBeenCalled();
+  });
+
+  (FFMPEG ? it : it.skip)(
+    "DJ extended (#2540): returns a zip with the extended MP3 and its cues sidecar",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "dj-export-it-"));
+      try {
+        const mp3Path = join(dir, "draft.mp3");
+        execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=20:sample_rate=48000", "-ac", "2", "-c:a", "libmp3lame", "-b:a", "320k", mp3Path]);
+        storageProvider.download.mockResolvedValue(readFileSync(mp3Path));
+        const project = await createProjectRow({
+          userId: CREATOR_ID,
+          stemId: COMMERCIAL_STEM_ID,
+          generationMetadata: completedGenerationMetadata([COMMERCIAL_STEM_ID], { draftGrid: DRAFT_GRID }),
+          cues: DJ_CUES,
+        });
+        const result = await projectService.exportDraft(CREATOR_ID, project.id, "dj_extended");
+        expect(result.mimeType).toBe("application/zip");
+        expect(result.filename).toBe("Exportable-Remix-Take-1-DJ-Extended.zip");
+        expect(zipEntryNames(Buffer.from(result.data))).toEqual([
+          "Exportable-Remix-Take-1-DJ-Extended.mp3",
+          "Exportable-Remix-Take-1-DJ-Extended.cues.json",
+        ]);
+        const exportedEvent = publishSpy.mock.calls
+          .map(([event]) => event)
+          .find((event) => event.eventName === "remix.exported");
+        expect(exportedEvent).toMatchObject({ variant: "dj_extended" });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
 
   it("rejects export when the source stem is only remix-licensed", async () => {
     const project = await createProjectRow({

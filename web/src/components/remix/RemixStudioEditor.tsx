@@ -19,6 +19,7 @@ import {
   requestGenerationCredits,
   updateRemixProject,
   type RemixGridOverride,
+  type RemixCues,
   type GenerationCreditBalance,
   type UsageLimit,
   type RemixEligibilityResponse,
@@ -151,6 +152,16 @@ import {
   type LaneStem,
 } from "./RemixSessionLanes";
 import { RemixGridPanel } from "./RemixGridPanel";
+import { RemixCuesPanel } from "./RemixCuesPanel";
+import {
+  INTRO_LOOP_INDEX,
+  OUTRO_LOOP_INDEX,
+  cueLoopLabel,
+  djExportReasonText,
+  timelineDownbeats,
+  type CueName,
+  type CueSpan,
+} from "../../lib/remixCues";
 import {
   apiErrorCode,
   DELETE_TAKE_CONFIRM_MESSAGE,
@@ -1832,6 +1843,9 @@ export function RemixStudioEditor({
   // Grid correction (#2539): applied straight away, outside autosave.
   const [gridSaving, setGridSaving] = useState(false);
   const [gridError, setGridError] = useState<string | null>(null);
+  // Cue and loop points (#2540, Pro).
+  const [cuesSaving, setCuesSaving] = useState(false);
+  const [cuesError, setCuesError] = useState<string | null>(null);
   useEffect(() => {
     // Hydrate from localStorage after mount (SSR renders the default).
     setListeningVolume(readListeningVolume());
@@ -2064,9 +2078,12 @@ export function RemixStudioEditor({
     setTransportSource({ kind: "arrangement" });
   }, [setTransportSource, stopTransport, transportSourceUnavailable]);
 
-  // A loop on a block the timeline no longer has is dropped.
+  // A loop on a block the timeline no longer has is dropped. Cue loops
+  // (#2540, negative indices) are dropped by the transport when the
+  // timeline changes.
   const transportLoopStale =
     transportLoop !== null &&
+    transportLoop.sectionIndex >= 0 &&
     !(sectionGrid && timeline?.segments[transportLoop.sectionIndex]);
   useEffect(() => {
     if (transportLoopStale) setTransportLoop(null);
@@ -2822,6 +2839,45 @@ export function RemixStudioEditor({
 
   // Grid correction (#2539): its own PATCH, so the new grid (and the sections
   // it implies) comes back from the server before anything else uses it.
+  // Cues (#2540): saved with a direct PATCH, like the grid.
+  const applyCues = async (cues: RemixCues | null) => {
+    if (!token || published || cuesSaving) return;
+    setCuesSaving(true);
+    setCuesError(null);
+    try {
+      const updated = await updateRemixProject(token, project.id, { cues });
+      setProject((prev) => ({ ...updated, availableStems: prev.availableStems }));
+    } catch {
+      setCuesError("Couldn't save the cues. Check your connection and try again.");
+    } finally {
+      setCuesSaving(false);
+    }
+  };
+  const cueSegments = sectionGrid
+    ? (timeline?.segments ?? structureTimeline(sectionGrid, null).segments)
+    : [];
+  const cueDownbeats =
+    sectionGrid?.kind === "bars" ? timelineDownbeats(sectionGrid, cueSegments) : [];
+  const cueBarSec = sectionGrid?.bpm ? 240 / sectionGrid.bpm : 0;
+  const cueEndSec = cueSegments.length > 0 ? cueSegments[cueSegments.length - 1].outEndSec : 0;
+  const loopingCue: CueName | null =
+    transportLoop?.sectionIndex === INTRO_LOOP_INDEX
+      ? "intro"
+      : transportLoop?.sectionIndex === OUTRO_LOOP_INDEX
+        ? "outro"
+        : null;
+  const loopCue = (name: CueName, span: CueSpan | null) => {
+    transport.setLoop(
+      span
+        ? {
+            sectionIndex: name === "intro" ? INTRO_LOOP_INDEX : OUTRO_LOOP_INDEX,
+            startSec: span.startSec,
+            endSec: span.endSec,
+          }
+        : null,
+    );
+  };
+
   const applyGridOverride = async (override: RemixGridOverride | null) => {
     if (!token || published || gridSaving) return;
     setGridSaving(true);
@@ -2910,11 +2966,11 @@ export function RemixStudioEditor({
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (variant: "draft" | "dj_extended" = "draft") => {
     if (!token || exporting) return;
     setExporting(true);
     try {
-      const { blob, filename } = await exportRemixDraftBlob(token, project.id);
+      const { blob, filename } = await exportRemixDraftBlob(token, project.id, variant);
       // Blob + anchor download: the browser saves the render under the
       // server-sanitized filename.
       const objectUrl = URL.createObjectURL(blob);
@@ -3396,6 +3452,29 @@ export function RemixStudioEditor({
                   onApply={(override) => void applyGridOverride(override)}
                 />
               )}
+              {proAllowed && proMode && sectionGrid?.kind === "bars" && (
+                <RemixCuesPanel
+                  saved={project.cues ?? null}
+                  downbeats={cueDownbeats}
+                  barSec={cueBarSec}
+                  endSec={cueEndSec}
+                  disabled={published || saving}
+                  disabledReason={published ? "Published remixes keep their cues." : null}
+                  saving={cuesSaving}
+                  error={cuesError}
+                  looping={loopingCue}
+                  onSave={(cues) => void applyCues(cues)}
+                  onLoop={loopCue}
+                  dj={{
+                    enabled: exportAvailability.enabled && project.djExport?.available === true,
+                    reason: !exportAvailability.enabled
+                      ? exportAvailability.reason
+                      : djExportReasonText(project.djExport?.reason),
+                    busy: exporting,
+                    onExport: () => void handleExport("dj_extended"),
+                  }}
+                />
+              )}
               <p className="text-zinc-500 text-xs mb-4">
                 The preview is unmastered, with a limiter keeping the summed stems
                 from clipping; final renders are loudness-normalized, so they sound
@@ -3446,11 +3525,12 @@ export function RemixStudioEditor({
                   hasDraft={Boolean(draftOutputUri)}
                   loopLabel={
                     sectionGrid && transportLoop
-                      ? transportLoopLabel(
+                      ? (cueLoopLabel(transportLoop.sectionIndex) ??
+                        transportLoopLabel(
                           sectionGrid,
                           transportLoop.sectionIndex,
                           structureState?.blocks ?? null,
-                        )
+                        ))
                       : null
                   }
                   meter={

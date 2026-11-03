@@ -447,13 +447,32 @@ describe('RemixController (e2e)', () => {
       })
       .expect(201);
 
-    expect(mockProjectService.exportDraft).toHaveBeenCalledWith('user-1', 'proj-1');
+    expect(mockProjectService.exportDraft).toHaveBeenCalledWith('user-1', 'proj-1', 'draft');
     expect(res.headers['content-type']).toContain('audio/mpeg');
     expect(res.headers['content-disposition']).toBe(
       'attachment; filename="my-remix.mp3"',
     );
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.body.toString()).toBe('export-audio');
+  });
+
+  it('POST /remix/projects/:id/export → passes the DJ extended variant (#2540)', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/export')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ variant: 'dj_extended' })
+      .expect(201);
+    expect(mockProjectService.exportDraft).toHaveBeenLastCalledWith('user-1', 'proj-1', 'dj_extended');
+  });
+
+  it('POST /remix/projects/:id/export → 400 for an unknown variant (#2540)', async () => {
+    const callsBefore = mockProjectService.exportDraft.mock.calls.length;
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/export')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ variant: 'stems' })
+      .expect(400);
+    expect(mockProjectService.exportDraft.mock.calls.length).toBe(callsBefore);
   });
 
   it('POST /remix/projects/:id/export → 403 with eligibility payload when export is not allowed', async () => {
