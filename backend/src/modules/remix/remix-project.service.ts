@@ -84,6 +84,13 @@ import {
 } from "./remix-automation";
 import { StoredZipWriter, storeZip } from "../shared/store_zip";
 import {
+  mashupChanged,
+  normalizeRemixMashupInput,
+  parseRemixMashup,
+  RemixMashupValidationError,
+  type RemixMashup,
+} from "./remix-mashup";
+import {
   parseRenderedStems,
   renderedStemUris,
   stemsExportState,
@@ -550,7 +557,9 @@ const PROJECT_INCLUDE = {
     // audioFeatures: worker-measured tempo/key/energy (#1184) for
     // grounding slices (feature-conditioned prompts, render alignment).
     include: {
-      stem: { select: { type: true, title: true, audioFeatures: true } },
+      stem: {
+        select: { type: true, title: true, audioFeatures: true, trackId: true },
+      },
     },
   },
   // AI part takes (#1901): bounded (the per-project cap), newest first.
@@ -577,6 +586,24 @@ const PROJECT_INCLUDE = {
       },
     },
   },
+  // Mashups (#2558): the second source, credited and checked like A.
+  secondarySourceTrack: {
+    select: {
+      title: true,
+      artist: true,
+      rightsRoute: true,
+      contentStatus: true,
+      release: {
+        select: {
+          id: true,
+          artistId: true,
+          title: true,
+          primaryArtist: true,
+          rightsRoute: true,
+        },
+      },
+    },
+  },
 } as const;
 
 function loadProject(projectId: string) {
@@ -584,6 +611,24 @@ function loadProject(projectId: string) {
     where: { id: projectId },
     include: PROJECT_INCLUDE,
   });
+}
+
+/**
+ * The project stems of the leading source (#2558). The bar grid, structure,
+ * cues, automation, beat and parts all count on A's grid, so B's measured
+ * features never move it. Every stem is A's in a single-source project.
+ */
+function leadSourceStems<
+  T extends { stem: { trackId: string } },
+>(project: {
+  sourceTrackId: string;
+  secondarySourceTrackId?: string | null;
+  stems: T[];
+}): T[] {
+  if (!project.secondarySourceTrackId) return project.stems;
+  return project.stems.filter(
+    (stem) => stem.stem.trackId === project.sourceTrackId,
+  );
 }
 
 // The remix generation limit's default, window and env key come from the
@@ -913,12 +958,11 @@ export class RemixProjectService {
     const publishedReleaseId = project.publishedReleaseId;
     const [masterStemId, eligibility] = await Promise.all([
       this.resolveMasterStemId(publishedReleaseId),
-      this.eligibilityService.checkEligibility({
+      this.checkProjectEligibility(
         userId,
-        trackId: project.sourceTrackId,
-        stemIds: project.stems.map((stem) => stem.stemId),
-        allowHistoricalStemIds: true,
-      }),
+        project,
+        project.stems.map((stem) => stem.stemId),
+      ),
     ]);
 
     if (!eligibility.allowedActions.includes("export")) {
@@ -1031,6 +1075,19 @@ export class RemixProjectService {
        * unchanged, null clears them. Setting them needs `remix.pro`.
        */
       automation?: unknown;
+      /**
+       * Mashups (#2558): the second source track B. undefined leaves it
+       * unchanged; null removes B with its stems and recipe. Setting or
+       * changing it needs `remix.pro` and the right to remix B; changing it
+       * removes the old B's stems.
+       */
+      secondarySourceTrackId?: string | null;
+      /**
+       * Mashups remix-mashup/v1 (#2558): how B is conformed to A. undefined
+       * leaves it unchanged, null clears it. Needs a second source; setting
+       * it needs `remix.pro`.
+       */
+      mashup?: unknown;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -1202,6 +1259,96 @@ export class RemixProjectService {
       }
     }
 
+    // Mashups (#2558): a Pro tool. Removing B or clearing its recipe never
+    // needs Pro, so a saved mashup can always be taken apart.
+    const requireMashupPro = async () => {
+      const decision = await this.entitlements.pro(userId);
+      if (!decision.allowed) {
+        throw new ForbiddenException({
+          code: "pro_required",
+          message:
+            "Mashups are a Pro tool, which this account can't use right now.",
+          fields: ["mashup"],
+          policyVersion: decision.policyVersion,
+        });
+      }
+    };
+    const storedSecondary = project.secondarySourceTrackId ?? null;
+    let secondarySourceTrackId: string | null | undefined;
+    if (patch.secondarySourceTrackId !== undefined) {
+      const next = patch.secondarySourceTrackId;
+      if (next !== null && (typeof next !== "string" || !next.trim())) {
+        throw new BadRequestException(
+          "secondarySourceTrackId must be a track id or null",
+        );
+      }
+      if (next === project.sourceTrackId) {
+        throw new BadRequestException(
+          "The second track must be a different track from the first.",
+        );
+      }
+      secondarySourceTrackId = next;
+      if (next !== null && next !== storedSecondary) {
+        await requireMashupPro();
+        // Attaching B is rights-relevant: B's own gates apply (route,
+        // content status, artist consent, at least one licensed stem).
+        const sourceEligibility = await this.eligibilityService.checkEligibility(
+          { userId, trackId: next },
+        );
+        if (!sourceEligibility.allowed) {
+          throw new ForbiddenException({
+            message: "This track can't be used as the second source",
+            eligibility: {
+              ...sourceEligibility,
+              reasons: sourceEligibility.reasons.map((reason) => ({
+                ...reason,
+                sourceTrackId: next,
+                sourceRole: "secondary" as const,
+              })),
+            },
+          });
+        }
+      }
+    }
+    const secondaryAfterPatch =
+      secondarySourceTrackId !== undefined
+        ? secondarySourceTrackId
+        : storedSecondary;
+    const secondaryChanged =
+      secondarySourceTrackId !== undefined &&
+      secondarySourceTrackId !== storedSecondary;
+    // The old B's stems leave the project with it.
+    const removedStemIds =
+      secondaryChanged && storedSecondary
+        ? project.stems
+            .filter((stem) => stem.stem.trackId === storedSecondary)
+            .map((stem) => stem.stemId)
+        : [];
+
+    let mashup: RemixMashup | null | undefined;
+    if (patch.mashup !== undefined) {
+      try {
+        mashup = normalizeRemixMashupInput(patch.mashup);
+      } catch (error) {
+        if (error instanceof RemixMashupValidationError) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+      if (mashup !== null && !secondaryAfterPatch) {
+        throw new BadRequestException(
+          "mashup needs a second source track (secondarySourceTrackId)",
+        );
+      }
+      const stored = secondaryChanged ? null : parseRemixMashup(project.mashup);
+      if (mashupChanged(mashup, stored)) {
+        await requireMashupPro();
+      }
+    } else if (secondaryChanged && project.mashup !== null) {
+      // B's recipe belongs to B: a new or removed B starts unconformed.
+      mashup = null;
+    }
+
     const gridOverrideAfterPatch =
       gridOverride !== undefined
         ? gridOverride
@@ -1237,7 +1384,7 @@ export class RemixProjectService {
       patch.beat !== undefined ||
       patch.parts !== undefined
         ? deriveSectionGrid(
-            project.stems.map((stem) => ({
+            leadSourceStems(project).map((stem) => ({
               audioFeatures: stem.stem.audioFeatures,
             })),
             gridOverrideAfterPatch,
@@ -1347,11 +1494,20 @@ export class RemixProjectService {
       // Adding a stem is a rights-relevant action: the strict explicit-selection
       // rule applies (every added stem licensed + not minted non-remixable), so
       // the generation/publish re-checks over the grown project still pass.
-      const addEligibility = await this.eligibilityService.checkEligibility({
-        userId,
-        trackId: project.sourceTrackId,
-        stemIds: addStemIds,
-      });
+      // With a second source (#2558), each stem is checked against its own
+      // source, and stems of any other track are refused.
+      const addEligibility = secondaryAfterPatch
+        ? await this.eligibilityService.checkSourcesEligibility({
+            userId,
+            sourceTrackId: project.sourceTrackId,
+            secondarySourceTrackId: secondaryAfterPatch,
+            stemIds: addStemIds,
+          })
+        : await this.eligibilityService.checkEligibility({
+            userId,
+            trackId: project.sourceTrackId,
+            stemIds: addStemIds,
+          });
       if (!addEligibility.allowed) {
         throw new ForbiddenException({
           message: "Adding these stems to the remix project is not allowed",
@@ -1388,6 +1544,11 @@ export class RemixProjectService {
               `parts[${index}].takeId is a ${take.role} take, not ${part.role}`,
             );
           }
+        });
+      }
+      if (removedStemIds.length > 0) {
+        await tx.remixProjectStem.deleteMany({
+          where: { remixProjectId: project.id, stemId: { in: removedStemIds } },
         });
       }
       if (addStemIds.length > 0) {
@@ -1490,6 +1651,17 @@ export class RemixProjectService {
                   automation === null
                     ? Prisma.DbNull
                     : (automation as unknown as Prisma.JsonObject),
+              }
+            : {}),
+          ...(secondarySourceTrackId !== undefined
+            ? { secondarySourceTrackId }
+            : {}),
+          ...(mashup !== undefined
+            ? {
+                mashup:
+                  mashup === null
+                    ? Prisma.DbNull
+                    : (mashup as unknown as Prisma.JsonObject),
               }
             : {}),
         },
@@ -1662,12 +1834,11 @@ export class RemixProjectService {
         }
       : undefined;
 
-    const eligibility = await this.eligibilityService.checkEligibility({
+    const eligibility = await this.checkProjectEligibility(
       userId,
-      trackId: project.sourceTrackId,
+      project,
       stemIds,
-      allowHistoricalStemIds: true,
-    });
+    );
     if (!eligibility.allowed) {
       this.publishDenialEvents(
         { userId, sourceTrackId: project.sourceTrackId, stemIds },
@@ -1873,7 +2044,7 @@ export class RemixProjectService {
       // at process time, exactly like the studio derives it, so the persisted
       // per-stem masks gate the render at the same boundaries the user saw.
       const sectionGrid = deriveSectionGrid(
-        project.stems.map((stem) => ({
+        leadSourceStems(project).map((stem) => ({
           audioFeatures: stem.stem.audioFeatures,
         })),
         parseGridOverride(project.gridOverride),
@@ -2014,12 +2185,11 @@ export class RemixProjectService {
       const encryptedActiveStemCount = await prisma.stem.count({
         where: { id: { in: activeStemIds }, isEncrypted: true },
       });
-      const renderEligibility = await this.eligibilityService.checkEligibility({
-        userId: data.userId,
-        trackId: project.sourceTrackId,
-        stemIds: project.stems.map((stem) => stem.stemId),
-        allowHistoricalStemIds: true,
-      });
+      const renderEligibility = await this.checkProjectEligibility(
+        data.userId,
+        project,
+        project.stems.map((stem) => stem.stemId),
+      );
       if (!renderEligibility.allowed) {
         if (encryptedActiveStemCount > 0) {
           this.eventBus.publish({
@@ -2350,7 +2520,7 @@ export class RemixProjectService {
       });
     }
     const grid = deriveSectionGrid(
-      project.stems.map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
+      leadSourceStems(project).map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
       parseGridOverride(project.gridOverride),
     );
     if (!grid || grid.kind !== "bars" || !grid.bpm || grid.bpm <= 0) {
@@ -2381,12 +2551,11 @@ export class RemixProjectService {
     }
     // Generation is rights-relevant: the creation-time decision is not trusted.
     const stemIds = project.stems.map((stem) => stem.stemId);
-    const eligibility = await this.eligibilityService.checkEligibility({
+    const eligibility = await this.checkProjectEligibility(
       userId,
-      trackId: project.sourceTrackId,
+      project,
       stemIds,
-      allowHistoricalStemIds: true,
-    });
+    );
     if (!eligibility.allowed) {
       this.publishDenialEvents(
         { userId, sourceTrackId: project.sourceTrackId, stemIds },
@@ -2566,12 +2735,11 @@ export class RemixProjectService {
       return { failed: true, errorCode: "project_not_draft" };
     }
     try {
-      const eligibility = await this.eligibilityService.checkEligibility({
-        userId: data.userId,
-        trackId: project.sourceTrackId,
-        stemIds: project.stems.map((stem) => stem.stemId),
-        allowHistoricalStemIds: true,
-      });
+      const eligibility = await this.checkProjectEligibility(
+        data.userId,
+        project,
+        project.stems.map((stem) => stem.stemId),
+      );
       if (!eligibility.allowed) {
         await markFailed("not_eligible");
         return { failed: true, errorCode: "not_eligible" };
@@ -2625,7 +2793,7 @@ export class RemixProjectService {
     let estimatedCostUsd = 0;
     try {
       const grid = deriveSectionGrid(
-        project.stems.map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
+        leadSourceStems(project).map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
         parseGridOverride(project.gridOverride),
       );
       if (!grid || grid.kind !== "bars" || !grid.bpm || grid.bpm <= 0) {
@@ -3338,12 +3506,11 @@ export class RemixProjectService {
     }
 
     const stemIds = project.stems.map((stem) => stem.stemId);
-    const eligibility = await this.eligibilityService.checkEligibility({
+    const eligibility = await this.checkProjectEligibility(
       userId,
-      trackId: project.sourceTrackId,
+      project,
       stemIds,
-      allowHistoricalStemIds: true,
-    });
+    );
     if (!eligibility.allowed) {
       this.publishDenialEvents(
         { userId, sourceTrackId: project.sourceTrackId, stemIds },
@@ -3450,9 +3617,49 @@ export class RemixProjectService {
       project.sourceTrack.artist ??
       project.sourceTrack.release.primaryArtist ??
       null;
-    const attribution = `Remix of "${project.sourceTrack.title}"${
-      sourceArtistName ? ` by ${sourceArtistName}` : ""
-    }`;
+    // Mashups (#2558): both sources are credited and recorded, A first.
+    const secondaryTrack =
+      project.secondarySourceTrackId && project.secondarySourceTrack
+        ? project.secondarySourceTrack
+        : null;
+    const secondaryArtistName = secondaryTrack
+      ? (secondaryTrack.artist ?? secondaryTrack.release.primaryArtist ?? null)
+      : null;
+    const credit = (title: string, artistName: string | null) =>
+      `"${title}"${artistName ? ` by ${artistName}` : ""}`;
+    const attribution = secondaryTrack
+      ? `Mashup of ${credit(project.sourceTrack.title, sourceArtistName)} and ${credit(secondaryTrack.title, secondaryArtistName)}`
+      : `Remix of ${credit(project.sourceTrack.title, sourceArtistName)}`;
+    const stemTrackById = new Map(
+      project.stems.map((stem) => [stem.stemId, stem.stem.trackId]),
+    );
+    const sources = secondaryTrack
+      ? [
+          {
+            role: "lead" as const,
+            trackId: project.sourceTrackId,
+            releaseId: project.sourceTrack.release.id,
+            artistId: project.sourceTrack.release.artistId,
+            trackTitle: project.sourceTrack.title,
+            artistName: sourceArtistName,
+            stemIds: stemIds.filter(
+              (stemId) => stemTrackById.get(stemId) === project.sourceTrackId,
+            ),
+          },
+          {
+            role: "secondary" as const,
+            trackId: project.secondarySourceTrackId as string,
+            releaseId: secondaryTrack.release.id,
+            artistId: secondaryTrack.release.artistId,
+            trackTitle: secondaryTrack.title,
+            artistName: secondaryArtistName,
+            stemIds: stemIds.filter(
+              (stemId) =>
+                stemTrackById.get(stemId) === project.secondarySourceTrackId,
+            ),
+          },
+        ]
+      : null;
     const publishedAt = new Date().toISOString();
 
     // E3 groundwork: enough machine-readable lineage to mint license/
@@ -3466,6 +3673,13 @@ export class RemixProjectService {
       sourceTrackTitle: project.sourceTrack.title,
       sourceArtistName,
       sourceStemIds: stemIds,
+      ...(sources
+        ? {
+            secondarySourceTrackId: project.secondarySourceTrackId,
+            sources,
+            ...(project.mashup ? { mashup: parseRemixMashup(project.mashup) } : {}),
+          }
+        : {}),
       attribution,
       provider: project.generationProvider,
       mode: project.mode,
@@ -3767,12 +3981,11 @@ export class RemixProjectService {
     }
 
     const stemIds = project.stems.map((stem) => stem.stemId);
-    const eligibility = await this.eligibilityService.checkEligibility({
+    const eligibility = await this.checkProjectEligibility(
       userId,
-      trackId: project.sourceTrackId,
+      project,
       stemIds,
-      allowHistoricalStemIds: true,
-    });
+    );
     if (!eligibility.allowed) {
       this.publishDenialEvents(
         { userId, sourceTrackId: project.sourceTrackId, stemIds },
@@ -4189,6 +4402,33 @@ export class RemixProjectService {
     };
   }
 
+  /**
+   * Eligibility of a project's stems (#2558): per source when the project
+   * has a second source, else the single-source check exactly as before.
+   * Historical stems are allowed (the project already holds them).
+   */
+  private checkProjectEligibility(
+    userId: string,
+    project: { sourceTrackId: string; secondarySourceTrackId?: string | null },
+    stemIds: string[],
+  ): Promise<RemixEligibilityResult> {
+    if (!project.secondarySourceTrackId) {
+      return this.eligibilityService.checkEligibility({
+        userId,
+        trackId: project.sourceTrackId,
+        stemIds,
+        allowHistoricalStemIds: true,
+      });
+    }
+    return this.eligibilityService.checkSourcesEligibility({
+      userId,
+      sourceTrackId: project.sourceTrackId,
+      secondarySourceTrackId: project.secondarySourceTrackId,
+      stemIds,
+      allowHistoricalStemIds: true,
+    });
+  }
+
   private async loadOwnedProject(userId: string, projectId: string) {
     const project = await loadProject(projectId);
     if (!project) {
@@ -4281,8 +4521,34 @@ export class RemixProjectService {
    */
   private async resolveAvailableStems(
     userId: string,
-    project: { sourceTrackId: string; stems: Array<{ stemId: string }> },
+    project: {
+      sourceTrackId: string;
+      secondarySourceTrackId?: string | null;
+      stems: Array<{ stemId: string }>;
+    },
   ) {
+    // Mashups (#2558): the second source's stems are offered too, each
+    // tagged with its track and checked against that track's own rights.
+    const trackIds = [
+      project.sourceTrackId,
+      ...(project.secondarySourceTrackId
+        ? [project.secondarySourceTrackId]
+        : []),
+    ];
+    const lists = await Promise.all(
+      trackIds.map((trackId) =>
+        this.resolveAvailableTrackStems(userId, trackId, project.stems),
+      ),
+    );
+    return lists.flat();
+  }
+
+  private async resolveAvailableTrackStems(
+    userId: string,
+    sourceTrackId: string,
+    projectStems: Array<{ stemId: string }>,
+  ) {
+    const project = { sourceTrackId, stems: projectStems };
     try {
       const trackEligibility = await this.eligibilityService.checkEligibility({
         userId,
@@ -4313,6 +4579,7 @@ export class RemixProjectService {
           const licensed = eligibility?.licensed ?? false;
           return {
             stemId: stem.id,
+            sourceTrackId,
             type: stem.type,
             title: stem.title,
             // BigInt → string so the studio can link to /stem/[tokenId].
@@ -4334,7 +4601,7 @@ export class RemixProjectService {
     entitlements?: RemixProjectEntitlements,
   ) {
     const sectionGrid = deriveSectionGrid(
-      project.stems.map((stem) => ({
+      leadSourceStems(project).map((stem) => ({
         audioFeatures: stem.stem.audioFeatures,
       })),
       parseGridOverride(project.gridOverride),
@@ -4414,8 +4681,33 @@ export class RemixProjectService {
           null,
         contentStatus: project.sourceTrack.contentStatus,
       },
+      // Mashups (#2558): the second source and how it is conformed to A;
+      // null for a single-source project.
+      secondarySource:
+        project.secondarySourceTrackId && project.secondarySourceTrack
+          ? {
+              trackId: project.secondarySourceTrackId,
+              trackTitle: project.secondarySourceTrack.title,
+              releaseId: project.secondarySourceTrack.release.id,
+              releaseTitle: project.secondarySourceTrack.release.title,
+              artistName:
+                project.secondarySourceTrack.artist ??
+                project.secondarySourceTrack.release.primaryArtist ??
+                null,
+              rightsRoute:
+                project.secondarySourceTrack.rightsRoute ??
+                project.secondarySourceTrack.release.rightsRoute ??
+                null,
+              contentStatus: project.secondarySourceTrack.contentStatus,
+            }
+          : null,
+      mashup: project.secondarySourceTrackId
+        ? parseRemixMashup(project.mashup)
+        : null,
       stems: project.stems.map((stem) => ({
         stemId: stem.stemId,
+        // Which source the stem comes from (#2558).
+        sourceTrackId: stem.stem.trackId,
         type: stem.stem.type,
         title: stem.stem.title,
         audioFeatures: stem.stem.audioFeatures ?? null,

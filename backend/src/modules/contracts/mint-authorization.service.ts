@@ -177,6 +177,7 @@ type StemAuthorizationRecord = Prisma.StemGetPayload<{
             publishedRemixProject: {
               select: {
                 sourceTrackId: true;
+                secondarySourceTrackId: true;
                 stems: { select: { stemId: true } };
               };
             };
@@ -192,6 +193,8 @@ type StemAuthorizationRecord = Prisma.StemGetPayload<{
  * the RemixProject.publishedRemixProject DB relation is unavailable. */
 type RemixPublishLineage = {
   sourceTrackId: string;
+  /** Mashups (#2558): the second source, when the remix has one. */
+  secondarySourceTrackId?: string | null;
   sourceStemIds: string[];
 };
 
@@ -272,6 +275,7 @@ export class MintAuthorizationService {
                 publishedRemixProject: {
                   select: {
                     sourceTrackId: true,
+                    secondarySourceTrackId: true,
                     stems: { select: { stemId: true } },
                   },
                 },
@@ -392,11 +396,19 @@ export class MintAuthorizationService {
       return;
     }
 
-    const eligibility = await this.remixEligibilityService.checkEligibility({
-      userId,
-      trackId: lineage.sourceTrackId,
-      stemIds: lineage.sourceStemIds,
-    });
+    // Mashups (#2558): selling needs the export right on BOTH sources.
+    const eligibility = lineage.secondarySourceTrackId
+      ? await this.remixEligibilityService.checkSourcesEligibility({
+          userId,
+          sourceTrackId: lineage.sourceTrackId,
+          secondarySourceTrackId: lineage.secondarySourceTrackId,
+          stemIds: lineage.sourceStemIds,
+        })
+      : await this.remixEligibilityService.checkEligibility({
+          userId,
+          trackId: lineage.sourceTrackId,
+          stemIds: lineage.sourceStemIds,
+        });
 
     if (!eligibility.allowedActions.includes("export")) {
       throw new ForbiddenException({
@@ -426,6 +438,7 @@ export class MintAuthorizationService {
     if (publishedRemixProject) {
       return {
         sourceTrackId: publishedRemixProject.sourceTrackId,
+        secondarySourceTrackId: publishedRemixProject.secondarySourceTrackId,
         sourceStemIds: publishedRemixProject.stems.map((s) => s.stemId),
       };
     }
@@ -445,7 +458,14 @@ export class MintAuthorizationService {
       Array.isArray(sourceStemIds) &&
       sourceStemIds.every((id) => typeof id === "string")
     ) {
-      return { sourceTrackId, sourceStemIds: sourceStemIds as string[] };
+      return {
+        sourceTrackId,
+        secondarySourceTrackId:
+          typeof record.secondarySourceTrackId === "string"
+            ? record.secondarySourceTrackId
+            : null,
+        sourceStemIds: sourceStemIds as string[],
+      };
     }
     return null;
   }

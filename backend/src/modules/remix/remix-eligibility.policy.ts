@@ -37,6 +37,12 @@ export type RemixDenialCode = (typeof REMIX_DENIAL_CODES)[number];
 export type RemixDenialReason = {
   code: RemixDenialCode;
   message: string;
+  /**
+   * Mashups (#2558): the source track the reason applies to, set when a
+   * project has two sources so the studio can say which one blocks.
+   */
+  sourceTrackId?: string;
+  sourceRole?: "lead" | "secondary";
 };
 
 export type RemixStemPolicyInput = {

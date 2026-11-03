@@ -8,6 +8,8 @@ import { prisma } from "../../db/prisma";
 import { releasedStemIds } from "../purchase_consent/purchase_consent_delivery";
 import {
   evaluateRemixEligibility,
+  REMIX_ACTIONS,
+  type RemixAction,
   type RemixEligibilityDecision,
   type RemixStemPolicyInput,
 } from "./remix-eligibility.policy";
@@ -42,6 +44,21 @@ export type RemixEligibilityResult = RemixEligibilityDecision & {
    * Stability AI Community License §IV(a) "Powered by Stability AI" gate.
    */
   generationAttribution: RemixGenerationAttribution | null;
+  /**
+   * Mashups (#2558): one decision per source, present only when a project
+   * has a second source. The top-level decision is their combination.
+   */
+  sources?: RemixSourceDecision[];
+};
+
+export type RemixSourceRole = "lead" | "secondary";
+
+export type RemixSourceDecision = {
+  trackId: string;
+  role: RemixSourceRole;
+  allowed: boolean;
+  allowedActions: RemixAction[];
+  stemIds: string[];
 };
 
 @Injectable()
@@ -159,6 +176,72 @@ export class RemixEligibilityService {
       })),
       generationAttribution: getActiveRemixGenerationAttribution(),
     };
+  }
+
+  /**
+   * Eligibility of a project's stems across its sources (#2558). Without a
+   * second source this is exactly {@link checkEligibility} on the lead
+   * source. With one, the stems are split by the track they belong to and
+   * each source is checked on its own (its route, content status, artist
+   * consent, mint flags and licences); an action is allowed only when every
+   * source allows it, and each denial reason names its source. A source with
+   * no selected stems is checked track-default, so attaching a track still
+   * needs the right to remix it.
+   */
+  async checkSourcesEligibility(input: {
+    userId: string;
+    sourceTrackId: string;
+    secondarySourceTrackId?: string | null;
+    stemIds: string[];
+    allowHistoricalStemIds?: boolean;
+  }): Promise<RemixEligibilityResult> {
+    const secondary = input.secondarySourceTrackId ?? null;
+    if (!secondary || secondary === input.sourceTrackId) {
+      return this.checkEligibility({
+        userId: input.userId,
+        trackId: input.sourceTrackId,
+        stemIds: input.stemIds,
+        allowHistoricalStemIds: input.allowHistoricalStemIds,
+      });
+    }
+
+    const stemIds = Array.from(new Set(input.stemIds));
+    const rows = stemIds.length
+      ? await prisma.stem.findMany({
+          where: { id: { in: stemIds } },
+          select: { id: true, trackId: true },
+        })
+      : [];
+    const trackByStem = new Map(rows.map((row) => [row.id, row.trackId]));
+    const foreign = stemIds.filter((stemId) => {
+      const trackId = trackByStem.get(stemId);
+      return trackId !== input.sourceTrackId && trackId !== secondary;
+    });
+    if (foreign.length > 0) {
+      throw new BadRequestException(
+        `Stems do not belong to either source of this remix: ${foreign.join(", ")}`,
+      );
+    }
+
+    const sources: Array<{ trackId: string; role: RemixSourceRole }> = [
+      { trackId: input.sourceTrackId, role: "lead" },
+      { trackId: secondary, role: "secondary" },
+    ];
+    const results = await Promise.all(
+      sources.map(async (source) => {
+        const sourceStemIds = stemIds.filter(
+          (stemId) => trackByStem.get(stemId) === source.trackId,
+        );
+        const result = await this.checkEligibility({
+          userId: input.userId,
+          trackId: source.trackId,
+          stemIds: sourceStemIds,
+          allowHistoricalStemIds: input.allowHistoricalStemIds,
+        });
+        return { ...source, stemIds: sourceStemIds, result };
+      }),
+    );
+    return combineSourceDecisions(results);
   }
 
   /**
@@ -352,4 +435,51 @@ export class RemixEligibilityService {
     }
     return releasedStemIds(userId, candidates);
   }
+}
+
+/**
+ * Combines per-source decisions (#2558): allowed only when every source is,
+ * the actions every source allows, and every reason tagged with its source.
+ * The lead source stays the `source` of the result.
+ */
+function combineSourceDecisions(
+  results: Array<{
+    trackId: string;
+    role: RemixSourceRole;
+    stemIds: string[];
+    result: RemixEligibilityResult;
+  }>,
+): RemixEligibilityResult {
+  const lead = results[0].result;
+  const allowedActions = REMIX_ACTIONS.filter((action) =>
+    results.every(({ result }) => result.allowedActions.includes(action)),
+  );
+  return {
+    ...lead,
+    allowed: results.every(({ result }) => result.allowed),
+    requiredLicense: results.some(({ result }) => result.requiredLicense)
+      ? "remix"
+      : null,
+    allowedActions,
+    reasons: results.flatMap(({ trackId, role, result }) =>
+      result.reasons.map((reason) => ({
+        ...reason,
+        sourceTrackId: trackId,
+        sourceRole: role,
+      })),
+    ),
+    creatorOwner: results.every(({ result }) => result.creatorOwner),
+    // A source checked track-default (no selected stems) lists every stem
+    // of its track; only the selected stems belong to the project.
+    stems: results.flatMap(({ stemIds, result }) =>
+      result.stems.filter((stem) => stemIds.includes(stem.stemId)),
+    ),
+    sources: results.map(({ trackId, role, stemIds, result }) => ({
+      trackId,
+      role,
+      allowed: result.allowed,
+      allowedActions: result.allowedActions,
+      stemIds,
+    })),
+  };
 }

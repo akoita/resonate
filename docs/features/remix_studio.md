@@ -1233,6 +1233,60 @@ from the JWT, never the request body.
     `remix-stems.integration.spec.ts` covers the gates, storage, the
     streamed zip and version deletes; an E2E covers the option and the
     download.
+- Pro mode, S6f-3a (#2558, part of #1903, Sprint 53): mashups backend.
+  **Partial**: the render conform is #2559 and the studio is #2560, so
+  B's stems still play unconformed until #2559 lands. Design and the owner's
+  decisions: [RFC: Remix mashups](../rfc/remix-mashups.md).
+  - **Money.** Line 2 (Remix Studio Pro) creator tooling behind the
+    `remix.pro` seam (free for everyone, no price). It adds no fee, split or
+    payout. Each source artist is paid through the licences the creator
+    holds on that source (D3). A sold master keeps its single EIP-2981
+    receiver, the creator.
+  - **Model.** `RemixProject.secondarySourceTrackId` (nullable; source A
+    stays `sourceTrackId` and leads, D4) and `RemixProject.mashup`
+    (`remix-mashup/v1`: `secondary { tempoRatio, semitones, offsetBars,
+    firstBeatSec? }`). `tempoRatio` must be in 0.75–1.33 (D5);
+    `semitones` is a whole number from −6 to 6; `offsetBars` is from 0 to
+    2000.
+  - **Edits.** `PATCH /remix/projects/:id` takes `secondarySourceTrackId`
+    and `mashup`:
+    - Setting or changing B needs Pro (403 `pro_required`, `fields:
+      ["mashup"]`) and the right to remix B, checked track-default. A
+      denial names B in each reason.
+    - Changing B or removing it (null) also removes the old B's stems and
+      its recipe. Removing never needs Pro.
+    - `addStemIds` accepts stems of A or B, each checked against its own
+      source. Stems of any other track get a 400.
+    - A recipe without B gets a 400.
+  - **Rights.** Every rights-relevant check uses
+    `RemixEligibilityService.checkSourcesEligibility`: creating a draft or
+    part take (request time and in the worker), publish, export, the sell
+    read and mint authorization (`remix_sell_rights_required`).
+    - Each source is evaluated on its own route, content status, artist
+      consent (D2: existing `remixConsent`), mint flags and licences.
+    - An action is allowed only when both sources allow it, so a
+      Remix-tier B allows a draft and publishing but not export or sale.
+    - Reasons carry `sourceTrackId` and `sourceRole` (`lead` or
+      `secondary`), and `eligibility.sources` lists each source's decision.
+    - Single-source projects take exactly the old path.
+  - **Grid.** The section grid, structure, beat, parts and the render's
+    grid come from A's stems only, so B's tempo never moves them.
+  - **Reads and lineage.** `GET /remix/projects/:id` returns
+    `secondarySource` (title, artist, release, route, status), `mashup`,
+    `sourceTrackId` on each stem, and B's addable stems in `availableStems`
+    (tagged by source). A published mashup credits both sources
+    (`Mashup of "A" by X and "B" by Y`). Its track lineage adds
+    `secondarySourceTrackId`, `sources[]` (role, track, release, artist and
+    stem ids) and the recipe.
+  - **Tests.** `remix-mashup.spec.ts` covers the recipe.
+    `remix-mashup.integration.spec.ts` covers, on real Postgres:
+    - B added, tagged and offered
+    - a denial naming B
+    - a third track refused
+    - a Remix-tier B allowing a draft but not export or sale
+    - B's revoked consent or quarantine blocking a render
+    - the recipe range and Pro gate
+    - removing B
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
