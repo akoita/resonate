@@ -106,6 +106,13 @@ export class UpdateRemixProjectDto {
   cues?: unknown;
   /** Automation lanes remix-automation/v1 (#2541); setting them needs `remix.pro`. */
   automation?: unknown;
+  /**
+   * Mashups (#2558): the second source track; null removes it with its
+   * stems. Setting it needs `remix.pro` and the right to remix that track.
+   */
+  secondarySourceTrackId?: string | null;
+  /** Mashups remix-mashup/v1 (#2558): how the second source is conformed; needs `remix.pro`. */
+  mashup?: unknown;
 }
 
 /**

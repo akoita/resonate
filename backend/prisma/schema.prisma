@@ -1268,6 +1268,8 @@ model Track {
   dmcaReports          DmcaReport[]
   release              Release           @relation(fields: [releaseId], references: [id])
   remixProjects        RemixProject[]
+  // Mashups (#2558): projects that use this track as their second source.
+  secondaryRemixProjects RemixProject[] @relation("RemixProjectSecondarySource")
   punchlineDrops       PunchlineDrop[]
   rightsRoute          String?
   rightsFlags          Json?
@@ -1718,18 +1720,27 @@ model RemixProject {
   // Automation lanes (#2541): remix-automation/v1 { schemaVersion, stems:
   // { [stemId]: { level?, filter? } } } with { bar, value } points; null = none.
   automation         Json?
+  // Mashups (#2558): a second source track B, conformed to the leading
+  // source A (`sourceTrackId`); null for a single-source project. B's stems
+  // are checked against B's own rights (docs/rfc/remix-mashups.md).
+  secondarySourceTrackId String?
+  // remix-mashup/v1 { schemaVersion, secondary: { tempoRatio, semitones,
+  // offsetBars, firstBeatSec? } }; null = B unconformed, or no B.
+  mashup             Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   creator            User               @relation(fields: [creatorUserId], references: [id])
   sourceTrack        Track              @relation(fields: [sourceTrackId], references: [id])
+  secondarySourceTrack Track?           @relation("RemixProjectSecondarySource", fields: [secondarySourceTrackId], references: [id], onDelete: SetNull)
   publishedRelease   Release?           @relation("RemixProjectPublishedRelease", fields: [publishedReleaseId], references: [id])
   stems              RemixProjectStem[]
   partTakes          RemixPartTake[]
 
   @@index([creatorUserId, createdAt])
   @@index([sourceTrackId])
+  @@index([secondarySourceTrackId])
 }
 
 // AI part takes (#1901): one generated, conformed clip per row (one 30 s
