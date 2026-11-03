@@ -41,6 +41,8 @@ from the environment; never edit a deployment URL into the script.
 | `IDLE_API_ORIGIN` | `http://localhost:3000` | API origin to mock |
 | `IDLE_SIGNED_IN` | `true` | Inject the E2E mock session (`tests/auth.setup.ts`) |
 | `IDLE_OUT_DIR` | `web/build/perf` | JSON output (`idle-latest.json`) |
+| `IDLE_IN_USE` | `true` | Run the in-use phase (#2534) |
+| `IDLE_IN_USE_MS` | `8000` | In-use window per variant |
 | `PLAYWRIGHT_CHROMIUM_EXECUTABLE` | Playwright's | Chromium binary override |
 
 ## What it measures
@@ -61,6 +63,13 @@ For each route, after the settle time, over the idle window:
   background throttling comes on top and is not simulated.
 - **reduced motion**: running infinite animations after emulating
   `prefers-reduced-motion: reduce`.
+- **in use** (#2534): the pointer moves a few pixels every 500 ms, so the idle
+  hold never starts, and the probe reads the compositor time per frame (viz
+  `Display::DrawAndSwap`), frames per second and GPU-process CPU %. It runs
+  three variants: as built, every loop held, and every `backdrop-filter`
+  removed. Read **ms per frame**: headless Chromium composites in software, so
+  the GPU process pins one core (~98%) as soon as any loop runs, and its CPU %
+  cannot tell a cheap frame from an expensive one.
 
 Headless Chromium rasterizes in software and exposes no GPU process, so the
 absolute costs are higher than on a GPU laptop and GPU % is not reported. The
@@ -196,10 +205,10 @@ Moving the mouse brings Home straight back to the same motion (and cost).
 - **Laptop and GPU numbers after the idle hold.** Repeat the Chrome Task
   Manager reading on Home, Player and Shows after leaving the page untouched
   for 30 s. The acceptance criteria also ask for heap and idle FPS.
-- **Cost while someone is using the page.** While loops run, the whole page is
-  re-composited every frame, and the blurred surfaces dominate that cost. Cutting
-  it further means fewer or smaller `backdrop-filter` surfaces on Home, Player
-  and Shows, which is a visible change and needs a design call.
+- **Cost while someone is using the page.** Cut in #2534 (next section). The
+  remaining cost is the top bar's blur, the player console's blur on Player,
+  and the Home cards' blur, which the owner chose to keep unless a laptop
+  reading says otherwise.
 - **Allowlisted legacy loops.** The allowlist in `animationBudget.test.ts`
   lists the paint-property loops that remain: loading skeletons, plus active
   states such as live-session pulses, mixer glows, Sonic Radar, and Punchline.
@@ -207,6 +216,55 @@ Moving the mouse brings Home straight back to the same motion (and cost).
   them while off-screen or hidden. Convert them as those surfaces are touched.
 - **RAM over time.** The 10 s windows show a flat heap. A 10-minute heap-snapshot
   comparison (AI DJ history, long queues) has not been done.
+
+### Follow-up: while someone is using the page (#2534)
+
+With the pointer moving, loops run (by design) and every frame is composited.
+The owner's call was to first isolate the loops from the blurred cards
+without a visible change, measure, and only then consider replacing the blur
+on the three large cards with a solid tint.
+
+What the in-use phase and per-loop experiments showed:
+
+- **Where a loop sits matters ~5×, its stacking context does not.** One 4px
+  test loop in the sidebar cost ~25 ms per frame; the same loop placed over
+  the hero card (as a separate fixed overlay, outside the card's stacking
+  context) cost ~123 ms, the same as inside it. Any damage over a blurred
+  surface makes the compositor recompute that blur. Moving loops into their
+  own layers or stacking contexts therefore does not help, so that step was
+  not shipped.
+- **The expensive blur was the main column itself.** `.app-main`, which holds
+  every page, carried `backdrop-filter: blur(32px)` over the whole viewport.
+  Every loop on every page sat inside it. Behind it is only the shell's static
+  aurora gradient and its 2.5% grain, which a 32px blur leaves looking the
+  same. Turning that blur off alone took Home from ~116 to ~60 ms per frame in
+  the experiments.
+- **The three large cards were not the cost.** Also replacing the blur on the
+  Home hero card and the tuner deck brought Home from ~60 to ~51 ms: a visible
+  change for ~15%, so it was not done.
+
+Fix: `.app-main` has no `backdrop-filter` (a guard in `animationBudget.test.ts`
+keeps it off). Frozen-frame comparison of before and after on Home, Player and
+Shows: at most 6/255 per channel, mean under 0.3, from the grain no longer
+being blurred away. Before and after screenshots are on #2534.
+
+Same container, production builds of `main` and the branch, `IDLE_ROUTES=/,/player,/shows`,
+signed in, track loaded and paused, pointer moving:
+
+| Route | ms per frame, before → after | Frames/s, before → after | Floor: every blur off |
+| --- | --- | --- | --- |
+| Home | 135 → 55 (−59%) | 7 → 17 | 25 ms |
+| Player | 137 → 75 (−45%) | 7 → 13 | 22 ms |
+| Shows | 117 → 18 (−84%) | 8 → 50 | 18 ms |
+
+Fewer milliseconds per frame is what a laptop GPU spends less on; in this
+container the GPU process stays pinned either way, because it simply draws
+more frames. What is left above the floor: on Home, the sticky top bar's
+`blur(40px)` (~20 ms) and the hero card; on Player, the floating console's
+`blur(40px) saturate(1.8)`. Both are chrome the owner chose to keep blurred.
+
+The laptop check (Chrome Task Manager, GPU process, Home with the mouse
+moving) is the acceptance reading; repeat it on staging after a deploy.
 
 ## Related
 

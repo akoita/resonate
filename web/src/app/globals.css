@@ -716,7 +716,13 @@ a {
   height: 100vh;
   overflow: hidden;
   background: var(--studio-surface);
-  backdrop-filter: var(--glass-blur);
+  /* No backdrop-filter here (#2534). The only thing behind the main column
+   * is the shell's static aurora gradient and its 2.5% grain, so a 32px blur
+   * of it looks the same as no blur (frozen-frame diff: at most 6/255, mean
+   * under 0.3). But the blur made the whole main column one full-viewport blurred
+   * surface, and every frame of any running loop inside it recomputed that
+   * blur: about half the compositor time per frame on Home, Player and Shows
+   * (docs/engineering/idle-cost-harness.md). Don't add it back. */
   border: none;
   border-radius: 0;
   position: relative;
