@@ -25,6 +25,12 @@ import {
   type RemixEntitlementDecision,
 } from "../modules/remix/remix-entitlements";
 import { stubGenerationCredits } from "./e2e-helpers";
+import { ConfigService } from "@nestjs/config";
+import { CatalogService } from "../modules/catalog/catalog.service";
+import { LocalStorageProvider } from "../modules/storage/local_storage_provider";
+import { EncryptionService } from "../modules/encryption/encryption.service";
+import { AesEncryptionProvider } from "../modules/encryption/providers/aes_encryption_provider";
+import { UploadRightsRoutingService } from "../modules/rights/upload-rights-routing.service";
 
 class DenyingEntitlements extends RemixEntitlementsService {
   async pro(): Promise<RemixEntitlementDecision> {
@@ -124,13 +130,22 @@ describe("Remix mashups backend (#2558, integration)", () => {
     })),
   };
 
+  const storage = {
+    upload: jest.fn(async (_bytes: Buffer, filename: string) => ({
+      uri: `local://uploads/${filename}`,
+      provider: "local",
+    })),
+    download: jest.fn(async () => Buffer.from("mashup audio bytes")),
+    delete: jest.fn(),
+  };
+
   function service(entitlements?: RemixEntitlementsService) {
     return new RemixProjectService(
       eventBus,
       new RemixEligibilityService(),
       {} as never,
       stemMixRenderer as never,
-      { upload: jest.fn(), download: jest.fn(), delete: jest.fn() } as never,
+      storage as never,
       generationQueue as never,
       stubGenerationCredits() as never,
       undefined,
@@ -204,7 +219,9 @@ describe("Remix mashups backend (#2558, integration)", () => {
     await prisma.stem.deleteMany({ where: { trackId: { in: tracks } } });
     await prisma.track.deleteMany({ where: { id: { in: tracks } } });
     await prisma.release.deleteMany({ where: { id: { startsWith: P } } });
-    await prisma.artist.deleteMany({ where: { id: { in: [ARTIST_A_ID, ARTIST_B_ID] } } });
+    await prisma.artist.deleteMany({
+      where: { OR: [{ id: { in: [ARTIST_A_ID, ARTIST_B_ID] } }, { userId: CREATOR_ID }] },
+    });
     await prisma.wallet.deleteMany({ where: { userId: CREATOR_ID } });
     await prisma.user.deleteMany({ where: { id: { in: [CREATOR_ID, OWNER_A_ID, OWNER_B_ID] } } });
     eventBus.destroy();
@@ -385,6 +402,105 @@ describe("Remix mashups backend (#2558, integration)", () => {
       mashupDspVersion: "remix-mashup-dsp/v1",
       mashupConform: { shiftSec: 8 },
     });
+  });
+
+  it("publishes under the remixer and credits both sources on the release (#2560)", async () => {
+    const projectService = service();
+    const project = await createProject(projectService);
+    await projectService.updateProject(CREATOR_ID, project.id, {
+      secondarySourceTrackId: TRACK_B,
+      addStemIds: [B_BASS],
+      mashup: VALID_MASHUP,
+    });
+    await projectService.generateDraft(CREATOR_ID, project.id, {});
+    const queued = generationQueue.add.mock.calls.at(-1)?.[1] as RemixGenerationJobData;
+    await projectService.processGenerationJob(queued);
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    // The fixtures carry no artist name on the track or release.
+    expect(result.attribution).toBe('Mashup of "Night Drive" and "Low Tide"');
+    const releaseId = result.publishedReleaseId as string;
+    try {
+      // Neither source artist's own release: it sits under the remixer.
+      const row = await prisma.release.findUniqueOrThrow({
+        where: { id: releaseId },
+        include: { artist: true },
+      });
+      expect(row.artist.userId).toBe(CREATOR_ID);
+      expect([ARTIST_A_ID, ARTIST_B_ID]).not.toContain(row.artistId);
+
+      const configService = new ConfigService({
+        ENCRYPTION_SECRET: "test-encryption-secret-for-integration",
+      });
+      const catalog = new CatalogService(
+        new EventBus(),
+        new EncryptionService(
+          new AesEncryptionProvider(configService) as never,
+          configService,
+        ) as never,
+        new LocalStorageProvider(),
+        new UploadRightsRoutingService(),
+      );
+      const release = (await catalog.getRelease(releaseId)) as {
+        remix: { sourceTrackId: string | null; sources?: unknown[] } | null;
+      };
+      expect(release.remix?.sourceTrackId).toBe(TRACK_A);
+      expect(release.remix?.sources).toEqual([
+        { role: "lead", trackId: TRACK_A, releaseId: `${P}release_a`, trackTitle: "Night Drive", artistName: null },
+        { role: "secondary", trackId: TRACK_B, releaseId: `${P}release_b`, trackTitle: "Low Tide", artistName: null },
+      ]);
+    } finally {
+      await prisma.remixProject.update({
+        where: { id: project.id },
+        data: { publishedReleaseId: null },
+      }).catch(() => undefined);
+      await prisma.stemPricing.deleteMany({ where: { stem: { track: { releaseId } } } }).catch(() => undefined);
+      await prisma.stem.deleteMany({ where: { track: { releaseId } } });
+      await prisma.track.deleteMany({ where: { releaseId } });
+      await prisma.release.deleteMany({ where: { id: releaseId } });
+    }
+  });
+
+  it("offers only other tracks the user can remix as the second track (#2560)", async () => {
+    const projectService = service();
+    const project = await createProject(projectService);
+
+    const low = await projectService.listMashupCandidates(CREATOR_ID, project.id, "Low Tide");
+    const b = low.items.find((item) => item.trackId === TRACK_B);
+    expect(b).toMatchObject({
+      trackTitle: "Low Tide",
+      releaseId: `${P}release_b`,
+      tempoBpm: 100,
+      current: false,
+    });
+    // Remix tier only: a draft and a release, never an export.
+    expect(b?.allowedActions).toEqual(["private_draft", "publish_resonate"]);
+    // Source A is never its own second track.
+    const self = await projectService.listMashupCandidates(CREATOR_ID, project.id, "Night Drive");
+    expect(self.items.map((item) => item.trackId)).not.toContain(TRACK_A);
+
+    // A track the user holds no licence on is not offered.
+    const trackD = `${P}track_d`;
+    await prisma.release.create({
+      data: { id: `${P}release_d`, artistId: ARTIST_B_ID, title: "Unlicensed Hours", status: "ready", rightsRoute: "STANDARD_ESCROW" },
+    });
+    await prisma.track.create({
+      data: { id: trackD, releaseId: `${P}release_d`, title: "Unlicensed Hours", position: 1, contentStatus: "clean", rightsRoute: "STANDARD_ESCROW" },
+    });
+    await prisma.stem.create({
+      data: { id: `${P}d_vocals`, trackId: trackD, type: "vocals", uri: "local://dv", audioFeatures: features(95) },
+    });
+    try {
+      const unlicensed = await projectService.listMashupCandidates(CREATOR_ID, project.id, "Unlicensed Hours");
+      expect(unlicensed.items.map((item) => item.trackId)).not.toContain(trackD);
+    } finally {
+      await prisma.stem.deleteMany({ where: { trackId: trackD } });
+      await prisma.track.deleteMany({ where: { id: trackD } });
+    }
+
+    await projectService.updateProject(CREATOR_ID, project.id, { secondarySourceTrackId: TRACK_B });
+    const again = await projectService.listMashupCandidates(CREATOR_ID, project.id, "Low Tide");
+    expect(again.items.find((item) => item.trackId === TRACK_B)?.current).toBe(true);
   });
 
   it("validates and Pro-gates the mashup recipe; removing B takes its stems and recipe along", async () => {

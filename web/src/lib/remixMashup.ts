@@ -131,3 +131,185 @@ export function shiftConformedChannels(
     return out;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Studio helpers (#2560): suggestions, the stems of each source, and the
+// conforms the preview engine plays B with.
+// ---------------------------------------------------------------------------
+
+export const MASHUP_SEMITONES_MIN = -6;
+export const MASHUP_SEMITONES_MAX = 6;
+export const MASHUP_OFFSET_BARS_MAX = 2000;
+export const MASHUP_FIRST_BEAT_MAX_SEC = 120;
+
+export type MashupKey = { tonic: string; mode: "major" | "minor" };
+
+/**
+ * The tempo ratio that brings B to A's tempo (B × ratio = A). A pair too far
+ * apart for the 0.75–1.33 range is tried at half or double time; when even
+ * that misses, `inRange` is false and the ratio is the clamped one.
+ */
+export function suggestTempoRatio(
+  leadBpm: number | null,
+  secondaryBpm: number | null,
+): { ratio: number; feel: "same" | "half" | "double"; inRange: boolean } | null {
+  if (!leadBpm || !secondaryBpm || leadBpm <= 0 || secondaryBpm <= 0) return null;
+  const direct = leadBpm / secondaryBpm;
+  const options: Array<{ ratio: number; feel: "same" | "half" | "double" }> = [
+    { ratio: direct, feel: "same" },
+    // B read at half time (its bars twice as long) or double time.
+    { ratio: direct * 2, feel: "half" },
+    { ratio: direct / 2, feel: "double" },
+  ];
+  const inRange = options
+    .filter(
+      (option) =>
+        option.ratio >= MASHUP_TEMPO_RATIO_MIN - 1e-9 &&
+        option.ratio <= MASHUP_TEMPO_RATIO_MAX + 1e-9,
+    )
+    .sort((a, b) => Math.abs(Math.log(a.ratio)) - Math.abs(Math.log(b.ratio)));
+  if (inRange.length > 0) {
+    return { ratio: roundRatio(inRange[0].ratio), feel: inRange[0].feel, inRange: true };
+  }
+  return { ratio: roundRatio(clampRatio(direct)), feel: "same", inRange: false };
+}
+
+export function clampRatio(ratio: number): number {
+  return Math.min(MASHUP_TEMPO_RATIO_MAX, Math.max(MASHUP_TEMPO_RATIO_MIN, ratio));
+}
+
+function roundRatio(ratio: number): number {
+  return Math.round(ratio * 10000) / 10000;
+}
+
+const PITCH_CLASS: Readonly<Record<string, number>> = {
+  C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11,
+};
+
+/** Pitch class of a tonic ("C", "F#", "Bb", "D♭"), or null. */
+export function tonicPitchClass(tonic: string): number | null {
+  const match = /^([A-Ga-g])([#♯b♭]?)$/.exec(tonic.trim());
+  if (!match) return null;
+  const natural = PITCH_CLASS[match[1].toUpperCase()];
+  const accidental = match[2] === "#" || match[2] === "♯" ? 1 : match[2] ? -1 : 0;
+  return (natural + accidental + 12) % 12;
+}
+
+/**
+ * The key shift (semitones, −6..6) that puts B in A's key. Keys of different
+ * modes are compared through their relative major (A minor ≈ C major), so a
+ * minor B over a major A lands on A's relative minor. Null when a key is
+ * unknown.
+ */
+export function suggestKeyShift(
+  leadKey: MashupKey | null,
+  secondaryKey: MashupKey | null,
+): number | null {
+  if (!leadKey || !secondaryKey) return null;
+  const lead = tonicPitchClass(leadKey.tonic);
+  const secondary = tonicPitchClass(secondaryKey.tonic);
+  if (lead === null || secondary === null) return null;
+  const relativeMajor = (pc: number, mode: MashupKey["mode"]) =>
+    mode === "minor" ? (pc + 3) % 12 : pc;
+  const delta =
+    (relativeMajor(lead, leadKey.mode) - relativeMajor(secondary, secondaryKey.mode) + 12) % 12;
+  return delta > 6 ? delta - 12 : delta;
+}
+
+/** A key's name as the studio shows it ("A minor"). */
+export function keyLabel(key: MashupKey | null): string | null {
+  return key ? `${key.tonic} ${key.mode}` : null;
+}
+
+type StemWithSource = {
+  stemId: string;
+  sourceTrackId?: string;
+  audioFeatures?: unknown;
+};
+
+/** The stems of one source; on a one-source project every stem is A's. */
+export function stemsOfSource<T extends StemWithSource>(
+  stems: T[],
+  trackId: string,
+  leadTrackId: string,
+): T[] {
+  return stems.filter((stem) => (stem.sourceTrackId ?? leadTrackId) === trackId);
+}
+
+/** A source's most confident measured key. */
+export function measuredKey(stems: Array<{ audioFeatures?: unknown }>): MashupKey | null {
+  let best: { key: MashupKey; confidence: number } | null = null;
+  for (const stem of stems) {
+    const features = stem.audioFeatures as Record<string, unknown> | null | undefined;
+    const key = features && typeof features === "object" ? features.key : null;
+    if (!key || typeof key !== "object") continue;
+    const { tonic, mode, confidence } = key as Record<string, unknown>;
+    if (typeof tonic !== "string" || (mode !== "major" && mode !== "minor")) continue;
+    const score = typeof confidence === "number" && Number.isFinite(confidence) ? confidence : 0;
+    if (!best || score > best.confidence) best = { key: { tonic, mode }, confidence: score };
+  }
+  return best?.key ?? null;
+}
+
+/**
+ * The conform of each of B's project stems for the preview, or none when the
+ * project has one source, no recipe, or B plays as it is (no lead grid, an
+ * offset past A's end). Mirrors what the render applies.
+ */
+export function previewConforms(project: {
+  sourceTrackId: string;
+  secondarySource?: { trackId: string } | null;
+  mashup?: RemixMashup | null;
+  sectionGrid?: RemixSectionGrid | null;
+  stems: StemWithSource[];
+}): { conforms: Record<string, MashupConform>; skipped: MashupConformSkip | null } {
+  const secondary = project.secondarySource?.trackId;
+  if (!secondary || !project.mashup) return { conforms: {}, skipped: null };
+  const secondaryStems = stemsOfSource(project.stems, secondary, project.sourceTrackId);
+  const plan = mashupConformPlan({
+    leadGrid: project.sectionGrid ?? null,
+    secondaryStems,
+    mashup: project.mashup,
+  });
+  if ("skipped" in plan) return { conforms: {}, skipped: plan.skipped };
+  return {
+    conforms: Object.fromEntries(secondaryStems.map((stem) => [stem.stemId, plan.conform])),
+    skipped: null,
+  };
+}
+
+/** The default recipe for a newly attached B, from the measured features. */
+export function initialMashup(input: {
+  leadBpm: number | null;
+  secondaryBpm: number | null;
+  leadKey: MashupKey | null;
+  secondaryKey: MashupKey | null;
+}): RemixMashup {
+  const tempo = suggestTempoRatio(input.leadBpm, input.secondaryBpm);
+  return {
+    schemaVersion: REMIX_MASHUP_SCHEMA_VERSION,
+    secondary: {
+      tempoRatio: tempo?.ratio ?? 1,
+      semitones: suggestKeyShift(input.leadKey, input.secondaryKey) ?? 0,
+      offsetBars: 0,
+    },
+  };
+}
+
+/**
+ * Names the source that blocks an action on a two-source project, so the
+ * studio can say "Track B needs a commercial license to export" instead of a
+ * bare denial. Null when the reason is not tied to a source.
+ */
+export function denialSourceLabel(
+  reason: { sourceRole?: "lead" | "secondary"; sourceTrackId?: string },
+  sources: {
+    lead: { trackTitle: string };
+    secondary?: { trackTitle: string } | null;
+  },
+): string | null {
+  if (!sources.secondary) return null;
+  if (reason.sourceRole === "secondary") return `Track B (“${sources.secondary.trackTitle}”)`;
+  if (reason.sourceRole === "lead") return `Track A (“${sources.lead.trackTitle}”)`;
+  return null;
+}

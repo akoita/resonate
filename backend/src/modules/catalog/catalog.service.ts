@@ -88,6 +88,20 @@ export type RemixReleaseProvenance = {
   grounding: string | null;
   aiGenerated: boolean;
   remixProjectId: string | null;
+  /**
+   * Mashups (#2560): both sources, the leading track first, so the release
+   * page credits and links both artists. Absent for a single-source remix.
+   */
+  sources?: RemixReleaseSource[];
+};
+
+/** One source of a published mashup (#2560). */
+export type RemixReleaseSource = {
+  role: "lead" | "secondary";
+  trackId: string;
+  releaseId: string | null;
+  trackTitle: string | null;
+  artistName: string | null;
 };
 
 type AudioRange = { start: number; end: number; total: number };
@@ -2285,6 +2299,26 @@ export class CatalogService implements OnModuleInit {
       const value = lineage[key];
       return typeof value === "string" && value ? value : null;
     };
+    const text = (value: unknown): string | null =>
+      typeof value === "string" && value ? value : null;
+    const sources: RemixReleaseSource[] = Array.isArray(lineage.sources)
+      ? lineage.sources.flatMap((entry): RemixReleaseSource[] => {
+          if (!entry || typeof entry !== "object") return [];
+          const source = entry as Record<string, unknown>;
+          const trackId = text(source.trackId);
+          const role = source.role;
+          if (!trackId || (role !== "lead" && role !== "secondary")) return [];
+          return [
+            {
+              role,
+              trackId,
+              releaseId: text(source.releaseId),
+              trackTitle: text(source.trackTitle),
+              artistName: text(source.artistName),
+            },
+          ];
+        })
+      : [];
     return {
       attribution:
         str("attribution") ??
@@ -2298,6 +2332,7 @@ export class CatalogService implements OnModuleInit {
       grounding: str("grounding"),
       aiGenerated: lineage.aiGenerated === true,
       remixProjectId: str("remixProjectId"),
+      ...(sources.length === 2 ? { sources } : {}),
     };
   }
 

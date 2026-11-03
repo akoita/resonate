@@ -1992,7 +1992,24 @@ function ReleaseDetailsContent() {
                 style={{ margin: 0, fontSize: 13.5, color: "rgba(255,255,255,0.8)" }}
               >
                 {release.remix.attribution}
-                {release.remix.sourceReleaseId && (
+                {release.remix.sources && release.remix.sources.length > 1 ? (
+                  // Mashups (#2560): both sources, each linked to its release.
+                  release.remix.sources.map((source) =>
+                    source.releaseId ? (
+                      <span key={`${source.role}-${source.trackId}`}>
+                        {" · "}
+                        <Link
+                          href={`/release/${source.releaseId}`}
+                          className="release-remix-source-link"
+                          style={{ color: "#c4b5fd", textDecoration: "underline" }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {`View “${source.trackTitle ?? (source.role === "lead" ? "track A" : "track B")}”`}
+                        </Link>
+                      </span>
+                    ) : null,
+                  )
+                ) : release.remix.sourceReleaseId && (
                   <>
                     {" · "}
                     <Link

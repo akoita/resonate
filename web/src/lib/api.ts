@@ -13,6 +13,7 @@ import type { BillingCurrency } from "./billingCurrency";
 import type { RemixBeatRecipe } from "./remixBeat";
 import type { RemixPartRole, RemixParts } from "./remixParts";
 import type { RemixFxRecipe } from "./remixFx";
+import type { RemixMashup } from "./remixMashup";
 import type {
   CrateDto,
   CrateExportFormat,
@@ -554,6 +555,20 @@ export type RemixReleaseProvenance = {
     | null;
   aiGenerated: boolean;
   remixProjectId: string | null;
+  /**
+   * Mashups (#2560): both sources, the leading track first, so the release
+   * page credits and links both artists. Absent for a single-source remix.
+   */
+  sources?: RemixReleaseSource[];
+};
+
+/** One source of a published mashup (#2560). */
+export type RemixReleaseSource = {
+  role: "lead" | "secondary";
+  trackId: string;
+  releaseId: string | null;
+  trackTitle: string | null;
+  artistName: string | null;
 };
 
 export type ReleaseArtistCredit = {
@@ -7180,6 +7195,9 @@ export async function generateComplementaryStem(
 export type RemixDenialReason = {
   code: string;
   message: string;
+  /** Mashups (#2558): the source whose rights block, on a two-source project. */
+  sourceTrackId?: string;
+  sourceRole?: "lead" | "secondary";
 };
 
 /**
@@ -7216,6 +7234,13 @@ export type RemixEligibilityResponse = {
   }>;
   /** Provider attribution to display in the studio, or null/absent when none. */
   generationAttribution?: RemixGenerationAttribution | null;
+  /** Mashups (#2558): each source's own decision, the leading track first. */
+  sources?: Array<{
+    trackId: string;
+    role: "lead" | "secondary";
+    allowed: boolean;
+    allowedActions: Array<"private_draft" | "publish_resonate" | "export">;
+  }>;
 };
 
 export type RemixProjectStem = {
@@ -7239,6 +7264,8 @@ export type RemixProjectStem = {
   gainDb: number | null;
   muted: boolean;
   arrangement: unknown;
+  /** Mashups (#2558): the track this stem comes from (A or B). */
+  sourceTrackId?: string;
 };
 
 export type RemixProjectSource = {
@@ -7469,6 +7496,8 @@ export type RemixProjectAvailableStem = {
   remixable: boolean | null;
   licensed: boolean;
   addable: boolean;
+  /** Mashups (#2558): the track this stem comes from (A or B). */
+  sourceTrackId?: string;
 };
 
 export type RemixProject = {
@@ -7494,6 +7523,10 @@ export type RemixProject = {
   createdAt: string;
   updatedAt: string;
   source: RemixProjectSource;
+  /** Mashups (#2558, Pro): the second source track B; null = one source. */
+  secondarySource?: RemixProjectSource | null;
+  /** Mashup recipe `remix-mashup/v1` (#2558): how B is conformed to A. */
+  mashup?: RemixMashup | null;
   stems: RemixProjectStem[];
   /** Present on draft-project reads only (#1312). */
   availableStems?: RemixProjectAvailableStem[];
@@ -7656,7 +7689,43 @@ export type RemixProjectPatch = {
   cues?: RemixCues | null;
   /** Automation lanes `remix-automation/v1` (#2541, Pro), the whole recipe; null clears them. */
   automation?: RemixAutomation | null;
+  /**
+   * Mashups (#2558, Pro): the second source track; null removes it, with
+   * its stems and recipe. Must differ from the first track.
+   */
+  secondarySourceTrackId?: string | null;
+  /** Mashup recipe `remix-mashup/v1` (#2558, Pro); null clears it. */
+  mashup?: RemixMashup | null;
 };
+
+/** A track the owner can pair with a draft as the second source (#2560). */
+export type RemixMashupCandidate = {
+  trackId: string;
+  trackTitle: string;
+  artistName: string | null;
+  releaseId: string;
+  releaseTitle: string;
+  tempoBpm: number | null;
+  key: { tonic: string; mode: "major" | "minor" } | null;
+  allowedActions: Array<"private_draft" | "publish_resonate" | "export">;
+  current: boolean;
+};
+
+/** Tracks the owner may pair with this draft as the second source (#2560). */
+export async function listRemixMashupCandidates(
+  token: string,
+  projectId: string,
+  query: string,
+) {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set("q", query.trim());
+  const suffix = params.toString() ? `?${params}` : "";
+  return apiRequest<{ items: RemixMashupCandidate[] }>(
+    `/remix/projects/${projectId}/mashup-candidates${suffix}`,
+    {},
+    token
+  );
+}
 
 export async function updateRemixProject(
   token: string,
@@ -7851,11 +7920,16 @@ export async function exportRemixDraftBlob(
 export async function getRemixEligibility(
   token: string,
   trackId: string,
-  stemIds?: string[]
+  stemIds?: string[],
+  /** Mashups (#2560): the second source, so its stems are checked against it. */
+  secondaryTrackId?: string | null
 ) {
   const params = new URLSearchParams({ trackId });
   if (stemIds?.length) {
     params.set("stemIds", stemIds.join(","));
+  }
+  if (secondaryTrackId) {
+    params.set("secondaryTrackId", secondaryTrackId);
   }
   return apiRequest<RemixEligibilityResponse>(
     `/remix/eligibility?${params.toString()}`,

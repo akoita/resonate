@@ -62,6 +62,8 @@ export class RemixController {
     @Req() req: any,
     @Query("trackId") trackId?: string,
     @Query("stemIds") stemIds?: string,
+    /** Mashups (#2560): the second source; each stem is checked against its own track. */
+    @Query("secondaryTrackId") secondaryTrackId?: string,
   ) {
     this.workerPrewarmService.prewarm();
     if (!trackId) {
@@ -73,6 +75,14 @@ export class RemixController {
           .map((stemId) => stemId.trim())
           .filter(Boolean)
       : undefined;
+    if (secondaryTrackId?.trim()) {
+      return this.eligibilityService.checkSourcesEligibility({
+        userId: req.user.userId,
+        sourceTrackId: trackId,
+        secondarySourceTrackId: secondaryTrackId.trim(),
+        stemIds: parsedStemIds ?? [],
+      });
+    }
     return this.eligibilityService.checkEligibility({
       userId: req.user.userId,
       trackId,
@@ -133,6 +143,17 @@ export class RemixController {
     @Param("jobId") jobId: string,
   ) {
     return this.projectService.deleteDraftVersion(req.user.userId, id, jobId);
+  }
+
+  /** Tracks the owner can pair with this draft as the second source (#2560). */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("projects/:id/mashup-candidates")
+  listMashupCandidates(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Query("q") q?: string,
+  ) {
+    return this.projectService.listMashupCandidates(req.user.userId, id, q);
   }
 
   @UseGuards(AuthGuard("jwt"))

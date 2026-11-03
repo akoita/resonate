@@ -1288,7 +1288,7 @@ from the JWT, never the request body.
     - the recipe range and Pro gate
     - removing B
 - Pro mode, S6f-3b (#2559, part of #1903, Sprint 53): mashups render and
-  preview conform. **Partial**: the studio controls are #2560.
+  preview conform. The studio controls followed in S6f-3c (#2560).
   - **Plan.** `mashupConformPlan` (backend `remix-mashup.ts`, web
     `remixMashup.ts`, both pinned by `remix-mashup-v1.parity.json`) puts B's
     first downbeat on A's bar `offsetBars`. The bar comes from A's downbeats
@@ -1337,6 +1337,59 @@ from the JWT, never the request body.
     - `remixMashup.test.ts` replays the fixture and checks the shift.
     - `remixAudioPreview.test.ts` covers the engine's conform and
       invalidation.
+- Pro mode, S6f-3c (#2560, part of #1903, Sprint 53): the mashups studio.
+  With this slice, two-track mashups work end to end.
+  - **Picker.** `GET /remix/projects/:id/mashup-candidates?q=` (owner, draft
+    only) lists public, clean, ready tracks other than A whose track, release
+    or artist name matches. Each is checked track-default for this user and
+    only tracks the user may remix are returned (at most 20 of 60 scanned).
+    Each carries its measured tempo and key and its `allowedActions`, so the
+    picker says "export needs a commercial license" up front.
+  - **Mashup panel** (`RemixMashupPanel.tsx`, Pro). "Add a second track"
+    searches the candidates. Picking one attaches B with a first recipe from
+    the measured features (`initialMashup`):
+    - the tempo ratio (`suggestTempoRatio`, B × ratio = A), tried at half or
+      double time when the direct ratio is outside 0.75–1.33; a pair still
+      out of range shows "too far apart in tempo to match"
+    - the key shift (`suggestKeyShift`), compared through the relative major
+      and kept within −6..6
+    - offset bar 0
+    The controls then edit the ratio, key shift, the bar of A where B starts
+    and B's first downbeat (empty = measured), and Apply saves the recipe.
+    "Remove track B" takes B's stems and recipe along. When the plan is
+    skipped the panel says why (no bar grid on A, or an offset past A's end).
+  - **Session.** B's stems are tagged "· B" in the lanes, automation and
+    Replace menus. "Also on these tracks" names each stem's track. A's tempo
+    and key summary counts A's stems only. The preview gets the conforms of
+    B's stems (`previewConforms`), so it plays B as the render does.
+  - **Rights copy.** The studio's eligibility probe sends
+    `secondaryTrackId` (`GET /remix/eligibility` then checks each stem
+    against its own track). Export names the track that blocks ("Track B
+    needs a commercial license to export."), and so does the panel, from a
+    track-default probe of B. A failed attach shows the denial with its
+    source ("Track B: …").
+  - **Credits.** The publish confirmation reads "Mashup of "A" by X and "B"
+    by Y". The release's `remix` provenance gains `sources[]` (role, track,
+    release, title, artist) from the publish lineage. The release page links
+    both source releases. The release sits under the remixer's own artist
+    profile, so search and artist pages never show it as either source
+    artist's release.
+  - **Tests.**
+    - `remix-mashup.integration.spec.ts` covers the candidates (rights, A
+      excluded, an unlicensed track hidden, `current`) and a publish that
+      sits under the remixer with both sources on the release.
+    - `remix.controller.http.spec.ts` covers the two routes.
+    - `remixMashup.test.ts` covers the suggestions, the key and the preview
+      conforms.
+    - `RemixMashupPanel.test.tsx` and `RemixStudioEditor.test.tsx` cover the
+      panel, the draft parsing and the rights copy.
+    - The `remix-studio.authenticated.spec.ts` E2E adds a second track,
+      conforms it, plays it, renders and removes it.
+  - **User Guide.** "Pro mode: mashups of two tracks", with
+    `remix-studio-mashup.png`.
+  - **Not in this slice.** More than two sources, mapping B's sections onto
+    A's structure, warp markers, a per-artist "allow mashups" switch (D2) and
+    royalty flow-through (E3) stay out, as the RFC says.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
