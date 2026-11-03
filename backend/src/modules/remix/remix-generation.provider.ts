@@ -404,6 +404,14 @@ export type StemArrangementEntry = {
    * masks are block-indexed and these spans are in timeline time.
    */
   activeIntervals?: Array<{ startSec: number; endSec: number }> | null;
+  /**
+   * Automation lanes (#2541) in timeline time, resolved by the worker from
+   * `RemixProject.automation` and the timeline's downbeats; absent = none.
+   */
+  automation?: {
+    level: Array<{ atSec: number; value: number }> | null;
+    filter: Array<{ atSec: number; value: number }> | null;
+  } | null;
 };
 
 /**
@@ -506,6 +514,9 @@ export type RemixRenderMetadata = {
     reason: PartSkippedReason;
   }>;
   partsDspVersion?: string;
+  /** #2541: the automation curves version and the stems that had lanes. */
+  automationDspVersion?: string;
+  automationStemIds?: string[];
   /**
    * What the studio added on top of the stems: "beat" (#1902, synthesized)
    * and "ai_part" (#1901, at least one audible AI part). Absent when none.

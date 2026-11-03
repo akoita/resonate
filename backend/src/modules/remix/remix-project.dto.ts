@@ -104,6 +104,8 @@ export class UpdateRemixProjectDto {
   gridOverride?: unknown;
   /** Cue and loop points remix-cues/v1 (#2540); setting them needs `remix.pro`. */
   cues?: unknown;
+  /** Automation lanes remix-automation/v1 (#2541); setting them needs `remix.pro`. */
+  automation?: unknown;
 }
 
 /**

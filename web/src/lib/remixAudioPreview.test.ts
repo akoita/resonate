@@ -1118,6 +1118,58 @@ function setupWorklet(options: { worklet: boolean }) {
   return { engine, contexts };
 }
 
+describe("createStemPreviewEngine automation lanes (#2541)", () => {
+  it("adds nothing without lanes", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({ stems, soloStemId: null, automation: null });
+    const manual = contexts[0].sources[0].connections[0] as FakeGain;
+    expect(manual.connections).toHaveLength(1);
+    expect(contexts[0].biquads).toHaveLength(0);
+  });
+
+  it("wires gain → Pro → level → low-pass → high-pass → section gain, in output time from the offset", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 4,
+      effects: fxRecipe({ master: { speed: 1.25 }, stems: { vocals: { pan: 0.5 } } }),
+      automation: {
+        vocals: {
+          level: [
+            { atSec: 2, value: -12 },
+            { atSec: 12, value: 0 },
+          ],
+          filter: [{ atSec: 0, value: -0.5 }],
+        },
+      },
+    });
+    const context = contexts[0];
+    const manual = context.sources[0].connections[0] as FakeGain;
+    const upmix = manual.connections[0] as FakeGain;
+    const panner = upmix.connections[0] as FakeStereoPanner;
+    const level = panner.connections[0] as FakeGain;
+    expect(level).toBeInstanceOf(FakeGain);
+    // Offset 4 s at speed 1.25 is output 3.2 s; the lane's 2 s and 12 s are 1.6 s and 9.6 s.
+    const startAt = 0.03;
+    expect(level.gain.events[0][0]).toBe("set");
+    expect(20 * Math.log10(level.gain.events[0][1])).toBeCloseTo(-12 + 12 * ((3.2 - 1.6) / 8), 9);
+    expect(level.gain.events[0][2]).toBeCloseTo(startAt, 12);
+    expect(level.gain.events[1][1]).toBe(1);
+    expect(level.gain.events[1][2]).toBeCloseTo(startAt + 9.6 - 3.2, 9);
+    const lowpass = level.connections[0] as FakeBiquad;
+    expect(lowpass.type).toBe("lowpass");
+    expect(lowpass.frequency.events[0][1]).toBeCloseTo(2000, 6);
+    const highpass = lowpass.connections[0] as FakeBiquad;
+    expect(highpass.type).toBe("highpass");
+    expect(highpass.frequency.events[0][1]).toBe(20);
+    expect(highpass.connections[0]).toBeInstanceOf(FakeGain); // → section gain
+    // The drums have no lanes: gain → section gain.
+    const drumsManual = context.sources[1].connections[0] as FakeGain;
+    expect((drumsManual.connections[0] as FakeGain).connections[0]).not.toBeInstanceOf(FakeBiquad);
+  });
+});
+
 describe("createStemPreviewEngine Pro punch compressor (#1903 S6b)", () => {
   it("loads the worklet and wires gain → pan → punch → section gain", async () => {
     try {

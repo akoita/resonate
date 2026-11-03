@@ -731,6 +731,68 @@ test.describe("Remix Studio session view (#1879)", () => {
     expect(pageErrors).toEqual([]);
   });
 
+  test("pro mode: automation lanes edit, play and save (#2541)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    const panel = page.getByRole("group", { name: "Automation lanes" });
+    await expect(panel).toHaveCount(0);
+    await page.getByRole("switch", { name: /^Pro/ }).click();
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("Nothing automated yet.");
+
+    await panel.getByRole("combobox", { name: "Automation stem" }).selectOption("stem-bass");
+    // Two points: move the first to bar 5, then add bar 1 and pull it down.
+    await panel.getByRole("button", { name: "Add point at bar 1" }).click();
+    const bar = panel.getByRole("spinbutton", { name: "Point bar (now 1)" });
+    await bar.fill("5");
+    await bar.press("Enter");
+    await expect(panel.getByRole("slider", { name: "Level at bar 5" })).toBeVisible();
+    await panel.getByRole("button", { name: "Add point at bar 1" }).click();
+    await panel.getByRole("slider", { name: "Level at bar 1" }).fill("-24");
+    await expect(panel).toContainText("-24.0 dB");
+    await expect(panel).toContainText("Automated: Bass (level).");
+    await expect(panel.getByRole("img", { name: "Level lane: 2 points" })).toBeVisible();
+
+    // The preview plays the unsaved lanes.
+    await page.getByRole("button", { name: /^Play/ }).first().click();
+    await expect(page.getByRole("button", { name: /^Stop/ }).first()).toBeVisible();
+    await page.getByRole("button", { name: /^Stop/ }).first().click();
+
+    // A filter point on the same stem, then save.
+    await panel.getByRole("button", { name: "Filter" }).click();
+    await panel.getByRole("button", { name: "Add point at bar 1" }).click();
+    await panel.getByRole("slider", { name: "Filter at bar 1" }).fill("-0.5");
+    await expect(panel).toContainText("Low-pass 2.0 kHz");
+    await panel.getByRole("button", { name: "Save automation" }).click();
+    await expect
+      .poll(() => patches.find((patch) => patch.automation)?.automation, { timeout: 10_000 })
+      .toEqual({
+        schemaVersion: "remix-automation/v1",
+        stems: {
+          "stem-bass": {
+            level: [
+              { bar: 0, value: -24 },
+              { bar: 4, value: 0 },
+            ],
+            filter: [{ bar: 0, value: -0.5 }],
+          },
+        },
+      });
+    await expect(panel.getByRole("button", { name: "Save automation" })).toBeDisabled();
+    await panel.getByRole("button", { name: "Clear lane" }).click();
+    await expect(panel.getByRole("button", { name: "Save automation" })).toBeEnabled();
+    await panel.getByRole("button", { name: "Undo changes" }).click();
+    await expect(panel).toContainText("Low-pass 2.0 kHz");
+    expect(pageErrors).toEqual([]);
+  });
+
   test("studio polish: listening volume, reset to original, delete a draft version (#1910)", async ({
     authenticatedPage: page,
   }) => {

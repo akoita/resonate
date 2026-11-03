@@ -20,6 +20,7 @@ import {
   type StretchPreviewState,
   structureTimelineFor,
   engineLoopsNatively,
+  engineAutomation,
   structureTimelineKey,
   transportDurationSec,
 } from "./useRemixTransport";
@@ -183,6 +184,14 @@ describe("structure timeline in the transport (#1899)", () => {
     const [a, b] = identity.segments;
     expect(engineLoopsNatively(identity, { startSec: a.outStartSec, endSec: a.outEndSec })).toBe(true);
     expect(engineLoopsNatively(identity, { startSec: a.outStartSec, endSec: b.outEndSec })).toBe(false);
+  });
+
+  it("plays automation lanes on the arrangement only (#2541)", () => {
+    const lanes = { bass: { level: [{ atSec: 0, value: -6 }], filter: null } };
+    expect(engineAutomation(lanes, { kind: "arrangement" })).toBe(lanes);
+    expect(engineAutomation(lanes, { kind: "original" })).toBeNull();
+    expect(engineAutomation(lanes, { kind: "draft", jobId: null })).toBeNull();
+    expect(engineAutomation(undefined, { kind: "arrangement" })).toBeNull();
   });
 
   it("uses the timeline duration for engine sources, never for drafts", () => {
