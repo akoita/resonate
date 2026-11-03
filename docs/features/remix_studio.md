@@ -1139,7 +1139,10 @@ from the JWT, never the request body.
     on/off switch (suggests the first or last 8 bars), start bar, length,
     extra plays, Loop / Stop loop in the preview (the transport says
     "Looping the intro"), Save cues, and Export DJ version with the reason
-    it is unavailable. The User Guide's Pro section explains it.
+    it is unavailable. In a rearranged song the engine loops one block
+    natively; a cue loop across blocks is looped by the transport, which
+    restarts at the loop start (`engineLoopsNatively`). The User Guide's
+    Pro section explains it.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

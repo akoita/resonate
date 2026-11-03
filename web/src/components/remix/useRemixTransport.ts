@@ -8,6 +8,7 @@ import {
 } from "../../lib/api";
 import { useOptionalPlayer } from "../../lib/playerContext";
 import {
+  blockLoopSource,
   clampOutputVolume,
   createStemPreviewEngine,
   loopEntryOffset,
@@ -264,6 +265,21 @@ export function transportDurationSec(input: {
     return input.structureSec;
   }
   return input.bufferDurationSec ?? input.timelineSec;
+}
+
+/**
+ * Whether the engine can loop `loop` natively (#2540): always without a
+ * structure; with one, only a loop inside a single block (the engine cycles
+ * one block's source range). A cue loop across blocks is looped by the
+ * transport instead: it plays unlooped and restarts at the loop start.
+ */
+export function engineLoopsNatively(
+  timeline: RemixStructureTimeline | null,
+  loop: Pick<TransportLoop, "startSec" | "endSec"> | null,
+): boolean {
+  if (!loop || !timeline) return true;
+  const native = blockLoopSource(timeline.segments, loop);
+  return native !== null && native.loop.endSec >= loop.endSec - 1e-6;
 }
 
 /** The timeline the engine should play: null for none or the identity. */
@@ -823,6 +839,8 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     activeLoop: TransportLoop | null,
   ) => {
     const latest = inputRef.current;
+    const engineTimeline = structureTimelineFor(latest.timeline);
+    const nativeLoop = engineLoopsNatively(engineTimeline, activeLoop);
     try {
       const handle = await engine().play({
         stems: enginePreviewStems(
@@ -834,12 +852,13 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
         referenceStemId:
           next.kind === "original" ? latest.referenceStemId : null,
         offsetSec,
-        loop: activeLoop
-          ? { startSec: activeLoop.startSec, endSec: activeLoop.endSec }
-          : null,
+        loop:
+          activeLoop && nativeLoop
+            ? { startSec: activeLoop.startSec, endSec: activeLoop.endSec }
+            : null,
         effects: engineEffects(latest.effects, next),
         bpm: latest.bpm ?? null,
-        timeline: structureTimelineFor(latest.timeline),
+        timeline: engineTimeline,
         beat: latest.beat ?? null,
         parts: previewPartsFor(latest.parts, partBuffersRef.current),
         partTimeline: latest.partTimeline ?? null,
@@ -857,6 +876,20 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       playingRef.current = { mode: "engine", handle };
       setPreviewHandle(handle);
       updateStatus("playing");
+      if (activeLoop && !nativeLoop) {
+        // A cue loop across blocks (#2540): restart at its start each time
+        // the playhead reaches its end.
+        const watch = () => {
+          if (requestId !== requestRef.current) return;
+          if (handle.position() >= activeLoop.endSec - 0.005) {
+            void startRef.current(sourceRef.current, activeLoop.startSec, loopRef.current);
+            return;
+          }
+          draftFrameRef.current = requestAnimationFrame(watch);
+        };
+        cancelDraftFrame();
+        draftFrameRef.current = requestAnimationFrame(watch);
+      }
       // The preparation may have finished while this was loading.
       restartForStretchRef.current();
     } catch {
