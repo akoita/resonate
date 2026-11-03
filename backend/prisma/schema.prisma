@@ -1708,6 +1708,10 @@ model RemixProject {
   // AI part lanes (#1901): remix-parts/v1 { schemaVersion, parts: [{ id,
   // role, takeId, gainDb?, muted?, blocks? }] }; null means no parts.
   parts              Json?
+  // Grid correction (#2539): remix-grid-override/v1 { schemaVersion,
+  // tempoBpm, firstBeatSec }; null means the measured grid. Never rewrites
+  // the stems' measured audio features.
+  gridOverride       Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())

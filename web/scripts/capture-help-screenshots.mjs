@@ -1002,6 +1002,18 @@ const REMIX_TARGETS = [
     },
   },
   {
+    file: "remix-studio-grid.png",
+    prepare: async (page) => {
+      await page.getByRole("switch", { name: /^Pro/ }).click();
+      const panel = page.getByRole("group", { name: "Grid correction" });
+      await panel.getByRole("spinbutton", { name: "Tempo in BPM" }).fill("118.4");
+      await panel.getByRole("button", { name: "+10 ms" }).click();
+      await panel.getByRole("button", { name: "+10 ms" }).click();
+      await panel.scrollIntoViewIfNeeded();
+      return { locator: panel };
+    },
+  },
+  {
     file: "remix-studio-drafts.png",
     project: REMIX_WITH_DRAFTS,
     prepare: async (page) => {

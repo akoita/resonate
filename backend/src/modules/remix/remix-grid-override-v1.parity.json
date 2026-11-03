@@ -1,0 +1,436 @@
+{
+  "schemaVersion": "remix-grid-override/v1",
+  "note": "Parity fixture for #2539: the backend derives this grid from the stems and the override, and both engines (render and preview) place these beat hits and part spans on it, within 1e-9.",
+  "stems": [
+    {
+      "audioFeatures": {
+        "schemaVersion": "stem-audio-features/v1",
+        "tempoBpm": 118.4,
+        "tempoConfidence": 0.8,
+        "firstBeatSec": 0.31,
+        "durationSeconds": 40
+      }
+    }
+  ],
+  "taps": [
+    0,
+    500,
+    1000,
+    1500,
+    2000
+  ],
+  "measuredFirstBeatSec": 0.31,
+  "nudge": {
+    "beats": 1,
+    "ms": 10
+  },
+  "override": {
+    "schemaVersion": "remix-grid-override/v1",
+    "tempoBpm": 120,
+    "firstBeatSec": 0.82
+  },
+  "grid": {
+    "kind": "bars",
+    "sections": [
+      {
+        "startSec": 0,
+        "endSec": 16.82
+      },
+      {
+        "startSec": 16.82,
+        "endSec": 32.82
+      },
+      {
+        "startSec": 32.82,
+        "endSec": 40
+      }
+    ],
+    "sectionSeconds": 16,
+    "durationSeconds": 40,
+    "bpm": 120,
+    "firstBeatSec": 0.82,
+    "overridden": true,
+    "measured": {
+      "bpm": 118.4,
+      "firstBeatSec": 0.31
+    }
+  },
+  "segments": [
+    {
+      "section": 0,
+      "outStartSec": 0,
+      "outEndSec": 16.82
+    },
+    {
+      "section": 1,
+      "outStartSec": 16.82,
+      "outEndSec": 32.82
+    },
+    {
+      "section": 2,
+      "outStartSec": 32.82,
+      "outEndSec": 40
+    }
+  ],
+  "recipe": {
+    "kit": "punchy",
+    "pattern": {
+      "kick": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false
+      ]
+    },
+    "swing": 0,
+    "blocks": null
+  },
+  "hits": [
+    {
+      "timeSec": 0.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 1.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 1.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 2.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 2.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 3.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 3.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 4.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 4.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 5.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 5.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 6.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 6.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 7.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 7.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 8.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 8.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 9.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 9.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 10.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 10.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 11.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 11.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 12.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 12.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 13.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 13.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 14.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 14.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 15.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 15.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 16.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 16.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 17.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 17.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 18.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 18.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 19.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 19.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 20.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 20.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 21.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 21.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 22.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 22.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 23.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 23.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 24.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 24.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 25.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 25.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 26.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 26.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 27.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 27.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 28.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 28.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 29.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 29.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 30.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 30.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 31.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 31.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 32.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 32.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 33.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 33.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 34.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 34.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 35.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 35.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 36.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 36.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 37.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 37.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 38.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 38.82,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 39.32,
+      "instrument": "kick"
+    },
+    {
+      "timeSec": 39.82,
+      "instrument": "kick"
+    }
+  ],
+  "partLoopSec": 2,
+  "partSpans": [
+    {
+      "outStartSec": 0.82,
+      "outEndSec": 16.82,
+      "fadeOut": false
+    },
+    {
+      "outStartSec": 16.82,
+      "outEndSec": 32.82,
+      "fadeOut": false
+    },
+    {
+      "outStartSec": 32.82,
+      "outEndSec": 40,
+      "fadeOut": true
+    }
+  ]
+}

@@ -65,6 +65,9 @@ import { UPLOAD_RIGHTS_POLICY_VERSION } from "../rights/upload-rights-policy";
 import {
   activeIntervalsForArrangement,
   deriveSectionGrid,
+  normalizeGridOverrideInput,
+  parseGridOverride,
+  type RemixGridOverride,
   parseStemArrangement,
   validateStemArrangementInput,
 } from "./remix-arrangement";
@@ -918,6 +921,13 @@ export class RemixProjectService {
        * (checked under the project row lock); `blocks` follows the beat.
        */
       parts?: unknown;
+      /**
+       * Grid correction remix-grid-override/v1 (#2539): undefined leaves it
+       * unchanged, null returns to the measured grid. Setting one needs the
+       * `remix.pro` entitlement. Other fields in the same PATCH are
+       * validated against the corrected grid.
+       */
+      gridOverride?: unknown;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -992,6 +1002,39 @@ export class RemixProjectService {
       }
     }
 
+    // Grid correction (#2539): a Pro tool. Clearing it never needs Pro, so
+    // a saved correction can always be reset.
+    let gridOverride: RemixGridOverride | null | undefined;
+    if (patch.gridOverride !== undefined) {
+      const normalized = normalizeGridOverrideInput(patch.gridOverride);
+      if ("error" in normalized) {
+        throw new BadRequestException(normalized.error);
+      }
+      gridOverride = normalized.value;
+      const stored = parseGridOverride(project.gridOverride);
+      const changed =
+        gridOverride !== null &&
+        (!stored ||
+          stored.tempoBpm !== gridOverride.tempoBpm ||
+          stored.firstBeatSec !== gridOverride.firstBeatSec);
+      if (changed) {
+        const decision = await this.entitlements.pro(userId);
+        if (!decision.allowed) {
+          throw new ForbiddenException({
+            code: "pro_required",
+            message:
+              "Grid correction is a Pro tool, which this account can't use right now.",
+            fields: ["gridOverride"],
+            policyVersion: decision.policyVersion,
+          });
+        }
+      }
+    }
+    const gridOverrideAfterPatch =
+      gridOverride !== undefined
+        ? gridOverride
+        : parseGridOverride(project.gridOverride);
+
     const stemUpdates = patch.stems ?? [];
     const invalidGain = stemUpdates.find(
       (stem) =>
@@ -1025,6 +1068,7 @@ export class RemixProjectService {
             project.stems.map((stem) => ({
               audioFeatures: stem.stem.audioFeatures,
             })),
+            gridOverrideAfterPatch,
           )
         : null;
 
@@ -1250,6 +1294,14 @@ export class RemixProjectService {
                   parts === null
                     ? Prisma.DbNull
                     : (parts as unknown as Prisma.JsonObject),
+              }
+            : {}),
+          ...(gridOverride !== undefined
+            ? {
+                gridOverride:
+                  gridOverride === null
+                    ? Prisma.DbNull
+                    : (gridOverride as unknown as Prisma.JsonObject),
               }
             : {}),
         },
@@ -1607,6 +1659,7 @@ export class RemixProjectService {
         project.stems.map((stem) => ({
           audioFeatures: stem.stem.audioFeatures,
         })),
+        parseGridOverride(project.gridOverride),
       );
       // Structure blocks (#1899), read live and tolerantly: a malformed row, a
       // section outside the current grid, or a timeline over the safety cap
@@ -2016,6 +2069,7 @@ export class RemixProjectService {
     }
     const grid = deriveSectionGrid(
       project.stems.map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
+      parseGridOverride(project.gridOverride),
     );
     if (!grid || grid.kind !== "bars" || !grid.bpm || grid.bpm <= 0) {
       throw new ConflictException({
@@ -2290,6 +2344,7 @@ export class RemixProjectService {
     try {
       const grid = deriveSectionGrid(
         project.stems.map((stem) => ({ audioFeatures: stem.stem.audioFeatures })),
+        parseGridOverride(project.gridOverride),
       );
       if (!grid || grid.kind !== "bars" || !grid.bpm || grid.bpm <= 0) {
         throw new PartTakeFailure("no_tempo_grid", "no bar grid at process time");
@@ -3844,6 +3899,7 @@ export class RemixProjectService {
       project.stems.map((stem) => ({
         audioFeatures: stem.stem.audioFeatures,
       })),
+      parseGridOverride(project.gridOverride),
     );
     // Structure blocks (#1899), read tolerantly against the current grid
     // (over-cap rows read as null, exactly as the render fails open).

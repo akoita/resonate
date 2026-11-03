@@ -1077,6 +1077,30 @@ from the JWT, never the request body.
   - **UI.** A "Punch" slider (Off / 40%) closes the Pro strip; the Pro switch
     tooltip and the badge now name punch. The User Guide's Pro mode section
     explains it.
+- Pro mode, S6c (#2539, part of #1903): grid correction. **Partial** like the
+  rest of S6 (S6d cue/loop points with a DJ export, S6e automation, S6f stem
+  export and mashups remain on #1903).
+  - **Money.** Same seam as S6a: setting a grid override needs `remix.pro`
+    (free for everyone, no price; ADR-BM-6 line (2) seam only). Resetting to
+    the measured grid never needs the entitlement.
+  - **Recipe `remix-grid-override/v1`.** `RemixProject.gridOverride` (JSONB,
+    nullable): `{ schemaVersion, tempoBpm 30..300, firstBeatSec 0..120 }`,
+    rounded to 3 decimals, set or cleared (`null`) through `PATCH
+    /remix/projects/:id`; out-of-range values return 400. The measured stem
+    analysis is never changed.
+  - **One grid.** `deriveSectionGrid(stems, override)` is the single place
+    the override applies, so sections, structure validation, the beat, AI part
+    placement and conform, and the render all use the same grid. The served
+    `sectionGrid` gains `firstBeatSec`, `overridden` and `measured {bpm,
+    firstBeatSec}`. The beat and AI parts now start bar 1 at the first
+    downbeat (`firstBeatSec mod bar`), in the render and in the preview;
+    `remix-grid-override-v1.parity.json` pins taps → override → grid → beat
+    hits → part spans, and the backend and web suites both replay it.
+  - **UI.** With Pro on, a Grid panel under the Session: tempo field, Tap
+    tempo (median of at least 4 taps, rounded to 0.1 BPM), first-downbeat
+    nudges (±1 beat, ±10 ms), Apply grid, Use measured, and a warning that a
+    new tempo can change the sections. It is disabled with unsaved edits and
+    after publish. The User Guide's Pro section explains it.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

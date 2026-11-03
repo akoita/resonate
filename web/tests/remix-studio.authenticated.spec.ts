@@ -649,6 +649,44 @@ test.describe("Remix Studio session view (#1879)", () => {
     expect(pageErrors).toEqual([]);
   });
 
+  test("pro mode: grid correction sets and clears a tempo and downbeat override (#2539)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    // The Grid panel is a Pro tool: hidden until Pro is on.
+    const panel = page.getByRole("group", { name: "Grid correction" });
+    await expect(panel).toHaveCount(0);
+    await page.getByRole("switch", { name: /^Pro/ }).click();
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("120.0 BPM");
+    await expect(panel).toContainText("measured");
+
+    const apply = panel.getByRole("button", { name: "Apply grid" });
+    await expect(apply).toBeDisabled();
+    await panel.getByRole("spinbutton", { name: "Tempo in BPM" }).fill("118.4");
+    await panel.getByRole("button", { name: "+10 ms" }).click();
+    await panel.getByRole("button", { name: "+1 beat" }).click();
+    await expect(panel).toContainText("First downbeat 0.517 s");
+    await apply.click();
+    await expect
+      .poll(() => patches.find((patch) => patch.gridOverride)?.gridOverride, { timeout: 10_000 })
+      .toEqual({ schemaVersion: "remix-grid-override/v1", tempoBpm: 118.4, firstBeatSec: 0.517 });
+    await expect(panel).toContainText("118.4 BPM");
+    await expect(panel).toContainText("corrected");
+
+    // Use measured clears the override.
+    await panel.getByRole("button", { name: "Use measured" }).click();
+    await expect.poll(() => patches.some((patch) => patch.gridOverride === null)).toBe(true);
+    await expect(panel).toContainText("120.0 BPM");
+    expect(pageErrors).toEqual([]);
+  });
+
   test("studio polish: listening volume, reset to original, delete a draft version (#1910)", async ({
     authenticatedPage: page,
   }) => {

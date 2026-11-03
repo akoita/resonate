@@ -18,6 +18,7 @@ import {
   publishRemixProject,
   requestGenerationCredits,
   updateRemixProject,
+  type RemixGridOverride,
   type GenerationCreditBalance,
   type UsageLimit,
   type RemixEligibilityResponse,
@@ -149,6 +150,7 @@ import {
   type LanePart,
   type LaneStem,
 } from "./RemixSessionLanes";
+import { RemixGridPanel } from "./RemixGridPanel";
 import {
   apiErrorCode,
   DELETE_TAKE_CONFIRM_MESSAGE,
@@ -1827,6 +1829,9 @@ export function RemixStudioEditor({
   // Pro mode (#1903): this device's view preference, off by default; it
   // never changes the recipe. Offered only when the server allows it.
   const [proMode, setProMode] = useState(false);
+  // Grid correction (#2539): applied straight away, outside autosave.
+  const [gridSaving, setGridSaving] = useState(false);
+  const [gridError, setGridError] = useState<string | null>(null);
   useEffect(() => {
     // Hydrate from localStorage after mount (SSR renders the default).
     setListeningVolume(readListeningVolume());
@@ -2815,6 +2820,22 @@ export function RemixStudioEditor({
     }
   };
 
+  // Grid correction (#2539): its own PATCH, so the new grid (and the sections
+  // it implies) comes back from the server before anything else uses it.
+  const applyGridOverride = async (override: RemixGridOverride | null) => {
+    if (!token || published || gridSaving) return;
+    setGridSaving(true);
+    setGridError(null);
+    try {
+      const updated = await updateRemixProject(token, project.id, { gridOverride: override });
+      setProject((prev) => ({ ...updated, availableStems: prev.availableStems }));
+    } catch {
+      setGridError("Couldn't apply the grid. Check your connection and try again.");
+    } finally {
+      setGridSaving(false);
+    }
+  };
+
   // Autosave (#1879): re-armed on every edit, fires after a short idle.
   const saveBlocked = failedSaveEdits !== null && failedSaveEdits === edits;
   const autosaveDue = shouldAutosave({
@@ -3359,6 +3380,22 @@ export function RemixStudioEditor({
                   </button>
                 </div>
               </div>
+              {proAllowed && proMode && sectionGrid && (
+                <RemixGridPanel
+                  grid={sectionGrid}
+                  disabled={published || dirty || saving}
+                  disabledReason={
+                    published
+                      ? "Published remixes can't change their grid."
+                      : dirty || saving
+                        ? "Saving your other changes first…"
+                        : null
+                  }
+                  saving={gridSaving}
+                  error={gridError}
+                  onApply={(override) => void applyGridOverride(override)}
+                />
+              )}
               <p className="text-zinc-500 text-xs mb-4">
                 The preview is unmastered, with a limiter keeping the summed stems
                 from clipping; final renders are loudness-normalized, so they sound

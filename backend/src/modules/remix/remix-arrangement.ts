@@ -40,9 +40,90 @@ export type SectionGrid = {
   sections: SectionInterval[];
   sectionSeconds: number;
   durationSeconds: number;
-  /** Measured tempo the bar grid was derived from; null for the time fallback. */
+  /**
+   * Tempo the bar grid was derived from (the artist's override when one is
+   * set, else the measured tempo); null for the time fallback.
+   */
   bpm: number | null;
+  /** First downbeat the bars anchor to (override or measured); null without a tempo. */
+  firstBeatSec?: number | null;
+  /** True when the artist's grid correction (#2539) drives this grid. */
+  overridden?: boolean;
+  /** What analysis measured, kept for display and reset; null when nothing was. */
+  measured?: { bpm: number | null; firstBeatSec: number | null };
 };
+
+/**
+ * Grid correction (#2539, S6c of #1903): the artist's own tempo and first
+ * downbeat for the project, stored in `RemixProject.gridOverride`. It never
+ * rewrites the measured analysis; clearing it (null) returns to the measured
+ * grid. Every consumer of {@link deriveSectionGrid} (studio, structure, beat,
+ * AI parts, render) reads the same override, so preview and render agree.
+ */
+export const REMIX_GRID_OVERRIDE_SCHEMA_VERSION = "remix-grid-override/v1";
+export const GRID_OVERRIDE_MIN_BPM = 30;
+export const GRID_OVERRIDE_MAX_BPM = 300;
+/** Longest first-downbeat offset accepted (an intro of silence or a pickup). */
+export const GRID_OVERRIDE_MAX_FIRST_BEAT_SEC = 120;
+
+export type RemixGridOverride = {
+  schemaVersion: typeof REMIX_GRID_OVERRIDE_SCHEMA_VERSION;
+  /** Beats per minute, at most 3 decimals. */
+  tempoBpm: number;
+  /** Time of the first downbeat in the source, seconds, at most 3 decimals. */
+  firstBeatSec: number;
+};
+
+/** Read a stored override tolerantly: anything malformed reads as no override. */
+export function parseGridOverride(value: unknown): RemixGridOverride | null {
+  const result = normalizeGridOverrideInput(value);
+  return "error" in result ? null : result.value;
+}
+
+/** Validate + normalise a PATCH `gridOverride`: null clears it. */
+export function normalizeGridOverrideInput(
+  value: unknown,
+): { value: RemixGridOverride | null } | { error: string } {
+  if (value === null) return { value: null };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { error: "gridOverride must be an object or null" };
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.schemaVersion !== undefined &&
+    record.schemaVersion !== REMIX_GRID_OVERRIDE_SCHEMA_VERSION
+  ) {
+    return { error: `gridOverride.schemaVersion must be ${REMIX_GRID_OVERRIDE_SCHEMA_VERSION}` };
+  }
+  const { tempoBpm, firstBeatSec } = record;
+  if (
+    typeof tempoBpm !== "number" ||
+    !Number.isFinite(tempoBpm) ||
+    tempoBpm < GRID_OVERRIDE_MIN_BPM ||
+    tempoBpm > GRID_OVERRIDE_MAX_BPM
+  ) {
+    return {
+      error: `gridOverride.tempoBpm must be a number from ${GRID_OVERRIDE_MIN_BPM} to ${GRID_OVERRIDE_MAX_BPM}`,
+    };
+  }
+  if (
+    typeof firstBeatSec !== "number" ||
+    !Number.isFinite(firstBeatSec) ||
+    firstBeatSec < 0 ||
+    firstBeatSec > GRID_OVERRIDE_MAX_FIRST_BEAT_SEC
+  ) {
+    return {
+      error: `gridOverride.firstBeatSec must be a number from 0 to ${GRID_OVERRIDE_MAX_FIRST_BEAT_SEC}`,
+    };
+  }
+  return {
+    value: {
+      schemaVersion: REMIX_GRID_OVERRIDE_SCHEMA_VERSION,
+      tempoBpm: Math.round(tempoBpm * 1000) / 1000,
+      firstBeatSec: Math.round(firstBeatSec * 1000) / 1000,
+    },
+  };
+}
 
 type MeasuredFeatures = {
   tempoBpm: number | null;
@@ -88,6 +169,7 @@ function readFeatures(value: unknown): MeasuredFeatures | null {
  */
 export function deriveSectionGrid(
   stems: Array<{ audioFeatures?: unknown }>,
+  override?: RemixGridOverride | null,
 ): SectionGrid | null {
   const measured = stems
     .map((stem) => readFeatures(stem.audioFeatures))
@@ -105,16 +187,25 @@ export function deriveSectionGrid(
     .filter((features) => features.tempoBpm !== null)
     .sort((a, b) => b.tempoConfidence - a.tempoConfidence)[0];
 
-  const kind: SectionGrid["kind"] = tempoSource ? "bars" : "time";
-  const bpm = tempoSource?.tempoBpm ?? null;
+  // The artist's correction (#2539) replaces the measured tempo and anchor;
+  // the measured values stay on the grid for display and reset.
+  const bpm = override ? override.tempoBpm : (tempoSource?.tempoBpm ?? null);
+  const kind: SectionGrid["kind"] = bpm ? "bars" : "time";
   const sectionSeconds = bpm
     ? (SECTION_BARS * BEATS_PER_BAR * 60) / bpm
     : FALLBACK_SECTION_SECONDS;
+  const firstBeatSec = override
+    ? override.firstBeatSec
+    : (tempoSource?.firstBeatSec ?? null);
+  const measuredGrid = {
+    bpm: tempoSource?.tempoBpm ?? null,
+    firstBeatSec: tempoSource?.firstBeatSec ?? null,
+  };
 
   // Boundaries anchor to the first beat so sections land on musical downbeats;
   // the anchor is reduced modulo one section so section 0 stays short-ish
   // rather than starting the grid mid-track.
-  const rawAnchor = tempoSource?.firstBeatSec ?? 0;
+  const rawAnchor = firstBeatSec ?? 0;
   const anchor = rawAnchor > 0 ? rawAnchor % sectionSeconds : 0;
 
   const boundaries: number[] = [];
@@ -135,7 +226,16 @@ export function deriveSectionGrid(
     return null;
   }
 
-  return { kind, sections, sectionSeconds: round(sectionSeconds), durationSeconds: round(durationSeconds), bpm };
+  return {
+    kind,
+    sections,
+    sectionSeconds: round(sectionSeconds),
+    durationSeconds: round(durationSeconds),
+    bpm,
+    firstBeatSec: bpm ? firstBeatSec : null,
+    overridden: Boolean(override),
+    measured: measuredGrid,
+  };
 }
 
 /** Lenient read of a persisted arrangement; null for legacy/foreign shapes. */

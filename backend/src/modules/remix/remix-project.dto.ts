@@ -100,4 +100,6 @@ export class UpdateRemixProjectDto {
   beat?: unknown;
   /** AI part lanes remix-parts/v1 (#1901). */
   parts?: unknown;
+  /** Grid correction remix-grid-override/v1 (#2539); setting one needs `remix.pro`. */
+  gridOverride?: unknown;
 }

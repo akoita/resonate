@@ -608,7 +608,21 @@ export function beatOneShot(
 /** The grid fields the beat timing reads. */
 export type RemixBeatGrid = Pick<RemixSectionGrid, "sections" | "sectionSeconds"> & {
   bpm: number | null;
+  /** First downbeat in the source (#2539); bars in section 0 start on it. */
+  firstBeatSec?: number | null;
 };
+
+/**
+ * Where the first bar of a section-0 block starts, after its start (#2539):
+ * the first downbeat modulo one bar. Mirrors the backend `beatBarPhase`.
+ */
+export function beatBarPhase(grid: RemixBeatGrid, section: number, barSec: number): number {
+  if (section !== 0) return 0;
+  const first = grid.firstBeatSec;
+  if (typeof first !== "number" || !Number.isFinite(first) || first <= 0) return 0;
+  const phase = round9(first % barSec);
+  return phase >= barSec - 1e-9 ? 0 : phase;
+}
 
 /** The segment fields the beat timing reads (timeline blocks, in order). */
 export type RemixBeatSegment = Pick<
@@ -658,8 +672,9 @@ export function beatHits(
   segments.forEach((segment, blockIndex) => {
     if (recipe.blocks && recipe.blocks[blockIndex] === false) return;
     if (isBeatPickupSection(grid, segment.section)) return;
+    const phase = beatBarPhase(grid, segment.section, barSec);
     for (let bar = 0; ; bar += 1) {
-      const barStart = segment.outStartSec + bar * barSec;
+      const barStart = segment.outStartSec + phase + bar * barSec;
       if (barStart >= segment.outEndSec - 1e-9) break;
       for (let step = 0; step < REMIX_BEAT_STEPS; step += 1) {
         for (const instrument of REMIX_BEAT_INSTRUMENTS) {
@@ -699,7 +714,13 @@ export function beatTimingAtSpeed<
     return { grid, segments };
   }
   return {
-    grid: { ...grid, bpm: grid.bpm !== null ? grid.bpm * speed : null },
+    grid: {
+      ...grid,
+      bpm: grid.bpm !== null ? grid.bpm * speed : null,
+      ...(typeof grid.firstBeatSec === "number"
+        ? { firstBeatSec: grid.firstBeatSec / speed }
+        : {}),
+    },
     segments: segments.map((segment) => ({
       ...segment,
       outStartSec: segment.outStartSec / speed,
@@ -794,6 +815,7 @@ export function beatRenderKey(
     recipe.swing,
     recipe.blocks,
     grid.bpm,
+    grid.firstBeatSec ?? null,
     grid.sectionSeconds,
     grid.sections.map((section) => [section.startSec, section.endSec]),
     segments.map((segment) => [

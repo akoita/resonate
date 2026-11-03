@@ -442,6 +442,94 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
         master: { space: 0.2 },
       });
     });
+
+    describe("grid correction (#2539, S6c)", () => {
+      const OVERRIDE = { schemaVersion: "remix-grid-override/v1", tempoBpm: 96, firstBeatSec: 0.5 };
+
+      async function storedOverride(projectId: string) {
+        const row = await prisma.remixProject.findUniqueOrThrow({
+          where: { id: projectId },
+          select: { gridOverride: true },
+        });
+        return row.gridOverride;
+      }
+
+      it("PATCH sets the override, serves the corrected grid beside the measured one, and resets", async () => {
+        const created = await createProject("Grid correction");
+        expect(created.sectionGrid).toMatchObject({ bpm: 120, overridden: false });
+
+        const corrected = await projectService.updateProject(OWNER_ID, created.id, {
+          gridOverride: { tempoBpm: 96.00049, firstBeatSec: 0.5 },
+        });
+        expect(corrected.sectionGrid).toMatchObject({
+          kind: "bars",
+          bpm: 96,
+          firstBeatSec: 0.5,
+          overridden: true,
+          sectionSeconds: 20,
+          measured: { bpm: 120, firstBeatSec: 0 },
+        });
+        expect(await storedOverride(created.id)).toEqual(OVERRIDE);
+        // The stems' measured analysis is untouched.
+        const stem = await prisma.stem.findUniqueOrThrow({ where: { id: VOCALS_STEM_ID } });
+        expect(stem.audioFeatures).toEqual(BAR_FEATURES);
+        // Reads serve the same corrected grid.
+        expect((await projectService.getProject(OWNER_ID, created.id)).sectionGrid).toMatchObject({ bpm: 96 });
+
+        const reset = await projectService.updateProject(OWNER_ID, created.id, { gridOverride: null });
+        expect(reset.sectionGrid).toMatchObject({ bpm: 120, overridden: false });
+        expect(await storedOverride(created.id)).toBeNull();
+      });
+
+      it("PATCH rejects an invalid override with 400 and writes nothing", async () => {
+        const created = await createProject("Grid invalid");
+        await expect(
+          projectService.updateProject(OWNER_ID, created.id, {
+            title: "nope",
+            gridOverride: { tempoBpm: 500, firstBeatSec: 0 },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect(await storedOverride(created.id)).toBeNull();
+        expect((await projectService.getProject(OWNER_ID, created.id)).title).toBe("Grid invalid");
+      });
+
+      it("a denying policy refuses to set a correction but always allows resetting it", async () => {
+        const created = await createProject("Grid denied");
+        await projectService.updateProject(OWNER_ID, created.id, { gridOverride: OVERRIDE });
+        const denied = serviceWith(new DenyingEntitlements());
+        const attempt = denied.updateProject(OWNER_ID, created.id, {
+          gridOverride: { tempoBpm: 100, firstBeatSec: 0 },
+        });
+        await expect(attempt).rejects.toThrow(ForbiddenException);
+        await attempt.catch((error: ForbiddenException) => {
+          expect(error.getResponse()).toMatchObject({ code: "pro_required", fields: ["gridOverride"] });
+        });
+        expect(await storedOverride(created.id)).toEqual(OVERRIDE);
+        // Re-sending the saved value is not a new Pro edit.
+        await denied.updateProject(OWNER_ID, created.id, { gridOverride: OVERRIDE });
+        await denied.updateProject(OWNER_ID, created.id, { gridOverride: null });
+        expect(await storedOverride(created.id)).toBeNull();
+      });
+
+      it("validates a beat in the same PATCH against the corrected grid", async () => {
+        const created = await createProject("Grid and beat");
+        // 64 s at 96 BPM = 20 s sections anchored at 0.5 s: 3 sections (the
+        // measured 120 BPM grid has 4), so 3 beat blocks are valid.
+        const updated = await projectService.updateProject(OWNER_ID, created.id, {
+          gridOverride: OVERRIDE,
+          beat: {
+            schemaVersion: "remix-beat/v1",
+            kit: "808",
+            pattern: { kick: Array.from({ length: 16 }, (_, i) => i % 4 === 0) },
+            swing: 0,
+            gainDb: 0,
+            blocks: [true, false, true],
+          },
+        });
+        expect(updated.sectionGrid?.sections).toHaveLength(3);
+        expect(updated.beat?.blocks).toEqual([true, false, true]);
+      });
+    });
   });
 
   it("PATCH rejects invalid effects with 400 and writes nothing", async () => {
