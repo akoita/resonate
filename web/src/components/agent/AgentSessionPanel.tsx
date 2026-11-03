@@ -137,6 +137,10 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
     // What the session starts from (#2244): a track, an artist or a playlist, queued by a
     // "Start a DJ session from this" button. It stays for the whole session until removed.
     const [seed, setSeed] = useState<DjSeed | null>(null);
+    // The button that queued the seed says "Start a DJ session", so a seed that arrives while no
+    // session is live starts one as soon as the DJ is loaded. A live session follows it instead.
+    // State, not a ref, so it is read in the same render as the seed it belongs to.
+    const [seedAutoStart, setSeedAutoStart] = useState(false);
     const [request, setRequest] = useState<AgentSessionRequest | null>(null);
     // "Fill with similar sounds" (#2316): off unless the listener turns it on. It travels with
     // every start and pick (the server keeps the last value for the live session), and a live
@@ -545,6 +549,7 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             const queued = takeDjSeed();
             if (!queued) return;
             setSeed(queued);
+            setSeedAutoStart(true);
             setRightNowSelected(false);
             // A seeded session replaces My Mix, as typing a sentence does.
             if (myMixPreferencesRef.current) {
@@ -1131,6 +1136,29 @@ export default function AgentSessionPanel({ refreshKey }: Props) {
             }
         }
     };
+
+    // Start the session a queued seed asked for, once the DJ is loaded and the seed is in the
+    // prompt. A live session already re-planned around the seed, and a listener with no DJ yet
+    // keeps the chip for after setup. The flag is cleared first, so it starts at most once.
+    useEffect(() => {
+        if (!seedAutoStart || isLoading) return;
+        if (!config || config.isActive || !seed) {
+            setSeedAutoStart(false);
+            return;
+        }
+        if (isParsing || isStarting || isReplanning) return;
+        setSeedAutoStart(false);
+        // Nobody pressed a button here, so a failed start must say so rather than leave the page idle.
+        handleToggle().catch((error: unknown) => {
+            addToast({
+                type: "error",
+                title: "Couldn't start the DJ",
+                message: error instanceof Error ? error.message : "Press Start session to try again.",
+            });
+        });
+        // handleToggle is rebuilt every render and reads that render's state; these are what gate it.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [seedAutoStart, isLoading, config, seed, isParsing, isStarting, isReplanning]);
 
     const handleSelectPreset = (preset: SessionPreset) => {
         // A starter writes its sentence into the prompt and shows the filters that sentence

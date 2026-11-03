@@ -2987,9 +2987,14 @@ retrieval (#2242) and the "More like this" seed (#2243).
   (server playlists only; a local-only playlist has nothing the server can
   read). Each queues the seed in the tab (`web/src/lib/djSeed.ts`, sessionStorage,
   one use) and opens Home's `#ai-dj`; the prompt shows a removable
-  **From: <label>** chip. The listener still presses Start session (no
-  autoplay surprise). Removing the chip drops the seed; with a live session the
-  upcoming picks follow, like any chip edit. A seed replaces My Mix.
+  **From: <label>** chip. With no live session the panel then starts one on
+  its own as soon as the DJ is loaded, since the button the listener pressed
+  says "Start a DJ session" (before, they also had to press Start session, which
+  read as the button doing nothing). A live session is not restarted: its
+  upcoming picks follow the seed. A listener with no DJ yet keeps the chip for
+  after setup, and a failed start shows an error toast. Removing the chip drops
+  the seed; with a live session the upcoming picks follow, like any chip edit. A
+  seed replaces My Mix.
 - **Session-level seed.** `preferences.seed = { kind: "track" | "artist" |
   "playlist", id, label }` (class-validator DTO `SessionSeedDto`; the
   `/agents/config/session` start route validates inline). Unlike `seedTrackId`
