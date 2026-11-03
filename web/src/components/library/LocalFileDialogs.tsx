@@ -15,6 +15,8 @@ import {
     type LocalTrackEdit,
 } from "../../lib/localLibrary";
 import { getLocalFileLocation, revealInFilePicker, type LocalFileLocation } from "../../lib/localFileLocation";
+import { describeFilled, fillEmptyFields } from "../../lib/albumLookup";
+import { AlbumLookup } from "./AlbumLookup";
 import "../../styles/local-file-dialogs.css";
 
 function DialogShell({
@@ -430,6 +432,21 @@ export function EditLocalDetailsDialog({
                                 );
                             })}
                         </div>
+                        {mode === "album" && section.title === "Album" && (
+                            <AlbumLookup
+                                artist={values.albumArtist || first.artist || ""}
+                                album={values.album ?? ""}
+                                trackCount={count}
+                                disabled={busy}
+                                onPick={(details) => {
+                                    const result = fillEmptyFields(values, (key) => Boolean(states[key]?.mixed), details);
+                                    setValues(result.values);
+                                    return result.filled.length > 0
+                                        ? `${describeFilled(result.filled)} Check it, then save.`
+                                        : "Nothing to fill: year, genre and label already have values, or MusicBrainz has none.";
+                                }}
+                            />
+                        )}
                     </fieldset>
                 );
             })}

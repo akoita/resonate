@@ -241,6 +241,113 @@
   color: rgba(255, 255, 255, 0.5);
 }
 
+/* "Look up details" in Edit album (#2538). */
+.local-file-dialog__lookup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.local-file-dialog__lookup-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.local-file-dialog__lookup-bar .local-file-dialog__hint {
+  flex: 1 1 220px;
+}
+
+.local-file-dialog__matches {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.local-file-dialog__matches-title {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.local-file-dialog__matches ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.local-file-dialog__match {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.local-file-dialog__match:hover:not(:disabled),
+.local-file-dialog__match:focus-visible {
+  border-color: rgba(124, 92, 255, 0.6);
+  background: rgba(124, 92, 255, 0.12);
+}
+
+.local-file-dialog__match:focus-visible {
+  outline: 2px solid #7c5cff;
+  outline-offset: 2px;
+}
+
+.local-file-dialog__match-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.local-file-dialog__match-meta {
+  grid-column: 1;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  overflow-wrap: anywhere;
+}
+
+.local-file-dialog__match-badge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #c4b5fd;
+  background: rgba(124, 92, 255, 0.16);
+  white-space: nowrap;
+}
+
+.local-file-dialog__matches-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.75rem;
+}
+
+.local-file-dialog__matches-footer a {
+  color: rgba(255, 255, 255, 0.6);
+}
+
 @media (max-width: 480px) {
   .local-file-dialog {
     padding: 18px;

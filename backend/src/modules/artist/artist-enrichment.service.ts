@@ -4,19 +4,18 @@ import {
     SchemaType,
     type ResponseSchema,
 } from "@google/generative-ai";
+import { MUSICBRAINZ_ORIGIN, PROVIDER_USER_AGENT, scheduleMusicBrainzRequest } from "../shared/musicbrainz_queue";
 
 const MAX_CANDIDATES = 8;
 const MAX_PROVIDER_RESPONSE_BYTES = 1_000_000;
 const MAX_PROVIDER_TIMEOUT_MS = 8_000;
 const MAX_ACTIVE_MODEL_CALLS = 2;
 const MAX_SUMMARY_LENGTH = 2_000;
-const MUSICBRAINZ_ORIGIN = "https://musicbrainz.org";
 const WIKIDATA_ORIGIN = "https://www.wikidata.org";
 const COMMONS_ORIGIN = "https://commons.wikimedia.org";
 const UPLOADS_ORIGIN = "https://upload.wikimedia.org";
-const PROVIDER_HEADERS = { "User-Agent": "Resonate/0.1 (https://github.com/akoita/resonate)" };
+const PROVIDER_HEADERS = { "User-Agent": PROVIDER_USER_AGENT };
 const TRUSTED_PROVIDER_ORIGINS = new Set([MUSICBRAINZ_ORIGIN, WIKIDATA_ORIGIN, COMMONS_ORIGIN]);
-const MUSICBRAINZ_MIN_INTERVAL_MS = 1_000;
 const MBID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WIKIDATA_ID_PATTERN = /^Q[1-9][0-9]{0,11}$/;
 const MODEL_RESPONSE_SCHEMA: ResponseSchema = {
@@ -95,8 +94,6 @@ class ProviderError extends Error {
     }
 }
 
-let musicBrainzQueue: Promise<void> = Promise.resolve();
-let nextMusicBrainzRequestAt = 0;
 let activeModelCalls = 0;
 
 class ModelConcurrencyLimitError extends Error {
@@ -664,21 +661,7 @@ async function readBoundedBody(response: Response, maximum: number): Promise<str
 }
 
 function requestMusicBrainz<T>(operation: () => Promise<T>): Promise<T> {
-    const pending = musicBrainzQueue.then(async () => {
-        const waitMs = nextMusicBrainzRequestAt - Date.now();
-        if (waitMs > 0) await delay(waitMs);
-        nextMusicBrainzRequestAt = Date.now() + MUSICBRAINZ_MIN_INTERVAL_MS;
-        try {
-            return await operation();
-        } catch (error) {
-            if (error instanceof ProviderError && error.retryAfterMs > 0) {
-                nextMusicBrainzRequestAt = Math.max(nextMusicBrainzRequestAt, Date.now() + error.retryAfterMs);
-            }
-            throw error;
-        }
-    });
-    musicBrainzQueue = pending.then(() => undefined, () => undefined);
-    return pending;
+    return scheduleMusicBrainzRequest(operation, (error) => (error instanceof ProviderError ? error.retryAfterMs : 0));
 }
 
 function retryAfterMilliseconds(value: string | null): number {
@@ -698,10 +681,6 @@ function musicBrainzUnavailable(error?: unknown): ServiceUnavailableException {
 
 function isRateLimitedProviderError(error: unknown): error is ProviderError {
     return error instanceof ProviderError && error.status === 429;
-}
-
-function delay(milliseconds: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function runBoundedModelCall<T>(operation: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
