@@ -1101,6 +1101,48 @@ from the JWT, never the request body.
     nudges (±1 beat, ±10 ms), Apply grid, Use measured, and a warning that a
     new tempo can change the sections. It is disabled with unsaved edits and
     after publish. The User Guide's Pro section explains it.
+- Pro mode, S6d (#2540, part of #1903): cue and loop points and a DJ
+  extended export. **Partial** like the rest of S6 (S6e automation lanes and
+  S6f stem export and mashups remain on #1903).
+  - **Money.** Same seam as S6a: setting cues and the DJ export need
+    `remix.pro` (free for everyone, no price; ADR-BM-6 line (2) seam only).
+    The DJ export is an export, so it also needs the `export` action (a
+    commercial license on the source stems), re-checked at export time.
+  - **Recipe `remix-cues/v1`.** `RemixProject.cues` (JSONB, nullable):
+    `{ schemaVersion, intro, outro }`, each `{ startBar, bars, repeats }` or
+    null. `startBar` is an index into the timeline's downbeats (0..2000),
+    `bars` one of 1, 2, 4, 8, 16, 32, `repeats` 1..8; the intro must end at or
+    before the outro starts. Set or cleared through `PATCH
+    /remix/projects/:id`; bad input is a 400. Clearing never needs Pro.
+  - **Bars.** `timelineDownbeats(grid, segments)` places every downbeat of
+    the (structured) timeline exactly like the beat maker's bars
+    (`beatBarPhase`), so cues follow the S6c grid correction.
+    `remix-cues-v1.parity.json` pins the downbeats, loop spans, export plan
+    and sidecar; the backend and web suites both replay it.
+  - **Draft grid.** A stem_mix render records `generationMetadata.draftGrid`
+    (`remix-draft-grid/v1`: downbeats and timeline end in draft seconds,
+    tempo × speed). The project response carries `djExport { available,
+    reason }` (`no_draft`, `no_cues`, `no_draft_grid` for older drafts,
+    `cues_outside_draft` when the arrangement changed).
+  - **Export.** `POST /remix/projects/:id/export` with `{ "variant":
+    "dj_extended" }` returns `<title>-DJ-Extended.zip`: the MP3 (320 kb/s,
+    48 kHz) and `<title>-DJ-Extended.cues.json` (`resonate-dj-cues/v1`:
+    tempo, every downbeat, and the cues Mix in, Intro loop, Outro loop, Mix
+    out, in seconds and frames). Each loop is played `repeats` more times
+    right after itself (`remix-dj-export/v1`), so the pickup and the ending
+    stay and every inserted span is whole bars; joins are 20 ms linear
+    crossfades centred on the bar line. ffmpeg decodes one input per piece,
+    so memory stays flat. A real-ffmpeg test finds every bar of the export
+    within 1 ms of the sidecar. rekordbox and Serato import of the sidecar
+    is checked by hand later (#2121).
+  - **UI.** With Pro on, a Cues panel under the Grid panel: per loop an
+    on/off switch (suggests the first or last 8 bars), start bar, length,
+    extra plays, Loop / Stop loop in the preview (the transport says
+    "Looping the intro"), Save cues, and Export DJ version with the reason
+    it is unavailable. In a rearranged song the engine loops one block
+    natively; a cue loop across blocks is looped by the transport, which
+    restarts at the loop start (`engineLoopsNatively`). The User Guide's
+    Pro section explains it.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

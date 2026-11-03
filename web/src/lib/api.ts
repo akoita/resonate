@@ -7518,6 +7518,13 @@ export type RemixProject = {
   parts?: RemixParts | null;
   /** Generated AI part takes (#1901), newest first (at most 24). */
   partTakes?: RemixPartTake[];
+  /** Cue and loop points `remix-cues/v1` (#2540, Pro); null = none. */
+  cues?: RemixCues | null;
+  /**
+   * Whether the current draft can be exported as a DJ extended version
+   * (#2540); `reason` says why not.
+   */
+  djExport?: { available: boolean; reason: RemixDjExportReason | null };
 };
 
 /** One entitlement decision (#1903), e.g. Remix Studio Pro mode. */
@@ -7552,6 +7559,22 @@ export type RemixCommerce = {
   publishedReleaseId: string | null;
   masterStemId: string | null;
 };
+
+/** One cue loop (#2540): whole bars of the timeline, played `repeats` more times in the DJ version. */
+export type RemixCueLoop = { startBar: number; bars: number; repeats: number };
+
+/** Cue and loop points `remix-cues/v1` (#2540). */
+export type RemixCues = {
+  schemaVersion: "remix-cues/v1";
+  intro: RemixCueLoop | null;
+  outro: RemixCueLoop | null;
+};
+
+export type RemixDjExportReason =
+  | "no_draft"
+  | "no_cues"
+  | "no_draft_grid"
+  | "cues_outside_draft";
 
 /** Shape returned by POST /remix/projects/:id/publish (#1196). */
 export type RemixPublishResult = RemixProject & {
@@ -7600,6 +7623,8 @@ export type RemixProjectPatch = {
    * tempo and first downbeat; null returns to the measured grid.
    */
   gridOverride?: RemixGridOverride | null;
+  /** Cue and loop points `remix-cues/v1` (#2540, Pro); null clears them. */
+  cues?: RemixCues | null;
 };
 
 export async function updateRemixProject(
@@ -7754,15 +7779,26 @@ export async function getRemixDraftAudioBlob(
 export async function exportRemixDraftBlob(
   token: string,
   projectId: string,
+  variant: "draft" | "dj_extended" = "draft",
 ): Promise<{ blob: Blob; filename: string }> {
   const response = await fetch(
     `${API_BASE}/remix/projects/${projectId}/export`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
+    variant === "draft"
+      ? {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      : {
+          // #2540: a zip with the DJ extended audio and its cues sidecar.
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ variant }),
+        },
   );
 
   if (!response.ok) {

@@ -102,4 +102,16 @@ export class UpdateRemixProjectDto {
   parts?: unknown;
   /** Grid correction remix-grid-override/v1 (#2539); setting one needs `remix.pro`. */
   gridOverride?: unknown;
+  /** Cue and loop points remix-cues/v1 (#2540); setting them needs `remix.pro`. */
+  cues?: unknown;
+}
+
+/**
+ * POST /remix/projects/:id/export body (#2540). Optional: no body exports the
+ * draft as rendered. The controller checks `variant` against
+ * `REMIX_EXPORT_VARIANTS` itself (400 for anything else).
+ */
+export class ExportRemixDraftDto {
+  @IsOptional()
+  variant?: unknown;
 }

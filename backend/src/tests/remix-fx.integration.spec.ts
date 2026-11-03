@@ -530,6 +530,55 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
         expect(updated.beat?.blocks).toEqual([true, false, true]);
       });
     });
+
+    describe("cue and loop points (#2540, S6d)", () => {
+      const CUES = {
+        schemaVersion: "remix-cues/v1",
+        intro: { startBar: 0, bars: 4, repeats: 2 },
+        outro: null,
+      };
+
+      it("PATCH sets, serves and clears cues; no draft means no DJ export yet", async () => {
+        const created = await createProject("Cues");
+        expect(created.cues).toBeNull();
+        expect(created.djExport).toEqual({ available: false, reason: "no_draft" });
+        const updated = await projectService.updateProject(OWNER_ID, created.id, {
+          cues: { intro: { startBar: 0, bars: 4, repeats: 2 } },
+        });
+        expect(updated.cues).toEqual(CUES);
+        expect((await projectService.getProject(OWNER_ID, created.id)).cues).toEqual(CUES);
+        const cleared = await projectService.updateProject(OWNER_ID, created.id, { cues: null });
+        expect(cleared.cues).toBeNull();
+      });
+
+      it("PATCH rejects invalid cues with 400 and writes nothing", async () => {
+        const created = await createProject("Cues invalid");
+        await expect(
+          projectService.updateProject(OWNER_ID, created.id, {
+            title: "nope",
+            cues: { intro: { startBar: 0, bars: 3, repeats: 1 } },
+          }),
+        ).rejects.toThrow(BadRequestException);
+        expect((await projectService.getProject(OWNER_ID, created.id)).title).toBe("Cues invalid");
+      });
+
+      it("a denying policy refuses to set cues but always allows clearing them", async () => {
+        const created = await createProject("Cues denied");
+        await projectService.updateProject(OWNER_ID, created.id, { cues: CUES });
+        const denied = serviceWith(new DenyingEntitlements());
+        const attempt = denied.updateProject(OWNER_ID, created.id, {
+          cues: { intro: { startBar: 1, bars: 4, repeats: 2 } },
+        });
+        await expect(attempt).rejects.toThrow(ForbiddenException);
+        await attempt.catch((error: ForbiddenException) => {
+          expect(error.getResponse()).toMatchObject({ code: "pro_required", fields: ["cues"] });
+        });
+        // Re-sending the saved cues is not a change, and clearing is always allowed.
+        await expect(denied.updateProject(OWNER_ID, created.id, { cues: CUES })).resolves.toBeDefined();
+        const cleared = await denied.updateProject(OWNER_ID, created.id, { cues: null });
+        expect(cleared.cues).toBeNull();
+      });
+    });
   });
 
   it("PATCH rejects invalid effects with 400 and writes nothing", async () => {

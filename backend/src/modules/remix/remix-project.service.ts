@@ -63,6 +63,19 @@ import {
 } from "./remix-layered-renderer";
 import { UPLOAD_RIGHTS_POLICY_VERSION } from "../rights/upload-rights-policy";
 import {
+  djCuesSidecar,
+  djExtendedPlan,
+  draftGridFor,
+  normalizeRemixCuesInput,
+  parseDraftGrid,
+  parseRemixCues,
+  RemixCuesValidationError,
+  type DjExportUnavailableReason,
+  type RemixCues,
+} from "./remix-cues";
+import { renderDjExtended } from "./remix-dj-export";
+import { storeZip } from "../shared/store_zip";
+import {
   activeIntervalsForArrangement,
   deriveSectionGrid,
   normalizeGridOverrideInput,
@@ -81,6 +94,7 @@ import {
   readStoredRemixFx,
   REMIX_FX_DSP_VERSION,
   remixFxProFieldsSet,
+  remixFxSpeed,
   type RemixFxRecipe,
   type RemixRenderFx,
 } from "./remix-fx";
@@ -181,6 +195,18 @@ type RemixProjectWithStems = NonNullable<
 export type RemixDraftAudio = {
   data: Buffer;
   mimeType: string;
+};
+
+/** Export variants (#2540): the draft as rendered, or the DJ extended zip. */
+export const REMIX_EXPORT_VARIANTS = ["draft", "dj_extended"] as const;
+export type RemixExportVariant = (typeof REMIX_EXPORT_VARIANTS)[number];
+
+const DJ_EXPORT_UNAVAILABLE_MESSAGES: Record<DjExportUnavailableReason, string> = {
+  no_cues: "Set an intro or outro loop first.",
+  no_draft_grid:
+    "This draft has no recorded beat grid. Render the mix again, then export the DJ version.",
+  cues_outside_draft:
+    "The loops don't fit this draft's bars (the arrangement changed). Set the loops again or render the mix again.",
 };
 
 export type RemixDraftExport = RemixDraftAudio & {
@@ -417,6 +443,32 @@ function selectRemixDraftGrounding(input: {
   if (input.providerKind === "audio-conditioned") return "audio_conditioned";
   if (input.providerKind === "lyria") return "stem_plus_ai";
   return input.sourceFeatureHints ? "feature_conditioned" : "prompt_only";
+}
+
+/** Why the current draft can't be exported as a DJ extended version (#2540). */
+export type RemixDjExportReason = "no_draft" | DjExportUnavailableReason;
+
+/**
+ * DJ extended export state (#2540): available when the current draft is
+ * completed, recorded its bar grid, and the project's cues fit that grid.
+ */
+export function djExportState(project: {
+  generationMetadata: unknown;
+  cues: unknown;
+}): { available: boolean; reason: RemixDjExportReason | null } {
+  const metadata = project.generationMetadata as
+    | { status?: unknown; draftGrid?: unknown }
+    | null;
+  if (remixGenerationStatusFromMetadata(metadata) !== "completed") {
+    return { available: false, reason: "no_draft" };
+  }
+  const plan = djExtendedPlan(
+    parseDraftGrid(metadata?.draftGrid),
+    parseRemixCues(project.cues),
+  );
+  return "unavailable" in plan
+    ? { available: false, reason: plan.unavailable }
+    : { available: true, reason: null };
 }
 
 export function remixGenerationStatusFromMetadata(
@@ -928,6 +980,11 @@ export class RemixProjectService {
        * validated against the corrected grid.
        */
       gridOverride?: unknown;
+      /**
+       * Cue and loop points remix-cues/v1 (#2540): undefined leaves them
+       * unchanged, null clears them. Setting them needs `remix.pro`.
+       */
+      cues?: unknown;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -1030,6 +1087,36 @@ export class RemixProjectService {
         }
       }
     }
+    // Cue and loop points (#2540): a Pro tool; clearing them never needs Pro.
+    // Bars are checked against the grid when they are used (loop, export),
+    // because a later arrangement change can move them anyway.
+    let cues: RemixCues | null | undefined;
+    if (patch.cues !== undefined) {
+      try {
+        cues = normalizeRemixCuesInput(patch.cues);
+      } catch (error) {
+        if (error instanceof RemixCuesValidationError) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+      const changed =
+        cues !== null &&
+        JSON.stringify(cues) !== JSON.stringify(parseRemixCues(project.cues));
+      if (changed) {
+        const decision = await this.entitlements.pro(userId);
+        if (!decision.allowed) {
+          throw new ForbiddenException({
+            code: "pro_required",
+            message:
+              "Cue and loop points are a Pro tool, which this account can't use right now.",
+            fields: ["cues"],
+            policyVersion: decision.policyVersion,
+          });
+        }
+      }
+    }
+
     const gridOverrideAfterPatch =
       gridOverride !== undefined
         ? gridOverride
@@ -1302,6 +1389,14 @@ export class RemixProjectService {
                   gridOverride === null
                     ? Prisma.DbNull
                     : (gridOverride as unknown as Prisma.JsonObject),
+              }
+            : {}),
+          ...(cues !== undefined
+            ? {
+                cues:
+                  cues === null
+                    ? Prisma.DbNull
+                    : (cues as unknown as Prisma.JsonObject),
               }
             : {}),
         },
@@ -1891,8 +1986,22 @@ export class RemixProjectService {
           }),
         aiPartsRendered,
       );
+      // #2540: the draft's bar grid in draft seconds, for the DJ extended
+      // export (stem_mix renders only: their timeline is exactly the
+      // arrangement's, at the recipe's speed).
+      const draftGrid =
+        data.generationInput.mode === "stem_mix" &&
+        sectionGrid?.kind === "bars"
+          ? draftGridFor(
+              sectionGrid,
+              renderStructure?.segments ??
+                structureTimeline(sectionGrid, null),
+              remixFxSpeed(projectEffects),
+            )
+          : null;
       const completedMetadata = {
         ...currentMetadata,
+        draftGrid,
         ...(aiPartsRendered
           ? {
               grounding: completedGrounding,
@@ -3467,6 +3576,7 @@ export class RemixProjectService {
   async exportDraft(
     userId: string,
     projectId: string,
+    variant: RemixExportVariant = "draft",
   ): Promise<RemixDraftExport> {
     const project = await this.loadOwnedProject(userId, projectId);
 
@@ -3509,6 +3619,33 @@ export class RemixProjectService {
       });
     }
 
+    // DJ extended (#2540, Pro): checked before any audio is read.
+    let djPlan: ReturnType<typeof djExtendedPlan> | null = null;
+    if (variant === "dj_extended") {
+      const decision = await this.entitlements.pro(userId);
+      if (!decision.allowed) {
+        throw new ForbiddenException({
+          code: "pro_required",
+          message:
+            "The DJ extended export is a Pro tool, which this account can't use right now.",
+          fields: ["cues"],
+          policyVersion: decision.policyVersion,
+        });
+      }
+      djPlan = djExtendedPlan(
+        parseDraftGrid(
+          normalizeMetadataObject(project.generationMetadata).draftGrid,
+        ),
+        parseRemixCues(project.cues),
+      );
+      if ("unavailable" in djPlan) {
+        throw new ConflictException({
+          code: `dj_export_${djPlan.unavailable}`,
+          message: DJ_EXPORT_UNAVAILABLE_MESSAGES[djPlan.unavailable],
+        });
+      }
+    }
+
     const audio = await this.readCurrentDraftAudio(project);
     const grounding =
       draftGroundingFromMetadata(project.generationMetadata) ?? "prompt_only";
@@ -3524,7 +3661,37 @@ export class RemixProjectService {
       grounding,
       aiGenerated: groundingAiGenerated(grounding),
       policyVersion: eligibility.policyVersion,
+      ...(variant === "dj_extended" ? { variant } : {}),
     });
+
+    if (djPlan && !("unavailable" in djPlan)) {
+      const base = `${sanitizeDownloadFilename(project.title)}-DJ-Extended`;
+      const audioFile = `${base}.mp3`;
+      const extended = await renderDjExtended(
+        audio.data,
+        audioExtensionForMimeType(audio.mimeType),
+        djPlan,
+      );
+      const sidecar = djCuesSidecar(
+        djPlan,
+        parseDraftGrid(
+          normalizeMetadataObject(project.generationMetadata).draftGrid,
+        )!,
+        project.title,
+        audioFile,
+      );
+      return {
+        data: storeZip([
+          { name: audioFile, data: extended },
+          {
+            name: `${base}.cues.json`,
+            data: Buffer.from(`${JSON.stringify(sidecar, null, 2)}\n`),
+          },
+        ]),
+        mimeType: "application/zip",
+        filename: `${base}.zip`,
+      };
+    }
 
     return {
       ...audio,
@@ -3945,6 +4112,11 @@ export class RemixProjectService {
       // Newest first, at most the per-project cap; no storage URIs (the
       // audio streams through the owner-only take audio endpoint).
       partTakes: project.partTakes.map(toPartTakeResponse),
+      // Cue and loop points (#2540); null = none.
+      cues: parseRemixCues(project.cues),
+      // Whether the current draft can be exported as a DJ extended version
+      // (its recorded grid fits the cues); `reason` says why not.
+      djExport: djExportState(project),
       policyVersion: project.policyVersion,
       publishedReleaseId: project.publishedReleaseId,
       createdAt: project.createdAt,

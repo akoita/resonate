@@ -19,6 +19,7 @@ import {
   stretchRestartDue,
   type StretchPreviewState,
   structureTimelineFor,
+  engineLoopsNatively,
   structureTimelineKey,
   transportDurationSec,
 } from "./useRemixTransport";
@@ -169,6 +170,19 @@ describe("structure timeline in the transport (#1899)", () => {
     expect(structureTimelineFor(undefined)).toBeNull();
     expect(structureTimelineFor(identity)).toBeNull();
     expect(structureTimelineFor(reordered)).toBe(reordered);
+  });
+
+  it("loops natively unless a cue loop crosses blocks of a rearranged song (#2540)", () => {
+    const first = reordered.segments[0];
+    const second = reordered.segments[1];
+    expect(engineLoopsNatively(null, { startSec: 0, endSec: 999 })).toBe(true);
+    expect(engineLoopsNatively(reordered, null)).toBe(true);
+    expect(engineLoopsNatively(reordered, { startSec: first.outStartSec, endSec: first.outEndSec })).toBe(true);
+    expect(engineLoopsNatively(reordered, { startSec: first.outStartSec, endSec: second.outEndSec })).toBe(false);
+    // In the original order too: a loop over two sections can't hold one section gain.
+    const [a, b] = identity.segments;
+    expect(engineLoopsNatively(identity, { startSec: a.outStartSec, endSec: a.outEndSec })).toBe(true);
+    expect(engineLoopsNatively(identity, { startSec: a.outStartSec, endSec: b.outEndSec })).toBe(false);
   });
 
   it("uses the timeline duration for engine sources, never for drafts", () => {
