@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RemixAutomation } from "../../lib/api";
-import { RemixAutomationPanel, barAtTime } from "./RemixAutomationPanel";
+import { RemixAutomationPanel, barAtTime, curveBarAt, curveValueAt } from "./RemixAutomationPanel";
 
 const noop = () => undefined;
 const downbeats = Array.from({ length: 32 }, (_, i) => i * 2);
@@ -60,5 +60,25 @@ describe("RemixAutomationPanel (#2541)", () => {
     expect(barAtTime(downbeats, 5.9)).toBe(2);
     expect(barAtTime(downbeats, 6)).toBe(3);
     expect(barAtTime(downbeats, 999)).toBe(31);
+  });
+
+  it("maps a spot on the lane to a whole bar and a snapped value (#2551)", () => {
+    expect(curveBarAt(0, 32)).toBe(0);
+    expect(curveBarAt(1, 32)).toBe(31);
+    expect(curveBarAt(0.5, 32)).toBe(16);
+    expect(curveBarAt(-0.2, 32)).toBe(0);
+    expect(curveBarAt(1.4, 32)).toBe(31);
+    expect(curveValueAt(0, "level")).toBe(6);
+    expect(curveValueAt(1, "level")).toBe(-24);
+    expect(curveValueAt(0.5, "level")).toBe(-9);
+    expect(curveValueAt(0.5, "filter")).toBe(0);
+    expect(curveValueAt(2, "filter")).toBe(-1);
+  });
+
+  it("renders each point as a keyboard slider on the lane (#2551)", () => {
+    const html = renderToStaticMarkup(<RemixAutomationPanel {...base} draft={lanes} saved={lanes} />);
+    expect(html).toContain('role="group" aria-label="Level lane: 2 points"');
+    expect(html).toContain('aria-label="Level point at bar 1"');
+    expect(html).toContain('aria-label="Level point at bar 5"');
   });
 });

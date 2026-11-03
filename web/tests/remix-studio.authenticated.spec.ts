@@ -758,7 +758,26 @@ test.describe("Remix Studio session view (#1879)", () => {
     await panel.getByRole("slider", { name: "Level at bar 1" }).fill("-24");
     await expect(panel).toContainText("-24.0 dB");
     await expect(panel).toContainText("Automated: Bass (level).");
-    await expect(panel.getByRole("img", { name: "Level lane: 2 points" })).toBeVisible();
+    const curve = panel.getByRole("group", { name: "Level lane: 2 points" });
+    await expect(curve).toBeVisible();
+
+    // On the lane (#2551): arrows nudge a point, a click adds one, Delete removes it.
+    const first = panel.getByRole("slider", { name: "Level point at bar 1" });
+    await first.focus();
+    await first.press("ArrowUp");
+    await expect(first).toHaveAttribute("aria-valuetext", "Bar 1, -23.5 dB");
+    await expect(first).toBeFocused();
+    await first.press("ArrowDown");
+    await expect(first).toHaveAttribute("aria-valuetext", "Bar 1, -24.0 dB");
+    const box = (await curve.boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.25);
+    await expect(panel.getByRole("group", { name: "Level lane: 3 points" })).toBeVisible();
+    const labels = await panel
+      .getByRole("slider", { name: /^Level point at bar/ })
+      .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")));
+    const added = labels.find((l) => l !== "Level point at bar 1" && l !== "Level point at bar 5")!;
+    await panel.getByRole("slider", { name: added, exact: true }).press("Delete");
+    await expect(curve).toBeVisible();
 
     // The preview plays the unsaved lanes.
     await page.getByRole("button", { name: /^Play/ }).first().click();

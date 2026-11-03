@@ -1183,6 +1183,12 @@ from the JWT, never the request body.
     Clear lane, then Save automation or Undo changes. "Reset to original"
     leaves the lanes alone; clear them in the panel. The User Guide's Pro
     section explains it.
+  - **Drawing on the lane (#2551, Sprint 52).** The lane is editable in
+    place: click an empty spot to add a point on the nearest bar, drag a
+    point to move it (snapped to whole bars and the lane's step, committed
+    once on release), double-click or Delete to remove it. Each point is a
+    keyboard slider: arrows move it a bar or a step (Shift for ten steps).
+    The list stays for exact values.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
