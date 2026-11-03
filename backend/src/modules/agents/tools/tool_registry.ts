@@ -6,6 +6,7 @@ import { EmbeddingService } from "../../embeddings/embedding.service";
 import { EmbeddingStore } from "../../embeddings/embedding.store";
 import { TrackEmbeddingService, TRACK_EMBEDDABLE_WHERE } from "../../embeddings/track_embedding.service";
 import { unitCentroid } from "../../embeddings/vector_centroid";
+import { interleaveByShare, playlistPattern, pocketFitBonus, pocketQuota } from "../playlist_seed_pockets";
 import { sanitizeArtistNames, normalizeArtistName } from "../agent_session_artists";
 import {
   AI_PROMOTIONAL_ELIGIBILITY_WHERE,
@@ -39,12 +40,17 @@ const ARTIST_SEED_CACHE_MAX = 100;
  *    at most that many, whichever source found them);
  *  - the profile is read from the most recent `PLAYLIST_SEED_SAMPLE_TRACKS`
  *    tracks, so a huge playlist costs the same as a small one;
- *  - the genre-family mix adds tracks of the playlist's `PLAYLIST_SEED_TOP_FAMILIES`
- *    most common families, at most `PLAYLIST_SEED_FAMILY_CANDIDATES` of them.
+ *  - the genre mix follows the playlist's pattern (`playlist_seed_pockets.ts`):
+ *    pockets of genre family, groove (energy, else tempo band) and common
+ *    moods, each on at least 10% of the sampled tracks (at most five). Each
+ *    pocket asks for its share of `PLAYLIST_SEED_FAMILY_CANDIDATES` and of the
+ *    neighbours, ranked against the sound of the playlist's own tracks in that
+ *    pocket and nudged by a shared groove or mood; the order keeps the shares.
+ *    A playlist of one-offs falls back to its two most common families and its
+ *    overall sound.
  */
 export const PLAYLIST_SEED_OWN_TRACKS = 3;
 const PLAYLIST_SEED_SAMPLE_TRACKS = 40;
-const PLAYLIST_SEED_TOP_FAMILIES = 2;
 const PLAYLIST_SEED_FAMILY_CANDIDATES = 30;
 /** Most ids sent to a SQL NOT IN; the rest are dropped after the query. */
 const PLAYLIST_SEED_SQL_EXCLUDE_MAX = 500;
@@ -340,44 +346,61 @@ export class ToolRegistry {
         const inPlaylist = new Set(playlistTrackIds);
         const sample = playlistTrackIds.slice(-PLAYLIST_SEED_SAMPLE_TRACKS);
 
-        // The genre-family mix of the sample: stored descriptor families, else the release genre's.
+        // The pattern of the sample: genre family (stored descriptor families, else the release
+        // genre's), groove (measured energy, else tempo band) and release moods, as pockets.
         const sampleRows = await prisma.track.findMany({
           where: { id: { in: sample } },
           select: {
             id: true,
-            release: { select: { genre: true } },
-            descriptor: { select: { families: true } },
+            release: { select: { genre: true, moods: true } },
+            descriptor: { select: { families: true, energyBand: true, tempoBand: true } },
           },
         });
-        const familyCounts = new Map<string, number>();
-        for (const row of sampleRows) {
+        const pattern = playlistPattern(sampleRows.map((row) => {
           const stored = row.descriptor?.families ?? [];
-          const families = new Set(
-            stored.length > 0
+          return {
+            id: row.id,
+            families: stored.length > 0
               ? stored
               : releaseGenreFamilies(row.release?.genre ?? "").map((family) => family.id),
-          );
-          for (const id of families) familyCounts.set(id, (familyCounts.get(id) ?? 0) + 1);
-        }
-        const topFamilyIds = [...familyCounts.entries()]
-          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-          .slice(0, PLAYLIST_SEED_TOP_FAMILIES)
-          .map(([id]) => id);
+            energyBand: row.descriptor?.energyBand ?? null,
+            tempoBand: row.descriptor?.tempoBand ?? null,
+            moods: row.release?.moods ?? [],
+          };
+        }));
+        // Several pockets each get their share and their own sound; otherwise the overall sound leads.
+        const perPocket = pattern.proportional && pattern.pockets.length > 1;
 
-        // The centroid of the stored vectors (none: the family mix alone seeds).
+        // The sound of the whole sample, and of each pocket's own tracks.
         const model = this.embeddingService.modelId;
-        const centroid = model
-          ? unitCentroid(await this.embeddingStore.getMany(sample, model))
-          : null;
+        const vectors = model ? await this.embeddingStore.getManyById(sample, model) : new Map<string, number[]>();
+        const centroid = unitCentroid([...vectors.values()]);
+        const pocketSound = new Map<string, number[] | null>();
+        for (const pocket of pattern.pockets) {
+          const own = perPocket ? pocket.trackIds.flatMap((id) => (vectors.has(id) ? [vectors.get(id)!] : [])) : [];
+          pocketSound.set(pocket.key, (own.length > 0 ? unitCentroid(own) : null) ?? centroid);
+        }
 
         const excluded = new Set<string>([...excludeTrackIds, ...playlistTrackIds]);
         const sqlExclude = [...excluded].slice(0, PLAYLIST_SEED_SQL_EXCLUDE_MAX);
         const scores = new Map<string, number>();
         const origin = new Map<string, "neighbour" | "family">();
+        // Which pocket found a candidate, and its fit nudge there, for the proportional order.
+        const foundBy = new Map<string, string>();
+        const fit = new Map<string, number>();
 
-        if (centroid) {
-          const neighbours = await trackEmbeddingService.neighboursOfVector(centroid, {
-            limit,
+        // Neighbours: of each pocket's sound, else of the whole playlist.
+        const neighbourQueries = perPocket
+          ? pattern.pockets.map((pocket) => ({
+            pocketKey: pocket.key as string | null,
+            vector: pocketSound.get(pocket.key) ?? null,
+            limit: pocketQuota(pocket.share, limit),
+          }))
+          : [{ pocketKey: null as string | null, vector: centroid, limit }];
+        for (const query of neighbourQueries) {
+          if (!query.vector) continue;
+          const neighbours = await trackEmbeddingService.neighboursOfVector(query.vector, {
+            limit: query.limit,
             allowExplicit: explicitAllowed,
             excludeTrackIds: sqlExclude,
           });
@@ -386,40 +409,65 @@ export class ToolRegistry {
             : getAgentSemanticMinSimilarity();
           for (const neighbour of neighbours) {
             if (neighbour.score < floor || excluded.has(neighbour.trackId)) continue;
+            if ((scores.get(neighbour.trackId) ?? -Infinity) >= neighbour.score) continue;
             scores.set(neighbour.trackId, neighbour.score);
             origin.set(neighbour.trackId, "neighbour");
+            if (query.pocketKey) foundBy.set(neighbour.trackId, query.pocketKey);
           }
         }
 
-        if (topFamilyIds.length > 0) {
-          const genreTerms = topFamilyIds.flatMap((id) => {
-            const family = genreFamilyById(id);
-            return family ? expandGenreSearchTerms(family.label) : [];
-          });
-          const familyRows = await this.loadCandidateTracks({
+        // Family tracks: each pocket asks for its share of its family (in its groove when it has
+        // one), ranked against its own sound.
+        const pocketRows = await Promise.all(pattern.pockets.map((pocket) => {
+          const genreFamily = genreFamilyById(pocket.familyId);
+          const genreTerms = genreFamily ? expandGenreSearchTerms(genreFamily.label) : [];
+          const groove: Prisma.TrackWhereInput[] = perPocket && pocket.groove
+            ? [{
+              descriptor: {
+                is: pocket.groove.kind === "energy"
+                  ? { energyBand: pocket.groove.band }
+                  : { tempoBand: pocket.groove.band },
+              },
+            }]
+            : [];
+          return this.loadCandidateTracks({
             explicitAllowed,
-            take: PLAYLIST_SEED_FAMILY_CANDIDATES,
+            take: perPocket
+              ? pocketQuota(pocket.share, PLAYLIST_SEED_FAMILY_CANDIDATES, 5)
+              : Math.ceil(PLAYLIST_SEED_FAMILY_CANDIDATES / pattern.pockets.length),
             extraWhere: {
               AND: [
                 TRACK_EMBEDDABLE_WHERE,
                 { id: { notIn: sqlExclude } },
                 {
                   OR: [
-                    { descriptor: { is: { families: { hasSome: topFamilyIds } } } },
+                    { descriptor: { is: { families: { has: pocket.familyId } } } },
                     ...genreTerms.map((term) => ({
                       release: { genre: { contains: term, mode: "insensitive" as const } },
                     })),
                   ],
                 },
+                ...groove,
               ],
             },
           });
-          const fresh = familyRows.filter((row) => !excluded.has(row.id) && !origin.has(row.id));
-          const familyScores = centroid && model
-            ? await this.embeddingStore.similarity(centroid, fresh.map((row) => row.id), model)
+        }));
+        for (const [index, pocket] of pattern.pockets.entries()) {
+          const fresh = pocketRows[index].filter((row) => !excluded.has(row.id) && !origin.has(row.id));
+          const sound = pocketSound.get(pocket.key) ?? null;
+          const pocketScores = sound && model
+            ? await this.embeddingStore.similarity(sound, fresh.map((row) => row.id), model)
             : [];
-          for (const entry of familyScores) scores.set(entry.trackId, entry.score);
-          for (const row of fresh) origin.set(row.id, "family");
+          for (const entry of pocketScores) scores.set(entry.trackId, entry.score);
+          for (const row of fresh) {
+            origin.set(row.id, "family");
+            foundBy.set(row.id, pocket.key);
+            fit.set(row.id, pocketFitBonus(pocket, {
+              energyBand: row.descriptor?.energyBand ?? null,
+              tempoBand: row.descriptor?.tempoBand ?? null,
+              moods: row.release?.moods ?? [],
+            }));
+          }
         }
 
         const items: Array<Record<string, unknown>> = [];
@@ -431,12 +479,31 @@ export class ToolRegistry {
             extraWhere: { AND: [TRACK_EMBEDDABLE_WHERE, { id: { in: wanted } }] },
           });
           const byId = new Map(rows.map((row) => [row.id, row]));
-          // Scored candidates first (best first); a family track without a vector keeps its place after them.
+          // Scored candidates first (best first, nudged by their pocket fit); a family track
+          // without a vector keeps its place after them.
+          const rank = (id: string) => {
+            const score = scores.get(id);
+            return score === undefined ? undefined : score + (fit.get(id) ?? 0);
+          };
           const ordered = wanted
-            .map((id, index) => ({ id, index, score: scores.get(id) }))
+            .map((id, index) => ({ id, index, score: scores.get(id), rank: rank(id) }))
             .sort((a, b) =>
-              (b.score ?? -1) !== (a.score ?? -1) ? (b.score ?? -1) - (a.score ?? -1) : a.index - b.index);
-          for (const entry of ordered) {
+              (b.rank ?? -2) !== (a.rank ?? -2) ? (b.rank ?? -2) - (a.rank ?? -2) : a.index - b.index)
+            .filter((entry) => byId.has(entry.id));
+          // Several pockets keep their shares in the order too, so a cut keeps the playlist's mix.
+          const mixed = perPocket
+            ? interleaveByShare(
+              [
+                ...pattern.pockets.map((pocket) => ({
+                  share: pocket.share,
+                  items: ordered.filter((entry) => foundBy.get(entry.id) === pocket.key),
+                })),
+                { share: 0, items: ordered.filter((entry) => !foundBy.has(entry.id)) },
+              ],
+              (entry) => entry.id,
+            )
+            : ordered;
+          for (const entry of mixed) {
             const row = byId.get(entry.id);
             if (!row) continue;
             items.push({
@@ -447,8 +514,9 @@ export class ToolRegistry {
           }
         }
 
-        // The playlist's own tracks: the PLAYLIST_SEED_OWN_TRACKS nearest its centroid
-        // (playlist order without a centroid), not already in the session.
+        // The playlist's own tracks: the PLAYLIST_SEED_OWN_TRACKS nearest its sound (playlist
+        // order without one), not already in the session. Several pockets take them across the
+        // pockets, each nearest its own pocket's sound.
         const alreadyInSession = new Set(excludeTrackIds);
         const ownPool = playlistTrackIds.filter((id) => !alreadyInSession.has(id));
         let ownOrder = ownPool;
@@ -458,6 +526,20 @@ export class ToolRegistry {
           for (const entry of ranked) ownScores.set(entry.trackId, entry.score);
           const rankedIds = ranked.map((entry) => entry.trackId);
           ownOrder = [...rankedIds, ...ownPool.filter((id) => !ownScores.has(id))];
+          if (perPocket) {
+            const lists: Array<{ share: number; items: string[] }> = [];
+            for (const pocket of pattern.pockets) {
+              const sound = pocketSound.get(pocket.key);
+              const members = pocket.trackIds.filter((id) => !alreadyInSession.has(id));
+              if (!sound || members.length === 0) continue;
+              const nearest = await this.embeddingStore.similarity(sound, members, model);
+              for (const entry of nearest) {
+                ownScores.set(entry.trackId, Math.max(entry.score, ownScores.get(entry.trackId) ?? -Infinity));
+              }
+              lists.push({ share: pocket.share, items: nearest.map((entry) => entry.trackId) });
+            }
+            ownOrder = interleaveByShare([...lists, { share: 0, items: ownOrder }], (id) => id);
+          }
         }
         const ownWanted = ownOrder.slice(0, PLAYLIST_SEED_OWN_TRACKS * 4);
         if (ownWanted.length > 0) {

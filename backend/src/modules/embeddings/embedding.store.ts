@@ -95,6 +95,18 @@ export class EmbeddingStore {
     return rows.map((row) => this.parseVector(row.vector));
   }
 
+  /** Like `getMany`, keyed by track id, for callers that group tracks (tracks without one are absent). */
+  async getManyById(trackIds: string[], model: string): Promise<Map<string, number[]>> {
+    if (trackIds.length === 0) return new Map();
+    const rows = await prisma.$queryRaw<EmbeddingRow[]>`
+      SELECT "trackId", "vector"::text AS "vector"
+      FROM "TrackEmbedding"
+      WHERE "trackId" IN (${Prisma.join(trackIds)})
+        AND "model" = ${model}
+    `;
+    return new Map(rows.map((row) => [row.trackId, this.parseVector(row.vector)]));
+  }
+
   /** Model + content hash of the stored vectors for the given tracks. */
   async getContentStates(
     trackIds: string[],
