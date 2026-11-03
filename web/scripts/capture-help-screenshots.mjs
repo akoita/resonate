@@ -1065,6 +1065,19 @@ const REMIX_TARGETS = [
     },
   },
   {
+    file: "remix-studio-mashup.png",
+    prepare: async (page) => {
+      await page.getByRole("switch", { name: /^Pro/ }).click();
+      const panel = page.getByRole("group", { name: "Mashup" });
+      await panel.getByRole("button", { name: "Add a second track" }).click();
+      await panel.getByRole("button", { name: "Use this track" }).click();
+      await panel.getByRole("button", { name: "Remove track B" }).waitFor();
+      await panel.getByRole("spinbutton", { name: "Bar of track A where track B starts" }).fill("4");
+      await panel.scrollIntoViewIfNeeded();
+      return { locator: panel };
+    },
+  },
+  {
     file: "remix-studio-stems.png",
     project: REMIX_WITH_STEMS,
     prepare: async (page) => {

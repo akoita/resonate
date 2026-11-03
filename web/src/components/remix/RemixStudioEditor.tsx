@@ -15,6 +15,7 @@ import {
   getUsageSummary,
   getRemixEligibility,
   getRemixProject,
+  listRemixMashupCandidates,
   publishRemixProject,
   requestGenerationCredits,
   updateRemixProject,
@@ -24,6 +25,7 @@ import {
   type GenerationCreditBalance,
   type UsageLimit,
   type RemixEligibilityResponse,
+  type RemixMashupCandidate,
   type RemixGenerationAttribution,
   type RemixGenerationMetadata,
   type RemixPartTake,
@@ -153,6 +155,16 @@ import {
   type LaneStem,
 } from "./RemixSessionLanes";
 import { RemixGridPanel } from "./RemixGridPanel";
+import { RemixMashupPanel } from "./RemixMashupPanel";
+import {
+  initialMashup,
+  measuredKey,
+  measuredTempo,
+  previewConforms,
+  stemsOfSource,
+  type MashupKey,
+  type RemixMashup,
+} from "../../lib/remixMashup";
 import { RemixAutomationPanel } from "./RemixAutomationPanel";
 import { RemixCuesPanel } from "./RemixCuesPanel";
 import {
@@ -697,6 +709,31 @@ export function projectMusicalSummary(
     }
   }
   return { bpm, key };
+}
+
+/**
+ * What the studio says when attaching or conforming track B fails (#2560):
+ * the server's rights denial names the source that blocks it.
+ */
+export function mashupErrorText(error: unknown, fallback: string): string {
+  const body =
+    error && typeof error === "object" && "details" in error
+      ? (error as { details?: unknown }).details
+      : null;
+  const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+  if (payload?.code === "pro_required") {
+    return "Mashups are a Pro tool, which this account can't use right now.";
+  }
+  const eligibility = payload?.eligibility as
+    | { reasons?: Array<{ message?: string; sourceRole?: string }> }
+    | undefined;
+  const reason = eligibility?.reasons?.find((entry) => entry.message);
+  if (reason?.message) {
+    const who = reason.sourceRole === "secondary" ? "Track B: " : reason.sourceRole === "lead" ? "Track A: " : "";
+    return `${who}${reason.message}`;
+  }
+  if (typeof payload?.message === "string" && payload.message) return payload.message;
+  return fallback;
 }
 
 export function stemDisplayName(stem: {
@@ -1618,9 +1655,15 @@ export function describeExportAvailability(input: {
     !input.eligibility.allowedActions.includes("export")
   ) {
     // The honest locked state: a valid remix (but not commercial) license.
+    // On a mashup (#2560) name the track whose license stops the export.
+    const blocking = input.eligibility.sources?.find(
+      (source) => !source.allowedActions.includes("export"),
+    );
     return {
       enabled: false,
-      reason: EXPORT_RIGHTS_REQUIRED_REASON,
+      reason: blocking
+        ? `Track ${blocking.role === "secondary" ? "B" : "A"} needs a commercial license to export.`
+        : EXPORT_RIGHTS_REQUIRED_REASON,
       reasonCode: "export_rights_required",
     };
   }
@@ -1637,11 +1680,15 @@ export function describeExportAvailability(input: {
 export function publishConfirmMessage(input: {
   title: string;
   source: RemixProjectSource;
+  /** Mashups (#2560): the second source, credited after the first. */
+  secondarySource?: RemixProjectSource | null;
   grounding: string | null;
 }): string {
-  const attribution = `Remix of "${input.source.trackTitle}"${
-    input.source.artistName ? ` by ${input.source.artistName}` : ""
-  }.`;
+  const credit = (source: RemixProjectSource) =>
+    `"${source.trackTitle}"${source.artistName ? ` by ${source.artistName}` : ""}`;
+  const attribution = input.secondarySource
+    ? `Mashup of ${credit(input.source)} and ${credit(input.secondarySource)}.`
+    : `Remix of ${credit(input.source)}.`;
   const lines = [
     `Publishing makes “${input.title}” a public remix release on Resonate.`,
     attribution,
@@ -1845,6 +1892,18 @@ export function RemixStudioEditor({
   // never changes the recipe. Offered only when the server allows it.
   const [proMode, setProMode] = useState(false);
   // Grid correction (#2539): applied straight away, outside autosave.
+  const [mashupSaving, setMashupSaving] = useState(false);
+  const [secondaryRights, setSecondaryRights] = useState<{
+    trackId: string;
+    allowedActions: RemixEligibilityResponse["allowedActions"];
+  } | null>(null);
+  // Measured tempo/key of a just-picked B, until its stems are in the session.
+  const [secondaryHint, setSecondaryHint] = useState<{
+    trackId: string;
+    bpm: number | null;
+    key: MashupKey | null;
+  } | null>(null);
+  const [mashupError, setMashupError] = useState<string | null>(null);
   const [gridSaving, setGridSaving] = useState(false);
   const [gridError, setGridError] = useState<string | null>(null);
   // Cue and loop points (#2540, Pro).
@@ -1938,7 +1997,23 @@ export function RemixStudioEditor({
       : null;
   const rights = describeSourceRights(project.source);
   const proAllowed = proModeAllowed(project);
-  const musicalSummary = projectMusicalSummary(project);
+  // Mashups (#2560): track B, its stems, and how the preview conforms them.
+  const secondarySource = project.secondarySource ?? null;
+  const mashupPreview = previewConforms(project);
+  const secondaryStemIds = new Set(
+    secondarySource
+      ? stemsOfSource(project.stems, secondarySource.trackId, project.sourceTrackId).map(
+          (stem) => stem.stemId,
+        )
+      : [],
+  );
+  const sessionStemName = (stem: { stemId: string; type: string; title: string | null }) =>
+    secondaryStemIds.has(stem.stemId)
+      ? `${stemDisplayName(stem)} · B`
+      : stemDisplayName(stem);
+  // A's tempo and key: B's stems never vote (#2560).
+  const leadStems = stemsOfSource(project.stems, project.sourceTrackId, project.sourceTrackId);
+  const musicalSummary = projectMusicalSummary({ ...project, stems: leadStems });
   const musicalSummaryLabel = [
     musicalSummary.bpm !== null ? `${musicalSummary.bpm} BPM` : null,
     musicalSummary.key,
@@ -2067,6 +2142,8 @@ export function RemixStudioEditor({
     waveformTakeIds: trayWaveformTakeIds,
     outputGain: listeningGain(listeningVolume),
     automation: previewLanes,
+    // Mashups (#2560): B's stems play conformed to A's time, as rendered.
+    conforms: mashupPreview.conforms,
     onError: (kind) => {
       addToast(
         kind === "preview"
@@ -2166,7 +2243,7 @@ export function RemixStudioEditor({
     const edit = edits.stems[stem.stemId];
     return {
       stemId: stem.stemId,
-      name: stemDisplayName(stem),
+      name: sessionStemName(stem),
       type: stem.type,
       muted: edit?.muted ?? stem.muted,
       soloed: soloStemId === stem.stemId,
@@ -2713,6 +2790,7 @@ export function RemixStudioEditor({
           token,
           project.sourceTrackId,
           project.stems.map((stem) => stem.stemId),
+          project.secondarySource?.trackId ?? null,
         );
         if (!cancelled) setEligibility(result);
       } catch {
@@ -2725,7 +2803,37 @@ export function RemixStudioEditor({
     return () => {
       cancelled = true;
     };
-  }, [token, draftReadyToPublish, project.id, project.sourceTrackId, project.stems]);
+  }, [
+    token,
+    draftReadyToPublish,
+    project.id,
+    project.sourceTrackId,
+    project.secondarySource?.trackId,
+    project.stems,
+  ]);
+
+  // Mashups (#2560): what this user may do with track B, so the studio can
+  // say up front that B's license tier stops the export.
+  const secondaryTrackId = project.secondarySource?.trackId ?? null;
+  useEffect(() => {
+    if (!token || !secondaryTrackId) {
+      setSecondaryRights(null);
+      return;
+    }
+    let cancelled = false;
+    void getRemixEligibility(token, secondaryTrackId)
+      .then((result) => {
+        if (!cancelled) {
+          setSecondaryRights({ trackId: secondaryTrackId, allowedActions: result.allowedActions });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSecondaryRights(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, secondaryTrackId]);
 
   const updateStemEdit = (stemId: string, update: Partial<StemEdit>) => {
     setEdits((prev) => ({
@@ -2914,6 +3022,87 @@ export function RemixStudioEditor({
           }
         : null,
     );
+  };
+
+  // Mashups (#2560): attach, conform and remove track B. Attaching B and
+  // removing it change the stem list, so the project is read again.
+  const leadBpm = project.sectionGrid?.kind === "bars" ? project.sectionGrid.bpm ?? null : null;
+  const leadKey = measuredKey(leadStems);
+  const secondaryStems = secondarySource
+    ? stemsOfSource(project.stems, secondarySource.trackId, project.sourceTrackId)
+    : [];
+  const hint = secondaryHint && secondaryHint.trackId === secondarySource?.trackId ? secondaryHint : null;
+  const secondaryBpm = measuredTempo(secondaryStems).bpm ?? hint?.bpm ?? null;
+  const secondaryKey = measuredKey(secondaryStems) ?? hint?.key ?? null;
+  const secondaryDecision =
+    eligibility?.sources?.find((source) => source.role === "secondary") ??
+    (secondaryRights && secondaryRights.trackId === secondarySource?.trackId
+      ? secondaryRights
+      : null);
+  const secondaryExportBlocked = Boolean(
+    secondarySource && secondaryDecision && !secondaryDecision.allowedActions.includes("export"),
+  );
+  const leadBars =
+    project.sectionGrid?.kind === "bars" && project.sectionGrid.bpm
+      ? Math.floor((project.sectionGrid.durationSeconds * project.sectionGrid.bpm) / 240) + 1
+      : null;
+  const loadMashupCandidates = async (query: string) => {
+    if (!token) return [];
+    const result = await listRemixMashupCandidates(token, project.id, query);
+    return result.items;
+  };
+  const changeSecondary = async (
+    patch: { secondarySourceTrackId: string | null; mashup?: RemixMashup | null },
+    failure: string,
+  ) => {
+    if (!token || published || mashupSaving) return;
+    setMashupSaving(true);
+    setMashupError(null);
+    try {
+      await updateRemixProject(token, project.id, patch);
+      const fresh = await getRemixProject(token, project.id);
+      setProject(fresh);
+      setEdits(initialEdits(fresh));
+    } catch (error) {
+      setMashupError(mashupErrorText(error, failure));
+    } finally {
+      setMashupSaving(false);
+    }
+  };
+  const attachSecondary = (candidate: RemixMashupCandidate) => {
+    setSecondaryHint({ trackId: candidate.trackId, bpm: candidate.tempoBpm, key: candidate.key });
+    void changeSecondary(
+      {
+        secondarySourceTrackId: candidate.trackId,
+        mashup: initialMashup({
+          leadBpm,
+          secondaryBpm: candidate.tempoBpm,
+          leadKey,
+          secondaryKey: candidate.key,
+        }),
+      },
+      "Couldn't add that track. Check your connection and try again.",
+    );
+  };
+  const removeSecondary = () =>
+    void changeSecondary(
+      { secondarySourceTrackId: null },
+      "Couldn't remove track B. Check your connection and try again.",
+    );
+  const saveMashup = async (mashup: RemixMashup) => {
+    if (!token || published || mashupSaving) return;
+    setMashupSaving(true);
+    setMashupError(null);
+    try {
+      const updated = await updateRemixProject(token, project.id, { mashup });
+      setProject((prev) => ({ ...updated, availableStems: prev.availableStems }));
+    } catch (error) {
+      setMashupError(
+        mashupErrorText(error, "Couldn't apply the mashup. Check your connection and try again."),
+      );
+    } finally {
+      setMashupSaving(false);
+    }
   };
 
   const applyGridOverride = async (override: RemixGridOverride | null) => {
@@ -3176,7 +3365,7 @@ export function RemixStudioEditor({
     stems: project.stems.map((stem) => ({
       stemId: stem.stemId,
       type: stem.type,
-      name: stemDisplayName(stem),
+      name: sessionStemName(stem),
       reference: referenceIds.has(stem.stemId),
     })),
     grid: sectionGrid,
@@ -3198,7 +3387,7 @@ export function RemixStudioEditor({
   };
   const replaceStemOptions = project.stems
     .filter((stem) => !referenceIds.has(stem.stemId))
-    .map((stem) => ({ stemId: stem.stemId, name: stemDisplayName(stem) }));
+    .map((stem) => ({ stemId: stem.stemId, name: sessionStemName(stem) }));
 
   // Generate gating (#1162/#1316/#1422): saved-state and prompt gate, then
   // an incomplete replace selection, then the credit balance.
@@ -3496,7 +3685,7 @@ export function RemixStudioEditor({
                 <RemixAutomationPanel
                   stems={channelStems
                     .filter((stem) => !referenceIds.has(stem.stemId))
-                    .map((stem) => ({ stemId: stem.stemId, label: stemDisplayName(stem) }))}
+                    .map((stem) => ({ stemId: stem.stemId, label: sessionStemName(stem) }))}
                   draft={automationDraft ?? project.automation ?? emptyAutomation()}
                   saved={project.automation ?? null}
                   downbeats={cueDownbeats}
@@ -3531,6 +3720,34 @@ export function RemixStudioEditor({
                     busy: exporting,
                     onExport: () => void handleExport("dj_extended"),
                   }}
+                />
+              )}
+              {proAllowed && proMode && (!published || secondarySource) && (
+                <RemixMashupPanel
+                  leadTitle={project.source.trackTitle}
+                  leadBpm={leadBpm}
+                  leadKey={leadKey}
+                  secondary={secondarySource}
+                  secondaryBpm={secondaryBpm}
+                  secondaryKey={secondaryKey}
+                  saved={project.mashup ?? null}
+                  skipped={mashupPreview.skipped}
+                  secondaryExportBlocked={secondaryExportBlocked}
+                  maxOffsetBars={leadBars}
+                  disabled={published || dirty || saving}
+                  disabledReason={
+                    published
+                      ? "Published remixes keep their tracks."
+                      : dirty || saving
+                        ? "Saving your other changes first…"
+                        : null
+                  }
+                  saving={mashupSaving}
+                  error={mashupError}
+                  loadCandidates={loadMashupCandidates}
+                  onAttach={attachSecondary}
+                  onRemove={removeSecondary}
+                  onSave={(mashup) => void saveMashup(mashup)}
                 />
               )}
               <p className="text-zinc-500 text-xs mb-4">
@@ -3669,7 +3886,7 @@ export function RemixStudioEditor({
               {availableStems.length > 0 && (
                 <div className="mt-5 border-t border-zinc-800 pt-4">
                   <h3 className="text-sm font-semibold text-zinc-200 mb-1">
-                    Also on this track
+                    {secondarySource ? "Also on these tracks" : "Also on this track"}
                   </h3>
                   <p className="text-zinc-500 text-xs mb-3">
                     Licensed stems join your session instantly; the others link to
@@ -3687,7 +3904,14 @@ export function RemixStudioEditor({
                             <div className="text-sm text-zinc-300">
                               {stemDisplayName(stem)}
                             </div>
-                            <div className="text-xs text-zinc-500">{stem.type}</div>
+                            <div className="text-xs text-zinc-500">
+                              {stem.type}
+                              {secondarySource && stem.sourceTrackId === secondarySource.trackId
+                                ? ` · track B, “${secondarySource.trackTitle}”`
+                                : secondarySource
+                                  ? ` · track A, “${project.source.trackTitle}”`
+                                  : ""}
+                            </div>
                           </div>
                           {action.kind === "add" ? (
                             <button
@@ -3864,6 +4088,7 @@ export function RemixStudioEditor({
         message={publishConfirmMessage({
           title: edits.title.trim() || project.title,
           source: project.source,
+          secondarySource: project.secondarySource ?? null,
           grounding: groundingDescription(project.generationMetadata),
         })}
         confirmLabel={publishing ? "Publishing..." : "Publish on Resonate"}

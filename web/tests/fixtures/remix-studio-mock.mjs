@@ -174,8 +174,40 @@ export function defaultStems() {
   return stems;
 }
 
+/** Mashups (#2560): the second track the picker offers, and its stem. */
+export const MASHUP_TRACK_ID = "e2e-track-b";
+export const MASHUP_CANDIDATE = {
+  trackId: MASHUP_TRACK_ID,
+  trackTitle: "Low Tide",
+  artistName: "Mara Vale",
+  releaseId: "e2e-release-b",
+  releaseTitle: "Low Tide",
+  tempoBpm: 100,
+  key: { tonic: "G", mode: "minor" },
+  // Held at the Remix tier: a draft and a release, never an export.
+  allowedActions: ["private_draft", "publish_resonate"],
+  current: false,
+};
+function mashupStem() {
+  return {
+    stemId: "stem-b-keys",
+    type: "piano",
+    title: null,
+    role: null,
+    gainDb: null,
+    muted: false,
+    arrangement: null,
+    sourceTrackId: MASHUP_TRACK_ID,
+    audioFeatures: {
+      ...features({ tonic: "G", mode: "minor" }),
+      tempoBpm: 100,
+    },
+  };
+}
+
 /** Preview tone per stem id. */
 const STEM_TONES = /** @type {Record<string, number>} */ ({
+  "stem-b-keys": 330,
   "stem-original": 220,
   "stem-vocals": 440,
   "stem-drums": 110,
@@ -232,8 +264,28 @@ export async function mockRemixApi(page, options = {}) {
       /** @type {{ stems?: Array<Partial<MockStem> & { stemId: string }> } & Record<string, unknown>} */
       const body = request.postDataJSON();
       patches.push(body);
-      const { stems: stemChanges, ...rest } = body;
+      const { stems: stemChanges, secondarySourceTrackId, ...rest } = body;
       fields = { ...fields, ...rest };
+      // Mashups (#2560): attaching B adds its stem; removing B takes its
+      // stems and recipe along, like the real server.
+      if (secondarySourceTrackId !== undefined) {
+        stems = stems.filter((stem) => !("sourceTrackId" in stem));
+        if (secondarySourceTrackId) {
+          fields.secondarySource = {
+            trackId: MASHUP_CANDIDATE.trackId,
+            trackTitle: MASHUP_CANDIDATE.trackTitle,
+            releaseId: MASHUP_CANDIDATE.releaseId,
+            releaseTitle: MASHUP_CANDIDATE.releaseTitle,
+            artistName: MASHUP_CANDIDATE.artistName,
+            rightsRoute: "STANDARD_ESCROW",
+            contentStatus: "clean",
+          };
+          stems = [...stems, /** @type {MockStem} */ (mashupStem())];
+        } else {
+          fields.secondarySource = null;
+          fields.mashup = null;
+        }
+      }
       stems = stems.map((stem) => {
         const change = stemChanges?.find((entry) => entry.stemId === stem.stemId);
         return change ? { ...stem, ...change } : stem;
@@ -319,6 +371,11 @@ export async function mockRemixApi(page, options = {}) {
       contentType: "audio/wav",
       body: toneWav(STEM_TONES[stemId ?? ""] ?? 330),
     });
+  });
+  await page.route(`**/remix/projects/${PROJECT_ID}/mashup-candidates**`, (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q")?.toLowerCase() ?? "";
+    const items = !q || "low tide mara vale".includes(q) ? [MASHUP_CANDIDATE] : [];
+    return route.fulfill({ json: { items } });
   });
   await page.route("**/remix/eligibility**", (route) =>
     route.fulfill({

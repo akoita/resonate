@@ -75,6 +75,8 @@ import {
   type RemixCues,
 } from "./remix-cues";
 import { renderDjExtended } from "./remix-dj-export";
+import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
+import { publicTrackAudioFeatures } from "../catalog/track-audio-features";
 import {
   normalizeRemixAutomationInput,
   parseRemixAutomation,
@@ -86,6 +88,7 @@ import { StoredZipWriter, storeZip } from "../shared/store_zip";
 import {
   mashupChanged,
   mashupConformPlan,
+  measuredTempo,
   REMIX_MASHUP_DSP_VERSION,
   normalizeRemixMashupInput,
   parseRemixMashup,
@@ -615,6 +618,26 @@ function loadProject(projectId: string) {
   });
 }
 
+/** How many tracks the mashup picker scans, and returns (#2560). */
+const MASHUP_CANDIDATE_SCAN = 60;
+const MASHUP_CANDIDATE_LIMIT = 20;
+
+/** A track the owner can pair with a draft as the second source (#2560). */
+export type RemixMashupCandidate = {
+  trackId: string;
+  trackTitle: string;
+  artistName: string | null;
+  releaseId: string;
+  releaseTitle: string;
+  /** Measured full-mix tempo, else the most confident stem tempo. */
+  tempoBpm: number | null;
+  key: { tonic: string; mode: "major" | "minor" } | null;
+  /** What this user may do with the track alone (export needs a commercial license). */
+  allowedActions: string[];
+  /** Already this project's second source. */
+  current: boolean;
+};
+
 /**
  * The project stems of the leading source (#2558). The bar grid, structure,
  * cues, automation, beat and parts all count on A's grid, so B's measured
@@ -888,6 +911,104 @@ export class RemixProjectService {
       eligibility,
       await this.projectEntitlements(input.userId),
     );
+  }
+
+  /**
+   * Mashups (#2560): tracks the owner can pair with this draft as the second
+   * source. Public, ready tracks other than source A, matched on track,
+   * release or artist name, each checked track-default for this user; only
+   * tracks the user may remix (a private draft) are returned. Carries the
+   * measured tempo and key so the studio can suggest the tempo ratio and the
+   * key shift before B is attached.
+   */
+  async listMashupCandidates(
+    userId: string,
+    projectId: string,
+    query?: string,
+  ): Promise<{ items: RemixMashupCandidate[] }> {
+    const project = await this.loadOwnedProject(userId, projectId);
+    if (project.status !== "draft") {
+      throw new ConflictException("Only a draft can take a second track");
+    }
+    const q = (query ?? "").trim().slice(0, 100);
+    const tracks = await prisma.track.findMany({
+      where: {
+        id: { not: project.sourceTrackId },
+        contentStatus: "clean",
+        OR: [{ rightsRoute: null }, { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } }],
+        stems: { some: { isCurrent: true } },
+        release: {
+          status: { in: ["ready", "published"] },
+          OR: [
+            { rightsRoute: null },
+            { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } },
+          ],
+        },
+        ...(q
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { title: { contains: q, mode: "insensitive" as const } },
+                    { artist: { contains: q, mode: "insensitive" as const } },
+                    {
+                      release: {
+                        title: { contains: q, mode: "insensitive" as const },
+                      },
+                    },
+                    {
+                      release: {
+                        primaryArtist: {
+                          contains: q,
+                          mode: "insensitive" as const,
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        title: true,
+        artist: true,
+        release: {
+          select: { id: true, title: true, primaryArtist: true },
+        },
+        stems: {
+          where: { isCurrent: true },
+          select: { type: true, audioFeatures: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: MASHUP_CANDIDATE_SCAN,
+    });
+    const items: RemixMashupCandidate[] = [];
+    for (const track of tracks) {
+      if (items.length >= MASHUP_CANDIDATE_LIMIT) break;
+      const eligibility = await this.eligibilityService.checkEligibility({
+        userId,
+        trackId: track.id,
+      });
+      if (!eligibility.allowed) continue;
+      const features = publicTrackAudioFeatures(track.stems);
+      items.push({
+        trackId: track.id,
+        trackTitle: track.title,
+        artistName: track.artist ?? track.release.primaryArtist ?? null,
+        releaseId: track.release.id,
+        releaseTitle: track.release.title,
+        tempoBpm: features?.tempoBpm ?? measuredTempo(track.stems).bpm,
+        key: features?.key
+          ? { tonic: features.key.tonic, mode: features.key.mode }
+          : null,
+        allowedActions: eligibility.allowedActions,
+        current: track.id === project.secondarySourceTrackId,
+      });
+    }
+    return { items };
   }
 
   async getProject(userId: string, projectId: string) {

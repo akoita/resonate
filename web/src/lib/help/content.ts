@@ -3061,6 +3061,47 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "mashup",
+        level: "pro",
+        heading: "Pro mode: mashups of two tracks",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A mashup plays stems of a second track over your remix. With Pro on, use Add a second track in the Mashup panel, search, and pick one. Only tracks you can remix are listed: you hold a license on at least one of their stems and their artist allows remixes. The first track (track A) leads: its tempo, bars, sections and cues stay as they are, and the second track (track B) is matched to it.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "Tempo ratio", description: "How much track B is sped up or slowed down, between 0.75 and 1.33. Match tempo sets it from the measured tempos, at half or double time when that is closer. Two tracks further apart than that can't be matched, and the panel says so." },
+              { term: "Key shift", description: "Moves track B up or down by up to 6 semitones. The suggestion puts B in A's key, or in its relative major or minor." },
+              { term: "B starts at bar", description: "The bar of track A where B's first bar lands. Bar 0 is A's first downbeat." },
+              { term: "B's first downbeat", description: "Where B's first bar really starts, in seconds, when the measured one is off. Leave it empty to use the measured one." },
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-mashup.png`,
+              alt: "The Mashup panel: track A Neon Drift leads, track B Low Tide by Mara Vale, a note that track B needs a commercial license to export, tempo ratio 1.2 taking B from 100 to 120 BPM, key shift +5 semitones as suggested, B starting at bar 4, and Apply.",
+              caption: "Track B at A's tempo and key, starting on bar 4.",
+              width: 659,
+              height: 245,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "list",
+            items: [
+              "Track B's stems join the session marked · B. Add more of them from Also on these tracks.",
+              "The preview plays track B matched exactly as the render will, so what you hear is what you get.",
+              "Each track keeps its own rights. You can publish only if both tracks allow it, and export only with a commercial license on both; the studio names the track that is missing one.",
+              "A published mashup credits both songs and both artists, and its release page links to both. It is your release, not either artist's.",
+              "Remove track B takes its stems and its settings out of the draft. Mashups are part of Pro mode, free for now, and use no credits.",
+            ],
+          },
+        ],
+      },
+      {
         id: "shortcuts",
         level: "pro",
         heading: "Keyboard shortcuts",
@@ -3105,7 +3146,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Planned, not available yet",
-            text: "More tools are planned for Pro mode: mashups of two tracks where licenses allow.",
+            text: "More tools are planned for Pro mode: mashups of more than two tracks, and placing track B's sections on your song shape.",
           },
         ],
       },

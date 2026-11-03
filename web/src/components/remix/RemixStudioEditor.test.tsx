@@ -10,6 +10,7 @@ import {
   stemTransformForGenerate,
   describePublishAvailability,
   describeExportAvailability,
+  mashupErrorText,
   EXPORT_RIGHTS_REQUIRED_REASON,
   generationErrorMessage,
   groundingDescription,
@@ -947,6 +948,64 @@ describe("describePublishAvailability (#1196)", () => {
     expect(
       describePublishAvailability({ ...base, status: "published" }).reasonCode,
     ).toBe("publish_already_published");
+  });
+});
+
+describe("mashups in the studio (#2560)", () => {
+  it("names the track whose license stops the export", () => {
+    const eligibility: RemixEligibilityResponse = {
+      allowed: true,
+      requiredLicense: null,
+      allowedActions: ["private_draft", "publish_resonate"],
+      reasons: [],
+      policyVersion: "test",
+      source: { trackId: "A", rightsRoute: "STANDARD_ESCROW", contentStatus: "clean" },
+      stems: [],
+      sources: [
+        { trackId: "A", role: "lead", allowed: true, allowedActions: ["private_draft", "publish_resonate", "export"] },
+        { trackId: "B", role: "secondary", allowed: true, allowedActions: ["private_draft", "publish_resonate"] },
+      ],
+    };
+    const result = describeExportAvailability({
+      status: "draft",
+      generationStatus: "completed",
+      hasDraftOutput: true,
+      dirty: false,
+      exporting: false,
+      eligibility,
+    });
+    expect(result.reason).toBe("Track B needs a commercial license to export.");
+    expect(result.reasonCode).toBe("export_rights_required");
+  });
+
+  it("credits both tracks in the publish confirmation", () => {
+    const message = publishConfirmMessage({
+      title: "Tide Drive",
+      source: {
+        trackId: "A", trackTitle: "Night Drive", releaseId: "ra", releaseTitle: "Night Drive",
+        artistName: "Artist A", rightsRoute: null, contentStatus: "clean",
+      },
+      secondarySource: {
+        trackId: "B", trackTitle: "Low Tide", releaseId: "rb", releaseTitle: "Low Tide",
+        artistName: "Artist B", rightsRoute: null, contentStatus: "clean",
+      },
+      grounding: null,
+    });
+    expect(message).toContain('Mashup of "Night Drive" by Artist A and "Low Tide" by Artist B.');
+  });
+
+  it("explains a failed attach with the source that blocks it", () => {
+    const denial = {
+      details: {
+        message: "This track can't be used as the second source",
+        eligibility: {
+          reasons: [{ code: "license_required", message: "License a stem first.", sourceRole: "secondary" }],
+        },
+      },
+    };
+    expect(mashupErrorText(denial, "fallback")).toBe("Track B: License a stem first.");
+    expect(mashupErrorText({ details: { code: "pro_required" } }, "fallback")).toContain("Pro tool");
+    expect(mashupErrorText(new Error("offline"), "fallback")).toBe("fallback");
   });
 });
 

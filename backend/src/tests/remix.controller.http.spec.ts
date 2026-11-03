@@ -38,9 +38,19 @@ const mockEligibilityService = {
     source: { trackId: 'track-1', rightsRoute: 'STANDARD_ESCROW', contentStatus: 'clean' },
     stems: [],
   }),
+  checkSourcesEligibility: jest.fn().mockResolvedValue({
+    allowed: true,
+    requiredLicense: null,
+    allowedActions: ['private_draft'],
+    reasons: [],
+    policyVersion: 'test.v1',
+    source: { trackId: 'track-1', rightsRoute: 'STANDARD_ESCROW', contentStatus: 'clean' },
+    stems: [],
+  }),
 };
 
 const mockProjectService = {
+  listMashupCandidates: jest.fn().mockResolvedValue({ items: [] }),
   createProject: jest.fn().mockResolvedValue({ id: 'proj-1', status: 'draft' }),
   getProject: jest.fn().mockResolvedValue({ id: 'proj-1' }),
   listProjects: jest.fn().mockResolvedValue([]),
@@ -144,6 +154,27 @@ describe('RemixController (e2e)', () => {
       trackId: 'track-1',
       stemIds: ['s1', 's2'],
     });
+  });
+
+  it('GET /remix/eligibility → checks each source when a second track is given (#2560)', async () => {
+    await request(app.getHttpServer())
+      .get('/remix/eligibility?trackId=track-1&stemIds=s1,s2&secondaryTrackId=track-2')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(mockEligibilityService.checkSourcesEligibility).toHaveBeenCalledWith({
+      userId: 'user-1',
+      sourceTrackId: 'track-1',
+      secondarySourceTrackId: 'track-2',
+      stemIds: ['s1', 's2'],
+    });
+  });
+
+  it('GET /remix/projects/:id/mashup-candidates → passes the owner and the query (#2560)', async () => {
+    await request(app.getHttpServer())
+      .get('/remix/projects/proj-1/mashup-candidates?q=low')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(mockProjectService.listMashupCandidates).toHaveBeenCalledWith('user-1', 'proj-1', 'low');
   });
 
   it('GET /remix/eligibility → 400 without trackId', async () => {

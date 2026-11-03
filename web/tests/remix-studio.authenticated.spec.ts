@@ -1,5 +1,5 @@
 import { test, expect } from "./auth.setup";
-import { PROJECT_ID, mockRemixApi } from "./fixtures/remix-studio-mock.mjs";
+import { MASHUP_TRACK_ID, PROJECT_ID, mockRemixApi } from "./fixtures/remix-studio-mock.mjs";
 
 /**
  * Remix Studio session view (#1879): lanes, transport, and autosave against a
@@ -891,6 +891,86 @@ test.describe("Remix Studio session view (#1879)", () => {
     await page.getByRole("button", { name: "Export stems" }).click();
     expect((await download).suggestedFilename()).toBe("Night-Drive-Stems.zip");
     expect(exports).toEqual([{ variant: "stems" }]);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test("pro mode: add a second track, conform it, play and render the mashup (#2560)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    const generates: unknown[] = [];
+    await page.route(`**/remix/projects/${PROJECT_ID}/generate`, async (route) => {
+      generates.push(route.request().postDataJSON());
+      await route.fulfill({ status: 503, json: { message: "Rendering is paused in this test." } });
+    });
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    // A Pro tool: hidden until Pro is on.
+    const panel = page.getByRole("group", { name: "Mashup" });
+    await expect(panel).toHaveCount(0);
+    await page.getByRole("switch", { name: /^Pro/ }).click();
+    await expect(panel).toBeVisible();
+
+    // The picker lists only tracks this user can remix, with their rights.
+    await panel.getByRole("button", { name: "Add a second track" }).click();
+    await panel.getByRole("searchbox", { name: "Search tracks you can remix" }).fill("low");
+    await expect(panel).toContainText("Low Tide · Mara Vale");
+    await expect(panel).toContainText("100 BPM · G minor");
+    await expect(panel).toContainText("export needs a commercial license");
+    await panel.getByRole("button", { name: "Use this track" }).click();
+
+    // B is attached with the suggested tempo ratio and key shift
+    // (A: 120 BPM, C minor; B: 100 BPM, G minor).
+    await expect
+      .poll(() => patches.find((patch) => patch.secondarySourceTrackId), { timeout: 10_000 })
+      .toMatchObject({
+        secondarySourceTrackId: MASHUP_TRACK_ID,
+        mashup: {
+          schemaVersion: "remix-mashup/v1",
+          secondary: { tempoRatio: 1.2, semitones: 5, offsetBars: 0 },
+        },
+      });
+    await expect(panel).toContainText("Track B “Low Tide” by Mara Vale");
+    await expect(panel).toContainText("Track B needs a commercial license to export.");
+    // B's stem joins the session, tagged with its source.
+    await expect(page.getByRole("button", { name: "Mute Piano · B" })).toBeVisible();
+
+    // Start B on bar 4 of A and apply.
+    await panel.getByRole("spinbutton", { name: "Bar of track A where track B starts" }).fill("4");
+    await panel.getByRole("button", { name: "Apply" }).click();
+    await expect
+      .poll(() => patches.find((patch) => patch.mashup && !patch.secondarySourceTrackId)?.mashup, {
+        timeout: 10_000,
+      })
+      .toEqual({
+        schemaVersion: "remix-mashup/v1",
+        secondary: { tempoRatio: 1.2, semitones: 5, offsetBars: 4 },
+      });
+
+    // The preview plays B conformed through the real engine.
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-mashup.png"),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+
+    // Render sends the mashup to the server like any mix.
+    await page.getByRole("button", { name: /render mix/i }).click();
+    await expect.poll(() => generates.length, { timeout: 10_000 }).toBe(1);
+
+    // Removing B takes its stem along.
+    await panel.getByRole("button", { name: "Remove track B" }).click();
+    await expect.poll(() => patches.some((patch) => patch.secondarySourceTrackId === null)).toBe(true);
+    await expect(page.getByRole("button", { name: "Mute Piano · B" })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Add a second track" })).toBeVisible();
     expect(pageErrors).toEqual([]);
   });
 
