@@ -24,7 +24,7 @@ class MutationWorkflowTests(unittest.TestCase):
         # Legs per campaign, sized to stay well inside the 120-minute job timeout (#2216).
         expected_legs = {
             "ShowCampaignEscrow": 3,
-            "ContentProtection": 4,
+            "ContentProtection": 6,  # 4 legs hit the timeout on 2026-11-02 (#2535)
             "StemNFT": 1,
             "StemMarketplaceV2": 3,
             "RevenueEscrow": 2,
