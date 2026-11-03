@@ -1144,7 +1144,8 @@ from the JWT, never the request body.
     restarts at the loop start (`engineLoopsNatively`). The User Guide's
     Pro section explains it.
 - Pro mode, S6e (#2541, part of #1903): automation lanes. **Partial** like
-  the rest of S6 (S6f stem export and mashups remains on #1903).
+  the rest of S6 (S6f stem export and mashups remains on #1903; the mashup
+  design is [RFC: Remix mashups](../rfc/remix-mashups.md), #2552).
   - **Money.** Vision-neutral infrastructure on the same seam as S6a:
     setting lanes needs `remix.pro` (free for everyone, no price; ADR-BM-6
     line (2) seam only). Clearing them never needs the entitlement.
