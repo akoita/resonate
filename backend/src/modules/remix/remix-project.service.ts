@@ -66,6 +66,7 @@ import {
   djCuesSidecar,
   djExtendedPlan,
   draftGridFor,
+  timelineDownbeats,
   normalizeRemixCuesInput,
   parseDraftGrid,
   parseRemixCues,
@@ -74,6 +75,13 @@ import {
   type RemixCues,
 } from "./remix-cues";
 import { renderDjExtended } from "./remix-dj-export";
+import {
+  normalizeRemixAutomationInput,
+  parseRemixAutomation,
+  RemixAutomationValidationError,
+  timedStemAutomation,
+  type RemixAutomation,
+} from "./remix-automation";
 import { storeZip } from "../shared/store_zip";
 import {
   activeIntervalsForArrangement,
@@ -985,6 +993,11 @@ export class RemixProjectService {
        * unchanged, null clears them. Setting them needs `remix.pro`.
        */
       cues?: unknown;
+      /**
+       * Automation lanes remix-automation/v1 (#2541): undefined leaves them
+       * unchanged, null clears them. Setting them needs `remix.pro`.
+       */
+      automation?: unknown;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -1111,6 +1124,45 @@ export class RemixProjectService {
             message:
               "Cue and loop points are a Pro tool, which this account can't use right now.",
             fields: ["cues"],
+            policyVersion: decision.policyVersion,
+          });
+        }
+      }
+    }
+
+    // Automation lanes (#2541): a Pro tool; clearing them never needs Pro.
+    // Points on bars the timeline no longer has are kept and skipped when
+    // played (a stale lane fails open), like the cues.
+    let automation: RemixAutomation | null | undefined;
+    if (patch.automation !== undefined) {
+      try {
+        automation = normalizeRemixAutomationInput(
+          patch.automation,
+          project.stems.map((stem) => stem.stemId),
+        );
+      } catch (error) {
+        if (error instanceof RemixAutomationValidationError) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+      const changed =
+        automation !== null &&
+        JSON.stringify(automation) !==
+          JSON.stringify(
+            parseRemixAutomation(
+              project.automation,
+              project.stems.map((stem) => stem.stemId),
+            ),
+          );
+      if (changed) {
+        const decision = await this.entitlements.pro(userId);
+        if (!decision.allowed) {
+          throw new ForbiddenException({
+            code: "pro_required",
+            message:
+              "Automation lanes are a Pro tool, which this account can't use right now.",
+            fields: ["automation"],
             policyVersion: decision.policyVersion,
           });
         }
@@ -1397,6 +1449,14 @@ export class RemixProjectService {
                   cues === null
                     ? Prisma.DbNull
                     : (cues as unknown as Prisma.JsonObject),
+              }
+            : {}),
+          ...(automation !== undefined
+            ? {
+                automation:
+                  automation === null
+                    ? Prisma.DbNull
+                    : (automation as unknown as Prisma.JsonObject),
               }
             : {}),
         },
@@ -1780,6 +1840,21 @@ export class RemixProjectService {
               ),
             }
           : undefined;
+      // Automation lanes (#2541), resolved on the timeline's downbeats in
+      // timeline time (the mixer divides by speed). A bar the timeline no
+      // longer has drops its point.
+      const projectAutomation = parseRemixAutomation(
+        project.automation,
+        project.stems.map((stem) => stem.stemId),
+      );
+      const automationDownbeats =
+        projectAutomation && sectionGrid?.kind === "bars"
+          ? timelineDownbeats(
+              sectionGrid,
+              renderStructure?.segments ??
+                structureTimeline(sectionGrid, null),
+            )
+          : [];
       const liveStemArrangement = project.stems.map((stem) => {
         const mask = sectionGrid
           ? renderStructure
@@ -1792,11 +1867,17 @@ export class RemixProjectService {
                 parseStemArrangement(stem.arrangement),
               )
           : null;
+        const automation = timedStemAutomation(
+          projectAutomation,
+          stem.stemId,
+          automationDownbeats,
+        );
         return {
           stemId: stem.stemId,
           gainDb: stem.gainDb,
           muted: stem.muted,
           ...(mask !== null ? { activeIntervals: mask } : {}),
+          ...(automation ? { automation } : {}),
         };
       });
       // Shared effects recipe (#1897), read live at process time like the
@@ -4114,6 +4195,11 @@ export class RemixProjectService {
       partTakes: project.partTakes.map(toPartTakeResponse),
       // Cue and loop points (#2540); null = none.
       cues: parseRemixCues(project.cues),
+      // Automation lanes (#2541); null = none.
+      automation: parseRemixAutomation(
+        project.automation,
+        project.stems.map((stem) => stem.stemId),
+      ),
       // Whether the current draft can be exported as a DJ extended version
       // (its recorded grid fits the cues); `reason` says why not.
       djExport: djExportState(project),

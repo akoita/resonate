@@ -2982,6 +2982,46 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "automation-lanes",
+        level: "pro",
+        heading: "Pro mode: automation lanes",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Automation moves a stem's level or filter over the song: fade the vocals in, close a filter on the drums before the drop, open it again on bar 17. With Pro on, use the Automation panel under the Session. Set points on whole bars; the sound glides in a straight line from one point to the next and stays put before the first and after the last.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "Stem / Level / Filter", description: "Pick the stem and the lane to edit. The line shows the lane across the whole song, with the playhead." },
+              { term: "Level", description: "From −24 dB (very quiet) to +6 dB, in half-dB steps." },
+              { term: "Filter", description: "One DJ filter knob. Below the middle a low-pass closes and the stem gets darker (down to 200 Hz); above it a high-pass opens and the stem gets thinner (up to 2 kHz). The middle leaves the sound open." },
+              { term: "Add point at bar", description: "Adds a point at the bar under the playhead. Change its bar or value on its row, or Remove it." },
+              { term: "Save automation", description: "Saves the lanes; the render uses the saved lanes. The preview plays your changes as you make them." },
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-automation.png`,
+              alt: "The Automation panel: the Bass stem's Level lane drawn as a line rising from −24 dB at bar 1 to 0 dB at bar 5, with its two points listed, Add point at bar 1, Clear lane and Save automation.",
+              caption: "A level lane fading the bass in over the first four bars.",
+              width: 659,
+              height: 274,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "list",
+            items: [
+              "Points sit on bars of the grid, so they follow a corrected tempo and your song shape. A point on a bar the song no longer has is skipped.",
+              "\"Reset to original\" leaves automation alone; clear a lane in the panel.",
+              "Automation is part of Pro mode, free for now, and uses no credits.",
+            ],
+          },
+        ],
+      },
+      {
         id: "shortcuts",
         level: "pro",
         heading: "Keyboard shortcuts",
@@ -3026,7 +3066,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Planned, not available yet",
-            text: "More engineer and DJ tools are planned for Pro mode: automation lanes, and stem export and mashups where licenses allow.",
+            text: "More tools are planned for Pro mode: stem export and mashups where licenses allow.",
           },
         ],
       },

@@ -7525,6 +7525,8 @@ export type RemixProject = {
    * (#2540); `reason` says why not.
    */
   djExport?: { available: boolean; reason: RemixDjExportReason | null };
+  /** Per-stem automation lanes `remix-automation/v1` (#2541, Pro); null = none. */
+  automation?: RemixAutomation | null;
 };
 
 /** One entitlement decision (#1903), e.g. Remix Studio Pro mode. */
@@ -7558,6 +7560,19 @@ export type RemixCommerce = {
   reason: string | null;
   publishedReleaseId: string | null;
   masterStemId: string | null;
+};
+
+/** One automation point (#2541): a whole bar of the timeline and its value (dB, or the filter knob −1..1). */
+export type RemixAutomationPoint = { bar: number; value: number };
+/** One stem's lanes (#2541); an absent lane leaves the stem as it is. */
+export type RemixStemAutomation = {
+  level?: RemixAutomationPoint[];
+  filter?: RemixAutomationPoint[];
+};
+/** Automation lanes `remix-automation/v1` (#2541), by source stem id. */
+export type RemixAutomation = {
+  schemaVersion: "remix-automation/v1";
+  stems: Record<string, RemixStemAutomation>;
 };
 
 /** One cue loop (#2540): whole bars of the timeline, played `repeats` more times in the DJ version. */
@@ -7625,6 +7640,8 @@ export type RemixProjectPatch = {
   gridOverride?: RemixGridOverride | null;
   /** Cue and loop points `remix-cues/v1` (#2540, Pro); null clears them. */
   cues?: RemixCues | null;
+  /** Automation lanes `remix-automation/v1` (#2541, Pro), the whole recipe; null clears them. */
+  automation?: RemixAutomation | null;
 };
 
 export async function updateRemixProject(

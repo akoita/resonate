@@ -20,6 +20,7 @@ import {
   updateRemixProject,
   type RemixGridOverride,
   type RemixCues,
+  type RemixAutomation,
   type GenerationCreditBalance,
   type UsageLimit,
   type RemixEligibilityResponse,
@@ -152,6 +153,7 @@ import {
   type LaneStem,
 } from "./RemixSessionLanes";
 import { RemixGridPanel } from "./RemixGridPanel";
+import { RemixAutomationPanel } from "./RemixAutomationPanel";
 import { RemixCuesPanel } from "./RemixCuesPanel";
 import {
   INTRO_LOOP_INDEX,
@@ -162,6 +164,7 @@ import {
   type CueName,
   type CueSpan,
 } from "../../lib/remixCues";
+import { emptyAutomation, previewAutomation } from "../../lib/remixAutomation";
 import {
   apiErrorCode,
   DELETE_TAKE_CONFIRM_MESSAGE,
@@ -1846,6 +1849,11 @@ export function RemixStudioEditor({
   // Cue and loop points (#2540, Pro).
   const [cuesSaving, setCuesSaving] = useState(false);
   const [cuesError, setCuesError] = useState<string | null>(null);
+  // Automation lanes (#2541, Pro): the lanes being edited (null = the
+  // saved ones), saved with their own PATCH.
+  const [automationDraft, setAutomationDraft] = useState<RemixAutomation | null>(null);
+  const [automationSaving, setAutomationSaving] = useState(false);
+  const [automationError, setAutomationError] = useState<string | null>(null);
   useEffect(() => {
     // Hydrate from localStorage after mount (SSR renders the default).
     setListeningVolume(readListeningVolume());
@@ -2021,6 +2029,19 @@ export function RemixStudioEditor({
     pendingDeletes,
   );
   const previousDraftIds = previousDrafts.map((entry) => entry.jobId);
+  // The timeline's bars (#2540 cues, #2541 automation): the beat maker's bars
+  // on the local timeline, so unsaved song-shape edits move them too.
+  const cueSegments = sectionGrid
+    ? (timeline?.segments ?? structureTimeline(sectionGrid, null).segments)
+    : [];
+  const cueDownbeats =
+    sectionGrid?.kind === "bars" ? timelineDownbeats(sectionGrid, cueSegments) : [];
+  const cueBarSec = sectionGrid?.bpm ? 240 / sectionGrid.bpm : 0;
+  const cueEndSec = cueSegments.length > 0 ? cueSegments[cueSegments.length - 1].outEndSec : 0;
+  // Automation (#2541): the preview plays the lanes being edited.
+  const previewLanes = proAllowed
+    ? previewAutomation(automationDraft ?? project.automation ?? null, cueDownbeats)
+    : null;
   const transport = useRemixTransport({
     token,
     projectId: project.id,
@@ -2040,6 +2061,7 @@ export function RemixStudioEditor({
     partTimeline: previewParts?.partTimeline ?? null,
     waveformTakeIds: trayWaveformTakeIds,
     outputGain: listeningGain(listeningVolume),
+    automation: previewLanes,
     onError: (kind) => {
       addToast(
         kind === "preview"
@@ -2839,6 +2861,21 @@ export function RemixStudioEditor({
 
   // Grid correction (#2539): its own PATCH, so the new grid (and the sections
   // it implies) comes back from the server before anything else uses it.
+  // Automation (#2541): saved with a direct PATCH, like the cues.
+  const applyAutomation = async (automation: RemixAutomation | null) => {
+    if (!token || published || automationSaving) return;
+    setAutomationSaving(true);
+    setAutomationError(null);
+    try {
+      const updated = await updateRemixProject(token, project.id, { automation });
+      setProject((prev) => ({ ...updated, availableStems: prev.availableStems }));
+      setAutomationDraft(null);
+    } catch {
+      setAutomationError("Couldn't save the automation. Check your connection and try again.");
+    } finally {
+      setAutomationSaving(false);
+    }
+  };
   // Cues (#2540): saved with a direct PATCH, like the grid.
   const applyCues = async (cues: RemixCues | null) => {
     if (!token || published || cuesSaving) return;
@@ -2853,13 +2890,6 @@ export function RemixStudioEditor({
       setCuesSaving(false);
     }
   };
-  const cueSegments = sectionGrid
-    ? (timeline?.segments ?? structureTimeline(sectionGrid, null).segments)
-    : [];
-  const cueDownbeats =
-    sectionGrid?.kind === "bars" ? timelineDownbeats(sectionGrid, cueSegments) : [];
-  const cueBarSec = sectionGrid?.bpm ? 240 / sectionGrid.bpm : 0;
-  const cueEndSec = cueSegments.length > 0 ? cueSegments[cueSegments.length - 1].outEndSec : 0;
   const loopingCue: CueName | null =
     transportLoop?.sectionIndex === INTRO_LOOP_INDEX
       ? "intro"
@@ -3450,6 +3480,24 @@ export function RemixStudioEditor({
                   saving={gridSaving}
                   error={gridError}
                   onApply={(override) => void applyGridOverride(override)}
+                />
+              )}
+              {proAllowed && proMode && sectionGrid?.kind === "bars" && (
+                <RemixAutomationPanel
+                  stems={channelStems
+                    .filter((stem) => !referenceIds.has(stem.stemId))
+                    .map((stem) => ({ stemId: stem.stemId, label: stemDisplayName(stem) }))}
+                  draft={automationDraft ?? project.automation ?? emptyAutomation()}
+                  saved={project.automation ?? null}
+                  downbeats={cueDownbeats}
+                  getPositionSec={transport.getPositionSec}
+                  disabled={published}
+                  disabledReason={published ? "Published remixes keep their automation." : null}
+                  saving={automationSaving}
+                  error={automationError}
+                  onChange={setAutomationDraft}
+                  onSave={(automation) => void applyAutomation(automation)}
+                  onUndo={() => setAutomationDraft(null)}
                 />
               )}
               {proAllowed && proMode && sectionGrid?.kind === "bars" && (

@@ -86,7 +86,26 @@ import {
   stretchRawFileToWavInWorker,
 } from "./remix-stretch";
 
+import {
+  automationFilters,
+  REMIX_AUTOMATION_DSP_VERSION,
+  type TimedStemAutomation,
+} from "./remix-automation";
+
 const execFileAsync = promisify(execFile);
+
+/** Lanes in output time (timeline ÷ speed). */
+function automationAtSpeed(
+  lanes: TimedStemAutomation,
+  speed: number,
+): TimedStemAutomation {
+  if (speed === 1) return lanes;
+  const scale = (points: TimedStemAutomation["level"]) =>
+    points
+      ? points.map((point) => ({ ...point, atSec: point.atSec / speed }))
+      : null;
+  return { level: scale(lanes.level), filter: scale(lanes.filter) };
+}
 
 export const STEM_AUDIO_MIXER = "STEM_AUDIO_MIXER";
 
@@ -194,6 +213,11 @@ export type StemMixFfmpegInput = {
   /** Project stem id keying this input's per-stem fx (#1897). */
   fxStemId?: string;
   /**
+   * Automation lanes (#2541) in TIMELINE time; the graph divides by speed
+   * (they run after varispeed, like the gate). Source stems only.
+   */
+  automation?: TimedStemAutomation | null;
+  /**
    * The input file's channel count, probed only for a source stem with a Pro
    * pan (#1903): 1 inserts the explicit unity mono → stereo up-mix before
    * the pan. Absent = stereo.
@@ -281,7 +305,9 @@ export function buildStemMixFfmpegArgs(
   // A beat (#1902) or AI part (#1901) input needs the fx graph; without one
   // nothing changes.
   const hasAddedTrack = inputs.some((input) => input.beat || input.part);
-  if (fx?.effects || hasStructure || hasAddedTrack) {
+  // Automation lanes (#2541) also need the fx graph.
+  const hasAutomation = inputs.some((input) => input.automation);
+  if (fx?.effects || hasStructure || hasAddedTrack || hasAutomation) {
     const renderFx: StemMixFfmpegFx = fx ?? { effects: null };
     const segments = hasStructure
       ? stretchedSourceSegments(structure!.segments, renderFx.effects)
@@ -759,7 +785,9 @@ export function buildFxStemMixFilter(
 ): { filter: string; needsImpulse: boolean } {
   const segments =
     structure && structure.segments.length > 0 ? structure.segments : null;
-  const hasAddedTrack = inputs.some((input) => input.beat || input.part);
+  const hasAddedTrack = inputs.some(
+    (input) => input.beat || input.part || input.automation,
+  );
   const effects =
     fx.effects ?? (segments || hasAddedTrack ? NO_EFFECTS : null);
   if (!effects) {
@@ -808,6 +836,13 @@ export function buildFxStemMixFilter(
     // Pro EQ + pan (#1903): source stems only (stemFxFor is empty for AI
     // layers, the beat and parts), each stage only when non-default.
     chain.push(...stemProFilters(stemFx, input.channels));
+    // Automation lanes (#2541): after the Pro stages, before the gate, in
+    // output time. Source stems only.
+    if (input.automation && !input.aiLayer && !input.beat && !input.part) {
+      chain.push(
+        ...automationFilters(automationAtSpeed(input.automation, speed), index),
+      );
+    }
     // The beat's (and a part's) block on/off is baked into its track: never
     // gated.
     if (
@@ -1308,6 +1343,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           gainDb: stem.gainDb ?? 0,
           activeIntervals: stem.activeIntervals ?? null,
           fxStemId: stem.stemId,
+          ...(stem.automation ? { automation: stem.automation } : {}),
         });
       }
       for (const input of additionalInputs) {
@@ -1421,14 +1457,26 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       );
 
       const buffer = await readFile(outputPath);
-      const metadata = renderMetadata(
-        ffmpegInputs.length,
-        activeStems.length,
-        fx,
-        structure,
-        beat,
-        partsRecord,
-      );
+      const automationStemIds = ffmpegInputs
+        .filter((input) => input.automation && input.fxStemId)
+        .map((input) => input.fxStemId!);
+      const metadata: RemixRenderMetadata = {
+        ...renderMetadata(
+          ffmpegInputs.length,
+          activeStems.length,
+          fx,
+          structure,
+          beat,
+          partsRecord,
+        ),
+        // #2541: the automation curves this render ran.
+        ...(automationStemIds.length > 0
+          ? {
+              automationDspVersion: REMIX_AUTOMATION_DSP_VERSION,
+              automationStemIds,
+            }
+          : {}),
+      };
       return stemOnly
         ? {
             buffer,

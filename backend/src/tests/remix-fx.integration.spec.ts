@@ -579,6 +579,63 @@ describe("Remix shared effects recipe (#1897, integration)", () => {
         expect(cleared.cues).toBeNull();
       });
     });
+
+    describe("automation lanes (#2541, S6e)", () => {
+      const LANES = {
+        schemaVersion: "remix-automation/v1",
+        stems: {
+          [VOCALS_STEM_ID]: {
+            level: [
+              { bar: 0, value: -12 },
+              { bar: 4, value: 0 },
+            ],
+            filter: [{ bar: 2, value: -0.5 }],
+          },
+        },
+      };
+
+      it("PATCH sets, serves and clears automation", async () => {
+        const created = await createProject("Automation");
+        expect(created.automation).toBeNull();
+        const updated = await projectService.updateProject(OWNER_ID, created.id, {
+          automation: { stems: LANES.stems },
+        });
+        expect(updated.automation).toEqual(LANES);
+        expect((await projectService.getProject(OWNER_ID, created.id)).automation).toEqual(LANES);
+        const cleared = await projectService.updateProject(OWNER_ID, created.id, { automation: null });
+        expect(cleared.automation).toBeNull();
+      });
+
+      it("PATCH rejects invalid automation with 400 and writes nothing", async () => {
+        const created = await createProject("Automation invalid");
+        for (const automation of [
+          { stems: { "not-a-project-stem": { level: [{ bar: 0, value: 0 }] } } },
+          { stems: { [VOCALS_STEM_ID]: { level: [{ bar: 0, value: 12 }] } } },
+          { stems: { [VOCALS_STEM_ID]: { filter: [{ bar: 1.5, value: 0 }] } } },
+        ]) {
+          await expect(
+            projectService.updateProject(OWNER_ID, created.id, { title: "nope", automation }),
+          ).rejects.toThrow(BadRequestException);
+        }
+        expect((await projectService.getProject(OWNER_ID, created.id)).title).toBe("Automation invalid");
+      });
+
+      it("a denying policy refuses to set automation but always allows clearing it", async () => {
+        const created = await createProject("Automation denied");
+        await projectService.updateProject(OWNER_ID, created.id, { automation: LANES });
+        const denied = serviceWith(new DenyingEntitlements());
+        const attempt = denied.updateProject(OWNER_ID, created.id, {
+          automation: { stems: { [VOCALS_STEM_ID]: { level: [{ bar: 0, value: -3 }] } } },
+        });
+        await expect(attempt).rejects.toThrow(ForbiddenException);
+        await attempt.catch((error: ForbiddenException) => {
+          expect(error.getResponse()).toMatchObject({ code: "pro_required", fields: ["automation"] });
+        });
+        await expect(denied.updateProject(OWNER_ID, created.id, { automation: LANES })).resolves.toBeDefined();
+        const cleared = await denied.updateProject(OWNER_ID, created.id, { automation: null });
+        expect(cleared.automation).toBeNull();
+      });
+    });
   });
 
   it("PATCH rejects invalid effects with 400 and writes nothing", async () => {

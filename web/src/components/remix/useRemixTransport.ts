@@ -21,6 +21,7 @@ import {
   type StemArrangementPreviewHandle,
   type StemPreviewEngine,
 } from "../../lib/remixAudioPreview";
+import { previewAutomationKey, type TimedStemAutomation } from "../../lib/remixAutomation";
 import { beatRenderKey } from "../../lib/remixBeat";
 import { remixFxStretchPlan, type RemixFxRecipe } from "../../lib/remixFx";
 import {
@@ -108,6 +109,13 @@ export type RemixTransportInput = {
    * live, never restarting playback; absent = unity.
    */
   outputGain?: number;
+  /**
+   * Automation lanes (#2541) by stem id, in timeline time
+   * (`previewAutomation`). The arrangement plays them; a change restarts at
+   * the same position, and a loop with lanes is cycled by restarting at its
+   * start (the lanes run on the clock, not the looped source).
+   */
+  automation?: Record<string, TimedStemAutomation> | null;
   onError: (kind: "preview" | "draft") => void;
 };
 
@@ -417,6 +425,14 @@ export function enginePreviewStems(
  * Effects the engine should apply for a source (#1897): "original" is the
  * untouched A/B reference, so it plays without effects.
  */
+/** Automation lanes the engine plays for a source: the arrangement only (#2541). */
+export function engineAutomation(
+  automation: Record<string, TimedStemAutomation> | null | undefined,
+  source: TransportSource,
+): Record<string, TimedStemAutomation> | null {
+  return source.kind === "arrangement" ? (automation ?? null) : null;
+}
+
 export function engineEffects(
   effects: RemixFxRecipe | null | undefined,
   source: TransportSource,
@@ -842,7 +858,9 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   ) => {
     const latest = inputRef.current;
     const engineTimeline = structureTimelineFor(latest.timeline);
-    const nativeLoop = engineLoopsNatively(latest.timeline ?? null, activeLoop);
+    const automation = engineAutomation(latest.automation, next);
+    const nativeLoop =
+      engineLoopsNatively(latest.timeline ?? null, activeLoop) && !automation;
     try {
       const handle = await engine().play({
         stems: enginePreviewStems(
@@ -864,6 +882,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
         beat: latest.beat ?? null,
         parts: previewPartsFor(latest.parts, partBuffersRef.current),
         partTimeline: latest.partTimeline ?? null,
+        automation,
         onEnded: () => {
           if (requestId !== requestRef.current) return;
           halt(0);
@@ -879,8 +898,8 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       setPreviewHandle(handle);
       updateStatus("playing");
       if (activeLoop && !nativeLoop) {
-        // A cue loop across blocks (#2540): restart at its start each time
-        // the playhead reaches its end.
+        // A cue loop across blocks (#2540), or any loop with automation
+        // (#2541): restart at its start each time the playhead reaches its end.
         const watch = () => {
           if (requestId !== requestRef.current) return;
           if (handle.position() >= activeLoop.endSec - 0.005) {
@@ -1451,6 +1470,22 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       loopRef.current,
     );
   }, [currentPosition, partsKey]);
+
+  // Automation edits (#2541): new lanes restart the arrangement at the same
+  // position (the lanes are scheduled once per play).
+  const automationKey = previewAutomationKey(input.automation);
+  const automationKeyRef = useRef(automationKey);
+  useEffect(() => {
+    if (automationKeyRef.current === automationKey) return;
+    automationKeyRef.current = automationKey;
+    if (statusRef.current === "idle") return;
+    if (sourceRef.current.kind !== "arrangement") return;
+    void startRef.current(
+      sourceRef.current,
+      clampSeek(currentPosition(), durationRef.current),
+      loopRef.current,
+    );
+  }, [automationKey, currentPosition]);
 
   // The beat's waveform (#1902): rebuilt once per beat key, debounced so a
   // burst of step toggles renders once (the engine keeps the last buffer by

@@ -1715,6 +1715,9 @@ model RemixProject {
   // Cue and loop points (#2540): remix-cues/v1 { schemaVersion, intro,
   // outro } with { startBar, bars, repeats } in timeline bars; null = none.
   cues               Json?
+  // Automation lanes (#2541): remix-automation/v1 { schemaVersion, stems:
+  // { [stemId]: { level?, filter? } } } with { bar, value } points; null = none.
+  automation         Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())
