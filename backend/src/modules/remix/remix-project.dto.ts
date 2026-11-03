@@ -105,3 +105,13 @@ export class UpdateRemixProjectDto {
   /** Cue and loop points remix-cues/v1 (#2540); setting them needs `remix.pro`. */
   cues?: unknown;
 }
+
+/**
+ * POST /remix/projects/:id/export body (#2540). Optional: no body exports the
+ * draft as rendered. The controller checks `variant` against
+ * `REMIX_EXPORT_VARIANTS` itself (400 for anything else).
+ */
+export class ExportRemixDraftDto {
+  @IsOptional()
+  variant?: unknown;
+}

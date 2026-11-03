@@ -34,7 +34,11 @@ import {
   type RemixGenerationErrorCode,
 } from "./remix-generation.provider";
 import { GeneratePartsDto } from "./remix-parts.dto";
-import { CreateRemixProjectDto, UpdateRemixProjectDto } from "./remix-project.dto";
+import {
+  CreateRemixProjectDto,
+  ExportRemixDraftDto,
+  UpdateRemixProjectDto,
+} from "./remix-project.dto";
 
 const GENERATION_ERROR_STATUS: Record<RemixGenerationErrorCode, number> = {
   provider_disabled: 503,
@@ -302,7 +306,7 @@ export class RemixController {
     @Req() req: any,
     @Param("id") id: string,
     @Res() res: Response,
-    @Body() body?: { variant?: unknown },
+    @Body() body?: ExportRemixDraftDto,
   ) {
     // #2540: `{ variant: "dj_extended" }` returns a zip with the DJ extended
     // audio and its beat grid + cues sidecar; no body = the draft as rendered.
