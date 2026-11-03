@@ -7225,7 +7225,21 @@ export type RemixSectionGrid = {
   sections: RemixSectionInterval[];
   sectionSeconds: number;
   durationSeconds: number;
+  /** The artist's corrected tempo when set (#2539), else the measured one. */
   bpm: number | null;
+  /** First downbeat the bars anchor to (corrected or measured). */
+  firstBeatSec?: number | null;
+  /** True when the artist's grid correction drives this grid (#2539). */
+  overridden?: boolean;
+  /** What analysis measured, for display and reset. */
+  measured?: { bpm: number | null; firstBeatSec: number | null };
+};
+
+/** Grid correction (#2539): the artist's tempo and first downbeat. */
+export type RemixGridOverride = {
+  schemaVersion: "remix-grid-override/v1";
+  tempoBpm: number;
+  firstBeatSec: number;
 };
 
 export type RemixProjectMode = "stem_mix" | "variation" | "extension";
@@ -7543,6 +7557,11 @@ export type RemixProjectPatch = {
    * role. null (or no parts) removes every part.
    */
   parts?: RemixParts | null;
+  /**
+   * Grid correction `remix-grid-override/v1` (#2539, Pro): the artist's
+   * tempo and first downbeat; null returns to the measured grid.
+   */
+  gridOverride?: RemixGridOverride | null;
 };
 
 export async function updateRemixProject(

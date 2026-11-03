@@ -1,6 +1,7 @@
 import { clampGainDb, GAIN_DB_MAX, GAIN_DB_MIN } from "./remixGain";
 import {
   isBeatPickupSection,
+  beatBarPhase,
   type RemixBeatGrid,
   type RemixBeatSegment,
 } from "./remixBeat";
@@ -150,7 +151,10 @@ export function partPlacementSpans(
   segments.forEach((segment, blockIndex) => {
     if (part.blocks && part.blocks[blockIndex] === false) return;
     if (isBeatPickupSection(grid, segment.section)) return;
-    const outStartSec = round9(segment.outStartSec);
+    // Section 0 starts on its first downbeat, like the beat (#2539).
+    const phase =
+      grid.bpm && grid.bpm > 0 ? beatBarPhase(grid, segment.section, 240 / grid.bpm) : 0;
+    const outStartSec = round9(segment.outStartSec + phase);
     const outEndSec = round9(segment.outEndSec);
     const length = round9(outEndSec - outStartSec);
     if (!(length > 0)) return;

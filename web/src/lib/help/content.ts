@@ -2904,6 +2904,45 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "grid-correction",
+        level: "pro",
+        heading: "Pro mode: fix the tempo and the first downbeat",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Sections, the beat maker and AI parts all follow the song's bar grid, which comes from the measured tempo and first downbeat. When the measurement is off (the beat drifts, or bars start a little early or late), turn on Pro and correct it in the Grid panel under the Session.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "Tempo", description: "Type the BPM (30 to 300), or press Tap tempo along with the music at least four times; the median of your taps is used, rounded to 0.1 BPM." },
+              { term: "First downbeat", description: "Where bar 1 starts. ±1 beat moves it a whole beat, ±10 ms nudges it finely." },
+              { term: "Apply grid", description: "Saves the correction. The beat, AI parts and sections move to the new grid in the preview and in the render." },
+              { term: "Use measured", description: "Goes back to the measured tempo and downbeat. The measurement itself is never changed." },
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-grid.png`,
+              alt: "The Grid panel: 120.0 BPM measured, the tempo field set to 118.4 BPM, Tap tempo, the first downbeat nudged to 0.020 s with −1 beat, −10 ms, +10 ms and +1 beat buttons, and Apply grid.",
+              caption: "Correcting the grid: a new tempo and a downbeat nudged 20 ms later, ready to apply.",
+              width: 659,
+              height: 188,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "list",
+            items: [
+              "A new tempo can change how many sections the song has. Section edits that no longer fit play everywhere until you redo them.",
+              "The grid can't be changed while you have unsaved edits, or after the remix is published.",
+              "Grid correction is part of Pro mode, free for now and uses no credits.",
+            ],
+          },
+        ],
+      },
+      {
         id: "shortcuts",
         level: "pro",
         heading: "Keyboard shortcuts",
@@ -2948,7 +2987,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Planned, not available yet",
-            text: "More engineer and DJ tools are planned for Pro mode: a per-stem compressor, tap-tempo and downbeat correction for the section grid, cue and loop points with a DJ extended export, automation lanes, and stem export and mashups where licenses allow.",
+            text: "More engineer and DJ tools are planned for Pro mode: cue and loop points with a DJ extended export, automation lanes, and stem export and mashups where licenses allow.",
           },
         ],
       },

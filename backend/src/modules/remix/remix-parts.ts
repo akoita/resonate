@@ -20,6 +20,7 @@ import type { SectionGrid } from "./remix-arrangement";
 import {
   floatWavHeader,
   isBeatPickupSection,
+  beatBarPhase,
   type BeatGrid,
   type BeatSegment,
 } from "./remix-beat";
@@ -593,7 +594,7 @@ function round9(value: number): number {
 /**
  * Where a part plays on the timeline: one span per block that is on for the
  * part (`blocks[i] !== false`) and is not a pickup block (the beat's rule,
- * {@link isBeatPickupSection}). In a span the loop restarts at phase 0 at
+ * {@link isBeatPickupSection}). In a span (which in section 0 starts on the first downbeat, #2539) the loop restarts at phase 0 at
  * `outStartSec` and repeats until `outEndSec`; `fadeOut` is set when the
  * span is not a whole number of `loopSec` loops (within 1e-6), i.e. it cuts
  * the loop mid-way. Times are rounded to 9 decimals. Mirrored by the web
@@ -610,7 +611,10 @@ export function partPlacementSpans(
   segments.forEach((segment, blockIndex) => {
     if (part.blocks && part.blocks[blockIndex] === false) return;
     if (isBeatPickupSection(grid, segment.section)) return;
-    const outStartSec = round9(segment.outStartSec);
+    // Section 0 starts on its first downbeat, like the beat (#2539).
+    const phase =
+      grid.bpm && grid.bpm > 0 ? beatBarPhase(grid, segment.section, 240 / grid.bpm) : 0;
+    const outStartSec = round9(segment.outStartSec + phase);
     const outEndSec = round9(segment.outEndSec);
     const length = round9(outEndSec - outStartSec);
     if (!(length > 0)) return;

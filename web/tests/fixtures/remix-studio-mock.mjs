@@ -87,6 +87,9 @@ export function mockProject(stems) {
       sectionSeconds: SECTION_SECONDS,
       durationSeconds: DURATION_SECONDS,
       bpm: 120,
+      firstBeatSec: 0,
+      overridden: false,
+      measured: { bpm: 120, firstBeatSec: 0 },
     },
   };
 }
@@ -180,6 +183,21 @@ const STEM_TONES = /** @type {Record<string, number>} */ ({
 });
 
 /**
+ * The project as the server returns it: saved fields over the mock, with a
+ * grid correction (#2539) served on the section grid like the real server
+ * (the mock keeps the measured section boundaries).
+ * @param {ReturnType<typeof mockProject>} project
+ * @param {Record<string, unknown>} fields
+ */
+function servedProject(project, fields) {
+  const override = /** @type {{ tempoBpm: number; firstBeatSec: number } | null | undefined} */ (fields.gridOverride);
+  const sectionGrid = override
+    ? { ...project.sectionGrid, bpm: override.tempoBpm, firstBeatSec: override.firstBeatSec, overridden: true }
+    : project.sectionGrid;
+  return { ...project, ...fields, sectionGrid };
+}
+
+/**
  * Routes every studio request the page makes to an in-memory project.
  * Saved edits (PATCH) are applied and echoed back like the real API.
  *
@@ -231,7 +249,7 @@ export async function mockRemixApi(page, options = {}) {
           : take,
       );
     }
-    await route.fulfill({ json: { ...mockProject(stems), ...fields, partTakes } });
+    await route.fulfill({ json: { ...servedProject(mockProject(stems), fields), partTakes } });
   });
   await page.route(`**/remix/projects/${PROJECT_ID}/parts/generate`, async (route) => {
     /** @type {{ role: string; bars: number; style?: string | null; takes?: number }} */
@@ -276,7 +294,7 @@ export async function mockRemixApi(page, options = {}) {
     const takeId = route.request().url().split("/parts/takes/")[1] ?? "";
     takeDeletes.push(takeId);
     partTakes = partTakes.filter((take) => take.id !== takeId);
-    await route.fulfill({ json: { ...mockProject(stems), ...fields, partTakes } });
+    await route.fulfill({ json: { ...servedProject(mockProject(stems), fields), partTakes } });
   });
   await page.route("**/credits/balance", (route) =>
     route.fulfill({
@@ -332,7 +350,7 @@ export async function mockRemixApi(page, options = {}) {
         },
       };
     }
-    await route.fulfill({ json: { ...mockProject(stems), ...fields } });
+    await route.fulfill({ json: { ...servedProject(mockProject(stems), fields) } });
   });
   return { patches, deletes, partGenerates, takeDeletes };
 }

@@ -159,7 +159,27 @@ export type RemixBeatDspRecipe = {
 /** The grid fields the beat timing reads (a bar grid with a tempo). */
 export type BeatGrid = Pick<SectionGrid, "sections" | "sectionSeconds"> & {
   bpm: number | null;
+  /**
+   * First downbeat in the source (#2539). Bars in section 0 start on it
+   * (modulo a bar) instead of at 0:00; later sections already start on
+   * downbeats. Unset or 0 keeps bars at the block start.
+   */
+  firstBeatSec?: number | null;
 };
+
+/**
+ * Where the first bar of a section-0 block starts, after its start (#2539):
+ * the first downbeat modulo one bar, so a beat under the intro lands on the
+ * downbeats the artist hears (or set by grid correction). 0 for other
+ * sections and without a downbeat.
+ */
+export function beatBarPhase(grid: BeatGrid, section: number, barSec: number): number {
+  if (section !== 0) return 0;
+  const first = grid.firstBeatSec;
+  if (typeof first !== "number" || !Number.isFinite(first) || first <= 0) return 0;
+  const phase = round9(first % barSec);
+  return phase >= barSec - EDGE_EPSILON ? 0 : phase;
+}
 
 /** The timeline fields the beat timing reads. */
 export type BeatSegment = Pick<
@@ -567,8 +587,9 @@ export function beatHits(
   segments.forEach((segment, blockIndex) => {
     if (recipe.blocks && recipe.blocks[blockIndex] === false) return;
     if (isBeatPickupSection(grid, segment.section)) return;
+    const phase = beatBarPhase(grid, segment.section, barSec);
     for (let bar = 0; ; bar += 1) {
-      const barStart = segment.outStartSec + bar * barSec;
+      const barStart = segment.outStartSec + phase + bar * barSec;
       if (barStart >= segment.outEndSec - EDGE_EPSILON) break;
       for (let step = 0; step < BEAT_STEPS; step += 1) {
         for (const instrument of BEAT_INSTRUMENTS) {
@@ -609,7 +630,13 @@ export function beatTimingAtSpeed<
     return { grid, segments };
   }
   return {
-    grid: { ...grid, bpm: grid.bpm !== null ? grid.bpm * speed : null },
+    grid: {
+      ...grid,
+      bpm: grid.bpm !== null ? grid.bpm * speed : null,
+      ...(typeof grid.firstBeatSec === "number"
+        ? { firstBeatSec: grid.firstBeatSec / speed }
+        : {}),
+    },
     segments: segments.map((segment) => ({
       ...segment,
       outStartSec: segment.outStartSec / speed,
