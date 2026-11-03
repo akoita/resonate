@@ -1,6 +1,6 @@
 ---
 title: "RFC: Remix mashups (two sources in one project)"
-status: proposed
+status: accepted
 author: "@akoita"
 created: "2026-11-03"
 related:
@@ -13,9 +13,10 @@ related:
 
 # RFC: Remix mashups
 
-> Design only (#2552, the second half of #1903 S6f, Vision Sprint 52).
-> Nothing here is built until the owner decides the questions in
-> [Decisions for the owner](#decisions-for-the-owner).
+> Design (#2552, the second half of #1903 S6f, Vision Sprint 52). The owner
+> accepted every recommendation on 2026-11-03 (see
+> [Decisions for the owner](#decisions-for-the-owner)). Nothing is built yet;
+> the first slice is the next step on #1903.
 
 ## Summary
 
@@ -239,7 +240,9 @@ introduces **no new fee, price or split**.
 
 ## Decisions for the owner
 
-| # | Decision | Options | Recommended |
+Decided 2026-11-03: the owner chose the recommended option for all five.
+
+| # | Decision | Options | Decided |
 | --- | --- | --- | --- |
 | D1 | Build mashups at all, after S6f stem export? | Build the first slice; park | Build, after #2550 ships and the preview CPU check passes |
 | D2 | Consent for pairing | Existing `remixConsent` covers it; add an "allow mashups" switch per artist | Existing consent, with the switch only on request |
