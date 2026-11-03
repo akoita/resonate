@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { RemixAutomation } from "../../lib/api";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
 import {
   AUTOMATION_LANES,
   AUTOMATION_MAX_POINTS,
@@ -119,8 +120,8 @@ export function RemixAutomationPanel({
     const read = () =>
       setPlayheadBar(barAtTime(clock.current.downbeats, clock.current.getPositionSec() ?? 0));
     read();
-    const timer = setInterval(read, 250);
-    return () => clearInterval(timer);
+    // Paused while the tab is hidden (#2436 interval budget).
+    return registerVisibleInterval(read, 250);
   }, []);
   const barCount = downbeats.length;
   const selected = stems.some((stem) => stem.stemId === stemId) ? stemId : (stems[0]?.stemId ?? "");
