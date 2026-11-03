@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
+import { readFile } from "fs/promises";
 import { StorageProvider } from "../storage/storage_provider";
 import {
   type RemixGenerationJob,
@@ -10,10 +11,18 @@ import type { RemixRenderStructure } from "./remix-structure";
 import type { RemixRenderBeat } from "./remix-beat";
 import type { RemixRenderParts } from "./remix-parts";
 import {
+  REMIX_STEM_TAP_AUDIO_POLICY,
   buildStemMixFfmpegArgs,
   type StemArrangementEntry,
   type StemAudioMixer,
+  type StemTapSink,
 } from "./stem-audio-mixer";
+import {
+  renderedStemsRecord,
+  stemFileName,
+  stemTapLabel,
+  type RenderedStemFile,
+} from "./remix-stems";
 
 // Re-exported for tests and back-compat: the arg builder moved to the shared
 // mixer (#1182 slice 4) alongside the stem-loading/mixing logic.
@@ -37,6 +46,11 @@ export type StemMixRenderInput = {
    * them is free: the takes were already paid for.
    */
   parts?: RemixRenderParts;
+  /**
+   * #2550: also store each layer as a pre-master 24-bit FLAC stem.
+   * `stemLabels` names source stems by project stem id.
+   */
+  renderStems?: { stemLabels: Record<string, string> };
 };
 
 /**
@@ -61,7 +75,49 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
 
   async render(input: StemMixRenderInput): Promise<RemixGenerationJob> {
     const jobId = randomUUID();
-    const mixed = input.parts
+    const stemFiles: RenderedStemFile[] = [];
+    const stemTaps: StemTapSink | null = input.renderStems
+      ? async (layer, path) => {
+          const label = stemTapLabel(layer, input.renderStems!.stemLabels);
+          const name = stemFileName(layer.index, label);
+          const data = await readFile(path);
+          const stored = await this.storageProvider.upload(
+            data,
+            `remix-stem-${input.remixProjectId}-${jobId}-${name}`,
+            REMIX_STEM_TAP_AUDIO_POLICY.mimeType,
+          );
+          stemFiles.push({
+            name,
+            kind: layer.kind,
+            label,
+            ...(layer.stemId ? { stemId: layer.stemId } : {}),
+            ...(layer.partRole ? { partRole: layer.partRole } : {}),
+            uri: stored.uri,
+            bytes: data.length,
+          });
+        }
+      : null;
+    const mixed = stemTaps
+      ? await this.mixer
+          .mixUnmutedStems(
+          input.stems,
+          input.authorization,
+          input.fx,
+          input.structure,
+          input.beat,
+          input.parts,
+          { stemTaps },
+        )
+          .catch(async (error: unknown) => {
+            // A failed render keeps no half set of stems.
+            await Promise.all(
+              stemFiles.map((file) =>
+                this.storageProvider.delete(file.uri).catch(() => undefined),
+              ),
+            );
+            throw error;
+          })
+      : input.parts
       ? await this.mixer.mixUnmutedStems(
           input.stems,
           input.authorization,
@@ -108,6 +164,9 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
       estimatedCostUsd: 0,
       sourceArrangement: input.stems,
       renderMetadata: mixed.renderMetadata,
+      ...(stemFiles.length > 0
+        ? { renderedStems: renderedStemsRecord(stemFiles) }
+        : {}),
       outputMetadata: {
         outputUri: stored.uri,
         mimeType: mixed.mimeType,

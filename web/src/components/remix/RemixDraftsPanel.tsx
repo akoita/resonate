@@ -75,6 +75,11 @@ export type RemixDraftsPanelProps = {
   onRequestDeleteVersion?(jobId: string): void;
   publish: RemixDraftPublishAction;
   exportAction: RemixDraftExportAction;
+  /**
+   * "Export stems" (#2550, Pro): the draft's pre-master stems as a zip.
+   * Absent = hidden (Pro off).
+   */
+  stemsExport?: RemixDraftExportAction;
   /** Published remixes hide publish/export (the editor banner covers it). */
   published: boolean;
   /** Shown when there is no draft yet. */
@@ -331,6 +336,7 @@ export function RemixDraftsPanel(props: RemixDraftsPanelProps) {
     onRequestDeleteVersion,
     publish,
     exportAction,
+    stemsExport,
     published,
     emptyHint,
     now,
@@ -390,7 +396,29 @@ export function RemixDraftsPanel(props: RemixDraftsPanelProps) {
                       )}
                     </button>
                   )}
+                  {stemsExport && (
+                    <button
+                      type="button"
+                      className={`ui-btn ui-btn-ghost ui-btn-sm remix-action-export-stems ${
+                        stemsExport.enabled ? "" : "opacity-60 cursor-not-allowed"
+                      }`}
+                      aria-disabled={!stemsExport.enabled || undefined}
+                      aria-busy={stemsExport.busy || undefined}
+                      title={stemsExport.enabled ? undefined : (stemsExport.reason ?? undefined)}
+                      onClick={gatedClickHandler(stemsExport)}
+                    >
+                      {stemsExport.busy ? "Exporting..." : "Export stems"}
+                      {!stemsExport.enabled && stemsExport.reason && (
+                        <span className="sr-only"> — {stemsExport.reason}</span>
+                      )}
+                    </button>
+                  )}
                 </div>
+                {stemsExport && !stemsExport.enabled && stemsExport.reason && (
+                  <p className="mt-2 text-xs text-zinc-500 remix-stems-export-reason">
+                    {stemsExport.reason}
+                  </p>
+                )}
                 {!publish.enabled && publish.reason && (
                   <p className="mt-2 text-xs text-zinc-500 remix-publish-reason">
                     {publish.reason}

@@ -1,3 +1,4 @@
+import type { RenderedStems } from "./remix-stems";
 import { Injectable } from "@nestjs/common";
 import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
 import type { RemixFxRecipe, RemixRenderFx } from "./remix-fx";
@@ -627,6 +628,11 @@ export type RemixGenerationJob = {
    * {@link conditioningBeat}. Present only when at least one part was mixed.
    */
   conditioningParts?: RemixConditioningParts;
+  /**
+   * Pre-master stem files (#2550) a stem_mix render stored next to the
+   * draft when "Also render stems" was on; absent otherwise.
+   */
+  renderedStems?: RenderedStems;
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
   outputMetadata: RemixGenerationOutputMetadata;
 };

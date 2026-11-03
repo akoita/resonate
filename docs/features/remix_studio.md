@@ -1190,6 +1190,49 @@ from the JWT, never the request body.
     once on release), double-click or Delete to remove it. Each point is a
     keyboard slider: arrows move it a bar or a step (Shift for ten steps).
     The list stays for exact values.
+- Pro mode, S6f-1 (#2550, part of #1903, Sprint 52): stem export.
+  **Partial** like the rest of S6 (mashups are designed in
+  [RFC: Remix mashups](../rfc/remix-mashups.md) and wait on the owner).
+  - **Money.** Vision-neutral creator tooling on the ADR-BM-6 line (2)
+    `remix.pro` seam (free for everyone, no price). Export keeps the
+    commercial-license gate; no fee, split or payout changes.
+  - **Render.** `POST /remix/projects/:id/generate` takes
+    `renderStems: true` (Mix stems drafts only, 400 `stems_need_stem_mix`
+    otherwise; 403 `pro_required` with `fields: ["renderStems"]` without
+    Pro). The worker writes stems only when the owner can download them
+    right now (Pro plus the `export` action); otherwise the draft renders
+    without them and records `stemsSkipped` (`export_not_allowed` or
+    `pro_required`). The same ffmpeg pass splits each layer (source stem,
+    beat, AI part) after its own chain: gate, speed/key, gain, Pro
+    EQ/pan/punch, automation, tone, echo. The tap is before the space
+    reverb send and every master stage, so the stems sum to the dry
+    pre-master mix. Each tap is summed with a silenced copy of the mix,
+    so every stem starts at 0 and has the mix's length
+    (`remix-stems-dsp/v1`). Files are 24-bit FLAC, 48 kHz stereo, stored
+    one at a time (`remix-stem-<project>-<job>-NN-label.flac`) and recorded
+    in `generationMetadata.stems` (`resonate-stems/v1`). A failed render
+    removes the stems it stored; deleting a draft version deletes its
+    stems.
+  - **Export.** `POST /remix/projects/:id/export` with
+    `{ "variant": "stems" }` re-checks eligibility, needs `export` and Pro,
+    and answers 409 `stems_export_no_stems` for a draft without stems. The
+    zip (`<title>-Stems.zip`) is streamed with chunked encoding, one stem
+    in memory at a time, so it never hits the 32 MiB buffered-response
+    limit. It holds `stems.json` (the manifest: files, kinds, labels, the
+    draft's tempo and downbeats, lineage; no storage URIs) and the FLAC
+    files. `remix.exported` carries `variant: "stems"`.
+    `GET /remix/projects/:id` returns `stemsExport { available, reason }`
+    (`no_draft`, `no_stems`).
+  - **UI.** With Pro on, "Also render stems" sits above Render mix
+    (it starts as the last render asked for), and the draft card offers
+    "Export stems" next to Export audio, with its reason when locked. The
+    User Guide's "Pro mode: export stems" section explains it.
+  - **Tests.** `remix-stems.spec.ts` covers the graph, names, manifest,
+    the streamed zip writer and the renderer's uploads, plus a real-ffmpeg
+    render checking format, alignment and per-layer gain;
+    `remix-stems.integration.spec.ts` covers the gates, storage, the
+    streamed zip and version deletes; an E2E covers the option and the
+    download.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

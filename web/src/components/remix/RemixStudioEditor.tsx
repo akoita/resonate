@@ -160,6 +160,7 @@ import {
   OUTRO_LOOP_INDEX,
   cueLoopLabel,
   djExportReasonText,
+  stemsExportReasonText,
   timelineDownbeats,
   type CueName,
   type CueSpan,
@@ -1852,6 +1853,10 @@ export function RemixStudioEditor({
   // Automation lanes (#2541, Pro): the lanes being edited (null = the
   // saved ones), saved with their own PATCH.
   const [automationDraft, setAutomationDraft] = useState<RemixAutomation | null>(null);
+  // "Also render stems" (#2550): starts as the last render asked for.
+  const [renderStems, setRenderStems] = useState(
+    () => project.generationMetadata?.renderStems === true,
+  );
   const [automationSaving, setAutomationSaving] = useState(false);
   const [automationError, setAutomationError] = useState<string | null>(null);
   useEffect(() => {
@@ -2748,9 +2753,12 @@ export function RemixStudioEditor({
               edits,
             )
           : {};
+      const withStems =
+        renderStems && proAllowed && proMode && edits.mode === "stem_mix";
       const updated = await generateRemixDraft(token, project.id, {
         retry,
         ...(target.transform ? { stemTransform: target.transform } : {}),
+        ...(withStems ? { renderStems: true } : {}),
       });
       setProject(updated);
       setEdits(initialEdits(updated));
@@ -2996,7 +3004,9 @@ export function RemixStudioEditor({
     }
   };
 
-  const handleExport = async (variant: "draft" | "dj_extended" = "draft") => {
+  const handleExport = async (
+    variant: "draft" | "dj_extended" | "stems" = "draft",
+  ) => {
     if (!token || exporting) return;
     setExporting(true);
     try {
@@ -3757,6 +3767,9 @@ export function RemixStudioEditor({
               beat={edits.beat}
               beatAvailable={beatAvailable}
               onBeatChange={handleBeatChange}
+              {...(proAllowed && proMode && edits.mode === "stem_mix"
+                ? { renderStems: { checked: renderStems, onChange: setRenderStems } }
+                : {})}
               primary={{
                 label: generateLabel,
                 enabled: generateAvailability.enabled,
@@ -3816,6 +3829,28 @@ export function RemixStudioEditor({
                     exportAvailability.reasonCode,
                   ),
               }}
+              {...(proAllowed && proMode
+                ? {
+                    stemsExport: {
+                      enabled:
+                        exportAvailability.enabled &&
+                        project.stemsExport?.available === true,
+                      reason: !exportAvailability.enabled
+                        ? exportAvailability.reason
+                        : stemsExportReasonText(
+                            project.stemsExport?.reason,
+                            project.generationMetadata?.stemsSkipped ?? null,
+                          ),
+                      busy: exporting,
+                      onClick: () => void handleExport("stems"),
+                      onLockedClick: () =>
+                        recordActionUnavailable(
+                          "export",
+                          exportAvailability.reasonCode,
+                        ),
+                    },
+                  }
+                : {})}
               published={published}
               emptyHint={draftsEmptyHint}
             />

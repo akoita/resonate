@@ -164,8 +164,16 @@ export class RemixController {
       force?: boolean;
       /** Targeted per-stem operation (#1316); validated in the service. */
       stemTransform?: { kind: "replace_stem" | "add_layer"; stemId?: string };
+      /** #2550: also render pre-master stems (stem_mix, Pro). */
+      renderStems?: boolean;
     } = {},
   ) {
+    if (
+      body?.renderStems !== undefined &&
+      typeof body.renderStems !== "boolean"
+    ) {
+      throw new BadRequestException("renderStems must be a boolean");
+    }
     // Bounds before any project/provider work (#1162): out-of-range
     // durations or tempos must never reach a paid provider.
     const constraintProblems = validateRemixGenerationConstraints(
@@ -182,6 +190,7 @@ export class RemixController {
         constraints: body?.constraints,
         retry: body?.retry,
         force: body?.force,
+        ...(body?.renderStems === true ? { renderStems: true } : {}),
         // Only the documented fields pass through; the service validates
         // kind/stemId against the live project.
         ...(body?.stemTransform
@@ -309,7 +318,8 @@ export class RemixController {
     @Body() body?: ExportRemixDraftDto,
   ) {
     // #2540: `{ variant: "dj_extended" }` returns a zip with the DJ extended
-    // audio and its beat grid + cues sidecar; no body = the draft as rendered.
+    // audio and its beat grid + cues sidecar; #2550: `{ variant: "stems" }`
+    // streams the draft's pre-master stems as a zip; no body = the draft.
     const variant = body?.variant ?? "draft";
     if (
       typeof variant !== "string" ||
@@ -324,6 +334,10 @@ export class RemixController {
       id,
       variant as RemixExportVariant,
     );
+    if ("streamed" in download) {
+      await this.sendStreamedDownload(download, res);
+      return;
+    }
     this.sendDownloadResponse(download, res);
   }
 
@@ -403,6 +417,48 @@ export class RemixController {
    * by the service; it is wrapped in quotes so a space in the title cannot
    * split the header value.
    */
+  /**
+   * Streams a large export (#2550) without Content-Length (chunked), one
+   * chunk at a time with backpressure, so it is never buffered whole. A
+   * failure after the headers went out aborts the connection: the client
+   * sees a failed download, never a truncated "complete" zip.
+   */
+  private async sendStreamedDownload(
+    download: {
+      mimeType: string;
+      filename: string;
+      writeTo(write: (chunk: Buffer) => Promise<void>): Promise<void>;
+    },
+    res: Response,
+  ) {
+    res.status(200).set({
+      "Content-Type": download.mimeType,
+      "Content-Disposition": `attachment; filename="${download.filename}"`,
+      "Cache-Control": "private, no-store",
+    });
+    try {
+      await download.writeTo(
+        (chunk) =>
+          new Promise<void>((resolve, reject) => {
+            if (res.destroyed) {
+              reject(new Error("The client closed the download."));
+              return;
+            }
+            if (res.write(chunk)) resolve();
+            else {
+              res.once("drain", () => resolve());
+              res.once("close", () =>
+                reject(new Error("The client closed the download.")),
+              );
+            }
+          }),
+      );
+      res.end();
+    } catch {
+      res.destroy();
+    }
+  }
+
   private sendDownloadResponse(
     download: { data: Buffer; mimeType: string; filename: string },
     res: Response,

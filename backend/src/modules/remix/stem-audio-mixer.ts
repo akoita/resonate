@@ -145,6 +145,39 @@ export type MixedStemAudio = {
   renderMetadata: RemixRenderMetadata;
 };
 
+/**
+ * One layer written as its own file by a stem-tap render (#2550): a source
+ * stem, the beat, an AI part or an AI layer, in ffmpeg input order.
+ */
+export type StemTapLayer = {
+  index: number;
+  kind: "stem" | "beat" | "part" | "ai_layer";
+  /** Project stem id (source stems only). */
+  stemId?: string;
+  /** AI part role (parts only). */
+  partRole?: string;
+};
+
+/**
+ * Receives each layer file of a stem-tap render (#2550) before the render's
+ * temp dir is removed. Called once per layer, one at a time, so the caller
+ * can upload a file without holding every stem in memory.
+ */
+export type StemTapSink = (layer: StemTapLayer, path: string) => Promise<void>;
+
+/** Stem-tap stems (#2550): 24-bit FLAC at the render rate, stereo. */
+export const REMIX_STEM_TAP_AUDIO_POLICY = Object.freeze({
+  codec: "flac",
+  bitDepth: 24,
+  sampleRateHz: 48_000,
+  channels: 2,
+  mimeType: "audio/flac",
+  extension: ".flac",
+});
+
+/** How the stems relate to the draft (#2550); bump when the tap moves. */
+export const REMIX_STEM_TAP_DSP_VERSION = "remix-stems-dsp/v1";
+
 export type AudioBufferMixInput = {
   buffer: Buffer;
   mimeType: string;
@@ -193,6 +226,11 @@ export interface StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
+    /**
+     * #2550: also write each layer as a pre-master stem file and hand it to
+     * `stemTaps` before cleanup. Absent = no stems, byte-identical.
+     */
+    options?: { stemTaps?: StemTapSink },
   ): Promise<MixedStemAudio>;
   mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
@@ -291,6 +329,11 @@ export function buildStemMixFfmpegArgs(
   outputPath: string,
   fx?: StemMixFfmpegFx | null,
   structure?: StemMixFfmpegStructure | null,
+  /**
+   * #2550: one output path per input (in input order); each gets that
+   * layer's pre-master stem as 24-bit FLAC. Forces the effects graph.
+   */
+  stemOutputs?: string[] | null,
 ): string[] {
   if (inputs.length === 0) {
     throw new RemixGenerationProviderError(
@@ -307,7 +350,11 @@ export function buildStemMixFfmpegArgs(
   const hasAddedTrack = inputs.some((input) => input.beat || input.part);
   // Automation lanes (#2541) also need the fx graph.
   const hasAutomation = inputs.some((input) => input.automation);
-  if (fx?.effects || hasStructure || hasAddedTrack || hasAutomation) {
+  const stemTaps = !!stemOutputs && stemOutputs.length > 0;
+  if (stemTaps && stemOutputs!.length !== inputs.length) {
+    throw new Error("A stem-tap render needs one stem output per input.");
+  }
+  if (fx?.effects || hasStructure || hasAddedTrack || hasAutomation || stemTaps) {
     const renderFx: StemMixFfmpegFx = fx ?? { effects: null };
     const segments = hasStructure
       ? stretchedSourceSegments(structure!.segments, renderFx.effects)
@@ -331,6 +378,7 @@ export function buildStemMixFfmpegArgs(
       inputs,
       renderFx,
       hasStructure ? structure : null,
+      stemTaps ? { stemTaps: true } : undefined,
     );
     if (needsImpulse) {
       if (!renderFx.impulsePath) {
@@ -338,7 +386,9 @@ export function buildStemMixFfmpegArgs(
       }
       args.push("-i", renderFx.impulsePath);
     }
-    return pushOutputArgs(args, filter, outputPath);
+    pushOutputArgs(args, filter, outputPath);
+    if (stemTaps) pushStemOutputArgs(args, stemOutputs!);
+    return args;
   }
   for (const input of inputs) {
     args.push("-i", input.path);
@@ -388,6 +438,28 @@ function pushOutputArgs(
     outputPath,
   );
   return args;
+}
+
+/** One 24-bit FLAC output per stem tap `[stem<i>]` (#2550). */
+function pushStemOutputArgs(args: string[], stemOutputs: string[]): void {
+  const policy = REMIX_STEM_TAP_AUDIO_POLICY;
+  stemOutputs.forEach((path, index) => {
+    args.push(
+      "-map",
+      `[stem${index}]`,
+      "-codec:a",
+      policy.codec,
+      "-sample_fmt",
+      "s32",
+      "-bits_per_raw_sample",
+      String(policy.bitDepth),
+      "-ar",
+      String(policy.sampleRateHz),
+      "-ac",
+      String(policy.channels),
+      path,
+    );
+  });
 }
 
 /** Filter-graph number: finite, ≤ 6 decimals, never exponent notation. */
@@ -782,12 +854,14 @@ export function buildFxStemMixFilter(
   inputs: StemMixFfmpegInput[],
   fx: StemMixFfmpegFx,
   structure?: StemMixFfmpegStructure | null,
+  options?: { stemTaps?: boolean },
 ): { filter: string; needsImpulse: boolean } {
   const segments =
     structure && structure.segments.length > 0 ? structure.segments : null;
-  const hasAddedTrack = inputs.some(
-    (input) => input.beat || input.part || input.automation,
-  );
+  const stemTaps = options?.stemTaps === true;
+  const hasAddedTrack =
+    stemTaps ||
+    inputs.some((input) => input.beat || input.part || input.automation);
   const effects =
     fx.effects ?? (segments || hasAddedTrack ? NO_EFFECTS : null);
   if (!effects) {
@@ -872,11 +946,19 @@ export function buildFxStemMixFilter(
         );
       }
     }
+    // #2550: the stem tap is the layer's own chain, before the reverb
+    // send and every master stage.
+    const tap = stemTaps ? `[t${index}]` : "";
     if (sends[index] > 0) {
-      graph.push(`${head}${chain.join(",")},asplit=2[d${index}][s${index}]`);
+      graph.push(
+        `${head}${chain.join(",")},asplit=${stemTaps ? 3 : 2}[d${index}][s${index}]${tap}`,
+      );
       graph.push(`[s${index}]volume=${fxNum(sends[index])}[w${index}]`);
       dryLabels.push(`[d${index}]`);
       wetLabels.push(`[w${index}]`);
+    } else if (stemTaps) {
+      graph.push(`${head}${chain.join(",")},asplit=2[a${index}]${tap}`);
+      dryLabels.push(`[a${index}]`);
     } else {
       graph.push(`${head}${chain.join(",")}[a${index}]`);
       dryLabels.push(`[a${index}]`);
@@ -917,8 +999,21 @@ export function buildFxStemMixFilter(
   }
   masterChain.push(loudnormFilter());
   graph.push(
-    `${dryLabels.join("")}amix=inputs=${dryLabels.length}:duration=longest:normalize=0[sum]`,
+    `${dryLabels.join("")}amix=inputs=${dryLabels.length}:duration=longest:normalize=0[${stemTaps ? "sumall" : "sum"}]`,
   );
+  if (stemTaps) {
+    // #2550: every stem is as long as the mix (tail included) and starts at
+    // 0: each tap is summed with a silenced copy of the mix, which adds
+    // exact zeros and only sets the length.
+    const zeros = inputs.map((_, index) => `[z${index}]`).join("");
+    graph.push(`[sumall]asplit=${inputs.length + 1}[sum]${zeros}`);
+    inputs.forEach((_, index) => {
+      graph.push(
+        `[z${index}]volume=0[zz${index}]`,
+        `[t${index}][zz${index}]amix=inputs=2:duration=longest:normalize=0[stem${index}]`,
+      );
+    });
+  }
   if (buildUps.length > 0) {
     graph.push(...buildBuildUpStageGraph(buildUps, "[sum]", preBuildUp, "[bu]"));
     graph.push(`[bu]${masterChain.join(",")}[mix]`);
@@ -1141,6 +1236,21 @@ type RenderedPartsRecord = {
   skipped: Array<{ partId: string; takeId: string; reason: PartSkippedReason }>;
 };
 
+/** What a mixer input is, for its stem file (#2550). */
+export function stemTapLayer(
+  input: StemMixFfmpegInput,
+  index: number,
+): StemTapLayer {
+  if (input.beat) return { index, kind: "beat" };
+  if (input.part) return { index, kind: "part", partRole: input.part.role };
+  if (input.aiLayer) return { index, kind: "ai_layer" };
+  return {
+    index,
+    kind: "stem",
+    ...(input.fxStemId ? { stemId: input.fxStemId } : {}),
+  };
+}
+
 function renderMetadata(
   inputCount: number,
   activeStemCount: number,
@@ -1220,6 +1330,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
+    options?: { stemTaps?: StemTapSink },
   ): Promise<MixedStemAudio> {
     return this.mixStemArrangement(
       stems,
@@ -1230,6 +1341,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       structure,
       beat,
       parts,
+      options?.stemTaps,
     );
   }
 
@@ -1263,6 +1375,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
+    stemTaps?: StemTapSink,
   ): Promise<MixedStemAudio>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -1283,6 +1396,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     structure?: RemixRenderStructure,
     renderBeat?: RemixRenderBeat,
     renderParts?: RemixRenderParts,
+    stemTaps?: StemTapSink,
   ): Promise<MixedStemAudio | MixedAudioBuffers> {
     const label = authorization.remixProjectId;
     // A muted beat (#1902) is skipped entirely: the graph and metadata are
@@ -1437,12 +1551,29 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
             : {}),
         };
       }
-      const args = structure
+      // #2550: one pre-master stem file per input, named by input order.
+      const stemOutputs = stemTaps
+        ? ffmpegInputs.map((_, index) =>
+            join(workDir, `stem-out-${index}${REMIX_STEM_TAP_AUDIO_POLICY.extension}`),
+          )
+        : null;
+      const args = stemOutputs
+        ? buildStemMixFfmpegArgs(
+            ffmpegInputs,
+            outputPath,
+            ffmpegFx,
+            structure ?? null,
+            stemOutputs,
+          )
+        : structure
         ? buildStemMixFfmpegArgs(ffmpegInputs, outputPath, ffmpegFx, structure)
         : buildStemMixFfmpegArgs(ffmpegInputs, outputPath, ffmpegFx);
       const started = Date.now();
       try {
-        await execFileAsync("ffmpeg", args, { timeout: FFMPEG_TIMEOUT_MS });
+        // The FLAC encodes add work to the same pass: twice the budget.
+        await execFileAsync("ffmpeg", args, {
+          timeout: stemOutputs ? FFMPEG_TIMEOUT_MS * 2 : FFMPEG_TIMEOUT_MS,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`ffmpeg mix failed for ${label}: ${message}`);
@@ -1457,6 +1588,12 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       );
 
       const buffer = await readFile(outputPath);
+      if (stemTaps && stemOutputs) {
+        // One at a time, before the temp dir goes: the sink uploads each.
+        for (const [index, input] of ffmpegInputs.entries()) {
+          await stemTaps(stemTapLayer(input, index), stemOutputs[index]);
+        }
+      }
       const automationStemIds = ffmpegInputs
         .filter((input) => input.automation && input.fxStemId)
         .map((input) => input.fxStemId!);

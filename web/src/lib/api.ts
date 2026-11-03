@@ -7403,6 +7403,9 @@ export type RemixPreviousDraft = {
   output: { outputUri: string; mimeType: string | null };
 };
 
+/** Why a draft has no stems to export (#2550). */
+export type RemixStemsExportReason = "no_draft" | "no_stems";
+
 export type RemixGenerationMetadata = {
   status?: RemixGenerationStatus;
   mode?: RemixProjectMode | string;
@@ -7418,6 +7421,15 @@ export type RemixGenerationMetadata = {
   sourceFeatureHints?: { bpm?: number; key?: string };
   /** Targeted per-stem operation this draft was generated with (#1316). */
   stemTransform?: RemixStemTransform;
+  /** #2550: this render was asked to also render stems. */
+  renderStems?: boolean;
+  /** #2550: the stems stored with the draft (`resonate-stems/v1`). */
+  stems?: {
+    schemaVersion: string;
+    files: Array<{ name: string; kind: string; label: string; bytes: number }>;
+  };
+  /** #2550: why the stems asked for were not rendered. */
+  stemsSkipped?: "pro_required" | "export_not_allowed";
   /** Archived versions from earlier generations, newest first (#1320). */
   previousDrafts?: RemixPreviousDraft[];
   stemIds?: string[];
@@ -7525,6 +7537,8 @@ export type RemixProject = {
    * (#2540); `reason` says why not.
    */
   djExport?: { available: boolean; reason: RemixDjExportReason | null };
+  /** Whether the current draft has stems to export (#2550). */
+  stemsExport?: { available: boolean; reason: RemixStemsExportReason | null };
   /** Per-stem automation lanes `remix-automation/v1` (#2541, Pro); null = none. */
   automation?: RemixAutomation | null;
 };
@@ -7674,6 +7688,8 @@ export async function generateRemixDraft(
     retry?: boolean;
     /** Targeted per-stem operation (#1316); validated server-side. */
     stemTransform?: { kind: "replace_stem" | "add_layer"; stemId?: string };
+    /** #2550: also render pre-master stems (Mix stems, Pro). */
+    renderStems?: boolean;
   } = {}
 ) {
   return apiRequest<RemixProject>(
@@ -7796,7 +7812,7 @@ export async function getRemixDraftAudioBlob(
 export async function exportRemixDraftBlob(
   token: string,
   projectId: string,
-  variant: "draft" | "dj_extended" = "draft",
+  variant: "draft" | "dj_extended" | "stems" = "draft",
 ): Promise<{ blob: Blob; filename: string }> {
   const response = await fetch(
     `${API_BASE}/remix/projects/${projectId}/export`,
@@ -7808,7 +7824,8 @@ export async function exportRemixDraftBlob(
           },
         }
       : {
-          // #2540: a zip with the DJ extended audio and its cues sidecar.
+          // #2540: a zip with the DJ extended audio and its cues sidecar;
+          // #2550: a zip with the draft's stems and their manifest.
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,

@@ -82,7 +82,13 @@ import {
   timedStemAutomation,
   type RemixAutomation,
 } from "./remix-automation";
-import { storeZip } from "../shared/store_zip";
+import { StoredZipWriter, storeZip } from "../shared/store_zip";
+import {
+  parseRenderedStems,
+  renderedStemUris,
+  stemsExportState,
+  stemsManifest,
+} from "./remix-stems";
 import {
   activeIntervalsForArrangement,
   deriveSectionGrid,
@@ -205,8 +211,11 @@ export type RemixDraftAudio = {
   mimeType: string;
 };
 
-/** Export variants (#2540): the draft as rendered, or the DJ extended zip. */
-export const REMIX_EXPORT_VARIANTS = ["draft", "dj_extended"] as const;
+/**
+ * Export variants: the draft as rendered, the DJ extended zip (#2540), or
+ * the draft's pre-master stems as a zip (#2550).
+ */
+export const REMIX_EXPORT_VARIANTS = ["draft", "dj_extended", "stems"] as const;
 export type RemixExportVariant = (typeof REMIX_EXPORT_VARIANTS)[number];
 
 const DJ_EXPORT_UNAVAILABLE_MESSAGES: Record<DjExportUnavailableReason, string> = {
@@ -220,6 +229,23 @@ const DJ_EXPORT_UNAVAILABLE_MESSAGES: Record<DjExportUnavailableReason, string> 
 export type RemixDraftExport = RemixDraftAudio & {
   /** Sanitized, extension-suffixed download filename (#1323). */
   filename: string;
+};
+
+/**
+ * A streamed export (#2550): the stems zip is written file by file, never
+ * buffered whole (Cloud Run caps buffered responses at 32 MiB).
+ */
+export type RemixStreamedExport = {
+  streamed: true;
+  mimeType: string;
+  filename: string;
+  /** Writes the archive through `write`; resolves when the last byte is out. */
+  writeTo(write: (chunk: Buffer) => Promise<void>): Promise<void>;
+};
+
+const STEMS_EXPORT_UNAVAILABLE_MESSAGES: Record<"no_stems", string> = {
+  no_stems:
+    "This draft was rendered without stems. Turn on Also render stems and render the mix again.",
 };
 
 /**
@@ -243,6 +269,8 @@ export type RemixGenerationJobData = {
   userId: string;
   projectId: string;
   generationInput: ReturnType<typeof buildRemixGenerationInput>;
+  /** #2550: also render pre-master stems (stem_mix, Pro). */
+  renderStems?: boolean;
 };
 
 /** One AI part take job (#1901), job name {@link REMIX_PART_TAKE_JOB}. */
@@ -387,6 +415,8 @@ export type RemixPreviousDraft = {
   estimatedCostUsd: number | null;
   completedAt: string | null;
   output: { outputUri: string; mimeType: string | null };
+  /** Stored stem files of that version (#2550), deleted with it. */
+  stemUris?: string[];
 };
 
 /** Read the archived versions list from generation metadata (#1320). */
@@ -435,6 +465,9 @@ export function archiveEntryFromProject(project: {
         : null,
     completedAt:
       typeof metadata.completedAt === "string" ? metadata.completedAt : null,
+    ...(renderedStemUris(metadata.stems).length > 0
+      ? { stemUris: renderedStemUris(metadata.stems) }
+      : {}),
     output: {
       outputUri,
       mimeType: draftMimeTypeFromMetadata(metadata),
@@ -1486,11 +1519,33 @@ export class RemixProjectService {
       force?: boolean;
       /** Targeted per-stem operation (#1316); variation mode only. */
       stemTransform?: RemixStemTransform;
+      /** #2550: also render pre-master stems (stem_mix, Pro). */
+      renderStems?: boolean;
     } = {},
   ) {
     this.enforceRateLimit("generate", userId, this.maxGenerationsPerHour);
 
     const project = await this.loadOwnedProject(userId, projectId);
+    const renderStems = options.renderStems === true;
+    if (renderStems) {
+      if (project.mode !== "stem_mix") {
+        throw new BadRequestException({
+          code: "stems_need_stem_mix",
+          message:
+            "Stems can only be rendered for a Mix stems draft: AI drafts have no separate layers.",
+        });
+      }
+      const decision = await this.entitlements.pro(userId);
+      if (!decision.allowed) {
+        throw new ForbiddenException({
+          code: "pro_required",
+          message:
+            "Rendering stems is a Pro tool, which this account can't use right now.",
+          fields: ["renderStems"],
+          policyVersion: decision.policyVersion,
+        });
+      }
+    }
     const stemIds = project.stems.map((stem) => stem.stemId);
     const retryRequested = options.retry === true || options.force === true;
     const currentStatus = remixGenerationStatusFromMetadata(
@@ -1684,6 +1739,7 @@ export class RemixProjectService {
         ? { stemTransform: generationInput.stemTransform }
         : {}),
       constraints: generationInput.constraints as object,
+      ...(renderStems ? { renderStems: true } : {}),
       estimatedCostUsd: null,
       policyVersion: eligibility.policyVersion,
       voiceLikenessAllowed: false,
@@ -1710,7 +1766,13 @@ export class RemixProjectService {
     try {
       await this.generationQueue.add(
         "generate-remix-draft",
-        { jobId, userId, projectId: project.id, generationInput },
+        {
+          jobId,
+          userId,
+          projectId: project.id,
+          generationInput,
+          ...(renderStems ? { renderStems: true } : {}),
+        },
         {
           jobId,
           attempts: 1,
@@ -2001,6 +2063,30 @@ export class RemixProjectService {
         });
       }
 
+      // #2550: stems are lossless copies of the arranged layers, so they are
+      // only written for an account that can download them right now: Pro
+      // plus the export right (a commercial license on the source stems).
+      // Otherwise the draft renders without them and says why.
+      let stemsSkipped: "pro_required" | "export_not_allowed" | null = null;
+      let renderStemsInput: { stemLabels: Record<string, string> } | null =
+        null;
+      if (data.renderStems && data.generationInput.mode === "stem_mix") {
+        if (!renderEligibility.allowedActions.includes("export")) {
+          stemsSkipped = "export_not_allowed";
+        } else if (!(await this.entitlements.pro(data.userId)).allowed) {
+          stemsSkipped = "pro_required";
+        } else {
+          renderStemsInput = {
+            stemLabels: Object.fromEntries(
+              project.stems.map((stem) => [
+                stem.stemId,
+                stem.stem.title?.trim() || stem.stem.type?.trim() || "Stem",
+              ]),
+            ),
+          };
+        }
+      }
+
       // #1334 generation-credit meter: AI (prompted) draft rendering is a
       // metered generation, so it debits the user's prepaid balance before the
       // provider call. stem_mix is pure DSP (no generation), so it is free and
@@ -2040,6 +2126,7 @@ export class RemixProjectService {
               ...(renderStructure ? { structure: renderStructure } : {}),
               ...(renderBeat ? { beat: renderBeat } : {}),
               ...(renderParts ? { parts: renderParts } : {}),
+              ...(renderStemsInput ? { renderStems: renderStemsInput } : {}),
             })
           : await this.maybeRenderStemPlusAiLayer({
               projectId: project.id,
@@ -2114,6 +2201,11 @@ export class RemixProjectService {
         ...(providerJob.conditioningParts
           ? { conditioningParts: providerJob.conditioningParts }
           : {}),
+        // #2550: the stored pre-master stems, or why they were left out.
+        ...(providerJob.renderedStems
+          ? { stems: providerJob.renderedStems }
+          : {}),
+        ...(stemsSkipped ? { stemsSkipped } : {}),
         completedAt,
         failedAt: null,
         errorCode: null,
@@ -3658,7 +3750,7 @@ export class RemixProjectService {
     userId: string,
     projectId: string,
     variant: RemixExportVariant = "draft",
-  ): Promise<RemixDraftExport> {
+  ): Promise<RemixDraftExport | RemixStreamedExport> {
     const project = await this.loadOwnedProject(userId, projectId);
 
     const generationStatus = remixGenerationStatusFromMetadata(
@@ -3727,9 +3819,93 @@ export class RemixProjectService {
       }
     }
 
-    const audio = await this.readCurrentDraftAudio(project);
+    // Stems (#2550, Pro): the draft must have been rendered with them.
+    let stems: ReturnType<typeof parseRenderedStems> = null;
+    if (variant === "stems") {
+      const decision = await this.entitlements.pro(userId);
+      if (!decision.allowed) {
+        throw new ForbiddenException({
+          code: "pro_required",
+          message:
+            "Exporting stems is a Pro tool, which this account can't use right now.",
+          fields: ["renderStems"],
+          policyVersion: decision.policyVersion,
+        });
+      }
+      stems = parseRenderedStems(
+        normalizeMetadataObject(project.generationMetadata).stems,
+      );
+      if (!stems) {
+        throw new ConflictException({
+          code: "stems_export_no_stems",
+          message: STEMS_EXPORT_UNAVAILABLE_MESSAGES.no_stems,
+        });
+      }
+    }
+
     const grounding =
       draftGroundingFromMetadata(project.generationMetadata) ?? "prompt_only";
+
+    if (stems) {
+      this.eventBus.publish({
+        eventName: "remix.exported",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        remixProjectId: project.id,
+        creatorId: userId,
+        sourceTrackId: project.sourceTrackId,
+        mode: project.mode,
+        grounding,
+        aiGenerated: groundingAiGenerated(grounding),
+        policyVersion: eligibility.policyVersion,
+        variant: "stems",
+      });
+      const base = `${sanitizeDownloadFilename(project.title)}-Stems`;
+      const manifest = stemsManifest({
+        stems,
+        title: project.title,
+        draftGrid: parseDraftGrid(
+          normalizeMetadataObject(project.generationMetadata).draftGrid,
+        ),
+        lineage: {
+          remixProjectId: project.id,
+          sourceTrackId: project.sourceTrackId,
+          sourceReleaseId: project.sourceTrack.release.id ?? null,
+          generationJobId: project.generationJobId,
+          policyVersion: eligibility.policyVersion,
+        },
+      });
+      const files = stems.files;
+      const storage = this.storageProvider;
+      return {
+        streamed: true,
+        mimeType: "application/zip",
+        filename: `${base}.zip`,
+        async writeTo(write) {
+          const pending: Buffer[] = [];
+          const zip = new StoredZipWriter((chunk) => pending.push(chunk));
+          const flush = async () => {
+            for (const chunk of pending.splice(0)) await write(chunk);
+          };
+          zip.add({
+            name: "stems.json",
+            data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
+          });
+          await flush();
+          // One stem in memory at a time.
+          for (const file of files) {
+            const data = await storage.download(file.uri);
+            if (!data) throw new Error(`Stem file ${file.name} is missing.`);
+            zip.add({ name: file.name, data });
+            await flush();
+          }
+          zip.finish();
+          await flush();
+        },
+      };
+    }
+
+    const audio = await this.readCurrentDraftAudio(project);
 
     this.eventBus.publish({
       eventName: "remix.exported",
@@ -3942,8 +4118,22 @@ export class RemixProjectService {
       return {
         uri: targetUri,
         deleteObject: !stillReferenced && !isPublishedAudio,
+        // #2550: a version's stems are its own objects (job-scoped names).
+        stemUris: (target.stemUris ?? []).filter(
+          (uri) => typeof uri === "string",
+        ),
       };
     });
+
+    for (const uri of removal.stemUris) {
+      await this.storageProvider.delete(uri).catch((error: unknown) => {
+        this.logger.warn(
+          `Draft version stem delete failed (project=${projectId}, job=${jobId}, error=${
+            error instanceof Error ? error.name : "unknown"
+          }).`,
+        );
+      });
+    }
 
     if (removal.deleteObject) {
       try {
@@ -4203,6 +4393,8 @@ export class RemixProjectService {
       // Whether the current draft can be exported as a DJ extended version
       // (its recorded grid fits the cues); `reason` says why not.
       djExport: djExportState(project),
+      // Whether the current draft has stems to export (#2550).
+      stemsExport: stemsExportState(project),
       policyVersion: project.policyVersion,
       publishedReleaseId: project.publishedReleaseId,
       createdAt: project.createdAt,

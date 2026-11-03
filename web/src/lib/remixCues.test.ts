@@ -17,6 +17,7 @@ import {
   cuesPayload,
   cuesProblems,
   djExportReasonText,
+  stemsExportReasonText,
   lastLoopStartBar,
   sameCues,
   suggestedCues,
@@ -91,5 +92,13 @@ describe("cue helpers (#2540)", () => {
     expect(sameCues(null, { schemaVersion: "remix-cues/v1", intro: null, outro: null })).toBe(true);
     expect(djExportReasonText("no_cues")).toBe("Set an intro or outro loop first.");
     expect(djExportReasonText(null)).toBeNull();
+  });
+
+  it("says why there are no stems to export (#2550)", () => {
+    expect(stemsExportReasonText("no_stems")).toContain("Turn on Also render stems");
+    expect(stemsExportReasonText("no_stems", "export_not_allowed")).toContain("commercial license");
+    expect(stemsExportReasonText("no_stems", "pro_required")).toContain("Pro");
+    expect(stemsExportReasonText("no_draft")).toContain("Render the mix first");
+    expect(stemsExportReasonText(null)).toBeNull();
   });
 });

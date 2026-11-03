@@ -903,6 +903,24 @@ const REMIX_WITH_DRAFTS = {
   },
 };
 
+/** A draft rendered with stems (#2550). */
+const REMIX_WITH_STEMS = {
+  ...REMIX_WITH_DRAFTS,
+  generationMetadata: {
+    ...REMIX_WITH_DRAFTS.generationMetadata,
+    renderStems: true,
+    stems: {
+      schemaVersion: "resonate-stems/v1",
+      files: [
+        { name: "01-vocals.flac", kind: "stem", label: "Vocals", bytes: 1 },
+        { name: "02-drums.flac", kind: "stem", label: "Drums", bytes: 1 },
+        { name: "03-bass.flac", kind: "stem", label: "Bass", bytes: 1 },
+      ],
+    },
+  },
+  stemsExport: { available: true, reason: null },
+};
+
 /** Numbered callouts for the overview; keep in sync with the guide's legend. */
 const REMIX_OVERVIEW_CALLOUTS = [
   { selector: ".remix-session", label: "Session" },
@@ -1044,6 +1062,15 @@ const REMIX_TARGETS = [
       await panel.getByRole("group", { name: "Level lane: 2 points" }).waitFor();
       await panel.scrollIntoViewIfNeeded();
       return { locator: panel };
+    },
+  },
+  {
+    file: "remix-studio-stems.png",
+    project: REMIX_WITH_STEMS,
+    prepare: async (page) => {
+      await page.getByRole("switch", { name: /^Pro/ }).click();
+      await page.getByRole("button", { name: /^Export stems/ }).waitFor();
+      return { locator: page.locator("section[aria-label='Drafts']") };
     },
   },
   {

@@ -22,7 +22,10 @@ import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
-import { RemixProjectService } from "../modules/remix/remix-project.service";
+import {
+  RemixProjectService,
+  type RemixDraftExport,
+} from "../modules/remix/remix-project.service";
 import { stubGenerationCredits } from "./e2e-helpers";
 import { REMIX_POLICY_VERSION } from "../modules/remix/remix-eligibility.policy";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
@@ -316,7 +319,10 @@ describe("Remix export (integration)", () => {
       stemId: COMMERCIAL_STEM_ID,
     });
 
-    const result = await projectService.exportDraft(CREATOR_ID, project.id);
+    const result = (await projectService.exportDraft(
+      CREATOR_ID,
+      project.id,
+    )) as RemixDraftExport;
 
     expect(Buffer.from(result.data)).toEqual(DRAFT_AUDIO);
     expect(result.mimeType).toBe("audio/mpeg");
@@ -392,7 +398,11 @@ describe("Remix export (integration)", () => {
           generationMetadata: completedGenerationMetadata([COMMERCIAL_STEM_ID], { draftGrid: DRAFT_GRID }),
           cues: DJ_CUES,
         });
-        const result = await projectService.exportDraft(CREATOR_ID, project.id, "dj_extended");
+        const result = (await projectService.exportDraft(
+          CREATOR_ID,
+          project.id,
+          "dj_extended",
+        )) as RemixDraftExport;
         expect(result.mimeType).toBe("application/zip");
         expect(result.filename).toBe("Exportable-Remix-Take-1-DJ-Extended.zip");
         expect(zipEntryNames(Buffer.from(result.data))).toEqual([

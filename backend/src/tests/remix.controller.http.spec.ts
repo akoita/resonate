@@ -335,6 +335,27 @@ describe('RemixController (e2e)', () => {
     });
   });
 
+  it('POST /remix/projects/:id/generate → passes renderStems and rejects a non-boolean (#2550)', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ retry: true, renderStems: true })
+      .expect(201);
+    expect(mockProjectService.generateDraft).toHaveBeenLastCalledWith('user-1', 'proj-1', {
+      constraints: undefined,
+      retry: true,
+      force: undefined,
+      renderStems: true,
+    });
+    const calls = mockProjectService.generateDraft.mock.calls.length;
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ renderStems: 'yes' })
+      .expect(400);
+    expect(mockProjectService.generateDraft.mock.calls.length).toBe(calls);
+  });
+
   it('POST /remix/projects/:id/generate → 400 with field problems for out-of-bounds constraints (#1162)', async () => {
     const res = await request(app.getHttpServer())
       .post('/remix/projects/proj-1/generate')
@@ -470,9 +491,55 @@ describe('RemixController (e2e)', () => {
     await request(app.getHttpServer())
       .post('/remix/projects/proj-1/export')
       .set('Authorization', `Bearer ${token}`)
-      .send({ variant: 'stems' })
+      .send({ variant: 'multitrack' })
       .expect(400);
     expect(mockProjectService.exportDraft.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('POST /remix/projects/:id/export → streams the stems zip without Content-Length (#2550)', async () => {
+    mockProjectService.exportDraft.mockResolvedValueOnce({
+      streamed: true,
+      mimeType: 'application/zip',
+      filename: 'my-remix-Stems.zip',
+      async writeTo(write: (chunk: Buffer) => Promise<void>) {
+        await write(Buffer.from('PK-part-1;'));
+        await write(Buffer.from('part-2'));
+      },
+    });
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/export')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ variant: 'stems' })
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect(mockProjectService.exportDraft).toHaveBeenLastCalledWith('user-1', 'proj-1', 'stems');
+    expect(res.headers['content-type']).toContain('application/zip');
+    expect(res.headers['content-length']).toBeUndefined();
+    expect(res.headers['content-disposition']).toBe('attachment; filename="my-remix-Stems.zip"');
+    expect(res.body.toString()).toBe('PK-part-1;part-2');
+  });
+
+  it('POST /remix/projects/:id/export → aborts a stems stream that fails midway (#2550)', async () => {
+    mockProjectService.exportDraft.mockResolvedValueOnce({
+      streamed: true,
+      mimeType: 'application/zip',
+      filename: 'my-remix-Stems.zip',
+      async writeTo(write: (chunk: Buffer) => Promise<void>) {
+        await write(Buffer.from('PK-part-1;'));
+        throw new Error('storage gone');
+      },
+    });
+    await expect(
+      request(app.getHttpServer())
+        .post('/remix/projects/proj-1/export')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ variant: 'stems' }),
+    ).rejects.toThrow();
   });
 
   it('POST /remix/projects/:id/export → 403 with eligibility payload when export is not allowed', async () => {

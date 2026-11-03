@@ -3023,6 +3023,44 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "stem-export",
+        level: "pro",
+        heading: "Pro mode: export stems",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Stems are the separate layers of your remix, each as its own file, so you can finish the arrangement in a DAW or play it as stems in a DJ set. With Pro on, tick Also render stems above Render mix, then render. When the draft is ready, use Export stems on its card to download a zip.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "What's in the zip", description: "One 24-bit FLAC file per layer: each source stem you can hear, the beat, and each AI part. A stems.json file lists them with the tempo and bar positions of the draft." },
+              { term: "Before the master", description: "Each layer keeps its own settings: sections, speed and key, gain, EQ, pan, punch, automation, tone and echo. The shared Space reverb, fades, build-ups, master tone, warmth and loudness are left out, so the stems add up to your mix before mastering." },
+              { term: "Lined up", description: "Every file starts at the same moment and has the same length, so they line up when you drop them into a project." },
+            ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/remix-studio-stems.png`,
+              alt: "The Drafts card with Publish on Resonate, Export audio and Export stems, and the note that export needs a commercial license on the source stems.",
+              caption: "Export stems sits next to Export audio on a draft rendered with stems.",
+              width: 709,
+              height: 426,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "list",
+            items: [
+              "Stems need the same commercial license as Export audio. Without it, the draft renders without stems and the card says why.",
+              "Only Mix stems drafts have stems. An AI-generated draft is one piece of audio with no separate layers.",
+              "Rendering stems is part of Pro mode, free for now, and uses no credits.",
+            ],
+          },
+        ],
+      },
+      {
         id: "shortcuts",
         level: "pro",
         heading: "Keyboard shortcuts",
@@ -3067,7 +3105,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Planned, not available yet",
-            text: "More tools are planned for Pro mode: stem export and mashups where licenses allow.",
+            text: "More tools are planned for Pro mode: mashups of two tracks where licenses allow.",
           },
         ],
       },

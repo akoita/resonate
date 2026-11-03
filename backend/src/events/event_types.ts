@@ -291,6 +291,8 @@ export interface RemixExportedEvent extends BaseEvent {
   /** AI integrity (#1164): true when grounding !== "stem_audio". */
   aiGenerated: boolean;
   policyVersion: string;
+  /** Absent = the draft as rendered; dj_extended (#2540) or stems (#2550). */
+  variant?: "dj_extended" | "stems";
 }
 
 /**
