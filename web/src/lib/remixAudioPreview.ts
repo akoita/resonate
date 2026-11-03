@@ -1,4 +1,9 @@
 import {
+  mashupConformKey,
+  shiftConformedChannels,
+  type MashupConform,
+} from "./remixMashup";
+import {
   automationAtSpeed,
   createAutomationStage,
   type AutomationStage,
@@ -861,6 +866,15 @@ export type StemPreviewEngine = {
     parts?: PreviewStretchPart[],
   ): Promise<StretchPrepareResult>;
   /**
+   * Mashups (#2559): the conform of each second-source stem, by stem id
+   * (absent = played as it is). A conformed stem's buffer is B's audio
+   * stretched by its tempo ratio and key, shifted onto A's bar and cut at
+   * A's end, so everything else (master stretch, structure, gates) treats
+   * it like an A stem. Changing a stem's conform drops its buffers; the
+   * next play or prepare conforms it again.
+   */
+  setConforms(conforms: Record<string, MashupConform>): void;
+  /**
    * Whether every stem in `stemIds` (and every part take in `parts`) has its
    * stretched buffer for `plan`.
    */
@@ -1411,19 +1425,85 @@ export function createStemPreviewEngine(input: {
     return created;
   };
 
+  // Mashups (#2559): second-source stems' conforms, by stem id.
+  let conforms = new Map<string, { key: string; conform: MashupConform }>();
+
+  /** B's decoded audio stretched by its ratio and key, then shifted and cut. */
+  const conformBuffer = async (
+    audioContext: AudioContext,
+    stemId: string,
+    source: AudioBuffer,
+    conform: MashupConform,
+  ): Promise<AudioBuffer> => {
+    let channels: Float32Array[] = Array.from(
+      { length: source.numberOfChannels },
+      (_, c) => source.getChannelData(c).slice(),
+    );
+    if (conform.tempo !== 1 || conform.semitones !== 0) {
+      stretchPool ??= (input.stretchPoolFactory ?? (() => createStretchPool()))();
+      channels = await stretchPool.run({
+        jobId: `conform-${stemId}-${(stretchJobCount += 1)}`,
+        sampleRate: source.sampleRate,
+        tempo: conform.tempo,
+        semitones: conform.semitones,
+        channels,
+      });
+    }
+    const placed = shiftConformedChannels(channels, source.sampleRate, conform);
+    const buffer = audioContext.createBuffer(
+      placed.length,
+      placed[0]?.length ?? 1,
+      source.sampleRate,
+    );
+    placed.forEach((channel, c) =>
+      buffer.copyToChannel(channel as Float32Array<ArrayBuffer>, c),
+    );
+    return buffer;
+  };
+
+  const setConforms: StemPreviewEngine["setConforms"] = (next) => {
+    const nextMap = new Map(
+      Object.entries(next).map(([stemId, conform]) => [
+        stemId,
+        { key: mashupConformKey(conform), conform },
+      ]),
+    );
+    const changed = new Set<string>();
+    for (const stemId of new Set([...conforms.keys(), ...nextMap.keys()])) {
+      if (conforms.get(stemId)?.key !== nextMap.get(stemId)?.key) changed.add(stemId);
+    }
+    conforms = nextMap;
+    for (const stemId of changed) {
+      buffers.delete(stemId);
+      decodedBuffers.delete(stemId);
+      for (const key of [...stretchedBuffers.keys()]) {
+        if (key.startsWith(`${stemId}|`)) stretchedBuffers.delete(key);
+      }
+      const job = stretchJobs.get(stemId);
+      if (job) {
+        stretchJobs.delete(stemId);
+        stretchPool?.cancel([job.jobId]);
+      }
+    }
+  };
+
   const loadBuffer = (
     audioContext: AudioContext,
     stemId: string,
   ): Promise<AudioBuffer> => {
     const cached = buffers.get(stemId);
     if (cached) return cached;
+    const conform = conforms.get(stemId)?.conform ?? null;
     const pending = (async () => {
       const response = await doFetch(input.urlForStem(stemId));
       if (!response.ok) {
         throw new Error(`Stem preview unavailable for ${stemId}`);
       }
       const data = await response.arrayBuffer();
-      return audioContext.decodeAudioData(data);
+      const decoded = await audioContext.decodeAudioData(data);
+      return conform
+        ? conformBuffer(audioContext, stemId, decoded, conform)
+        : decoded;
     })();
     buffers.set(stemId, pending);
     pending.then(
@@ -2527,6 +2607,7 @@ export function createStemPreviewEngine(input: {
     decode,
     beatBuffer,
     prepareStretch,
+    setConforms,
     stretchReady,
     partTakeBuffer,
     setOutputVolume,

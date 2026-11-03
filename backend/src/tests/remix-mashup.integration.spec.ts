@@ -16,7 +16,10 @@ import {
 import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
-import { RemixProjectService } from "../modules/remix/remix-project.service";
+import {
+  RemixProjectService,
+  type RemixGenerationJobData,
+} from "../modules/remix/remix-project.service";
 import {
   RemixEntitlementsService,
   type RemixEntitlementDecision,
@@ -105,13 +108,28 @@ async function license(stemId: string, licenseType: "remix" | "commercial") {
 describe("Remix mashups backend (#2558, integration)", () => {
   let eventBus: EventBus;
   const generationQueue = { add: jest.fn().mockResolvedValue({ id: "queued" }) };
+  const stemMixRenderer = {
+    render: jest.fn(async () => ({
+      provider: "stem-mix-render",
+      jobId: `stem-mix-job-${Math.random()}`,
+      estimatedCostUsd: 0,
+      renderMetadata: { schemaVersion: "test-render" },
+      outputMetadata: {
+        outputUri: "local://mashup-mix.mp3",
+        mimeType: "audio/mpeg",
+        synthIdPresent: false,
+        seed: null,
+        sampleRate: 48000,
+      },
+    })),
+  };
 
   function service(entitlements?: RemixEntitlementsService) {
     return new RemixProjectService(
       eventBus,
       new RemixEligibilityService(),
       {} as never,
-      {} as never,
+      stemMixRenderer as never,
       { upload: jest.fn(), download: jest.fn(), delete: jest.fn() } as never,
       generationQueue as never,
       stubGenerationCredits() as never,
@@ -333,6 +351,40 @@ describe("Remix mashups backend (#2558, integration)", () => {
     } finally {
       await prisma.track.update({ where: { id: TRACK_B }, data: { contentStatus: "clean" } });
     }
+  });
+
+  it("conforms B's stems in the render and records how (#2559)", async () => {
+    const projectService = service();
+    const project = await createProject(projectService);
+    await projectService.updateProject(CREATOR_ID, project.id, {
+      secondarySourceTrackId: TRACK_B,
+      addStemIds: [B_BASS],
+      mashup: VALID_MASHUP,
+    });
+    await projectService.generateDraft(CREATOR_ID, project.id, {});
+    const queued = generationQueue.add.mock.calls.at(-1)?.[1] as RemixGenerationJobData;
+    await projectService.processGenerationJob(queued);
+
+    const calls = stemMixRenderer.render.mock.calls as unknown as unknown[][];
+    const input = calls.at(-1)?.[0] as {
+      stems: Array<{ stemId: string; conform?: unknown }>;
+    };
+    const conformOf = Object.fromEntries(
+      input.stems.map((stem) => [stem.stemId, stem.conform ?? null]),
+    );
+    // A at 120 BPM (2 s bars), B's downbeat at 0: B's bar 1 on A's bar 4.
+    expect(conformOf[B_BASS]).toEqual({ tempo: 1.2, semitones: -2, shiftSec: 8, endSec: 64 });
+    expect(conformOf[A_VOCALS]).toBeNull();
+
+    const row = await prisma.remixProject.findUniqueOrThrow({ where: { id: project.id } });
+    const render = (row.generationMetadata as { renderMetadata: Record<string, unknown> })
+      .renderMetadata;
+    expect(render).toMatchObject({
+      schemaVersion: "test-render",
+      mashup: VALID_MASHUP,
+      mashupDspVersion: "remix-mashup-dsp/v1",
+      mashupConform: { shiftSec: 8 },
+    });
   });
 
   it("validates and Pro-gates the mashup recipe; removing B takes its stems and recipe along", async () => {

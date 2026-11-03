@@ -151,6 +151,9 @@ export type StemsManifestInput = {
     remixProjectId: string;
     sourceTrackId: string;
     sourceReleaseId: string | null;
+    /** Mashups (#2559): the second source. */
+    secondarySourceTrackId?: string;
+    secondarySourceReleaseId?: string | null;
     generationJobId: string | null;
     policyVersion: string | null;
   };

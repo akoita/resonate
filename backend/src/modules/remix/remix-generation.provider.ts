@@ -413,6 +413,17 @@ export type StemArrangementEntry = {
     level: Array<{ atSec: number; value: number }> | null;
     filter: Array<{ atSec: number; value: number }> | null;
   } | null;
+  /**
+   * Mashups (#2559): how a second-source stem is conformed to the leading
+   * source's time (stretch ratio, key, shift and cut, in A's source time);
+   * absent for the leading source's stems. See `MashupConform`.
+   */
+  conform?: {
+    tempo: number;
+    semitones: number;
+    shiftSec: number;
+    endSec: number | null;
+  } | null;
 };
 
 /**
