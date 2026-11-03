@@ -1,8 +1,7 @@
 # Vision Sprint 53: Two tracks, one remix
 
-**Status:** 📝 Proposed 2026-11-03. The owner approves the scope, then the
-issues and the milestone are created.
-**Milestone:** to be created ("Vision Sprint 53: Two tracks, one remix").
+**Status:** 🟡 Approved by the owner and started on 2026-11-03.
+**Milestone:** [Vision Sprint 53](https://github.com/akoita/resonate/milestone/51).
 Each item is a sub-issue of #1903, so the milestone can close while #1903
 stays open.
 **Goal:** A Pro creator can put stems from two tracks in one Remix Studio
@@ -22,9 +21,9 @@ Both artists are checked, paid through their licences and credited.
 
 | Order | Tier | Axis | Issue | Outcome |
 | --- | --- | --- | --- | --- |
-| 1 | P0 | Foundation | S6f-3a (to create) | Backend. Adds `secondarySourceTrackId`. Project stems can come from source A or B. Eligibility runs per source, and each denial carries a `sourceTrackId`. Adds the `remix-mashup/v1` recipe (stretch 0.75–1.33, Pro gate). Publish and export re-check both sources, and the lineage lists both with `role: lead/secondary` |
-| 2 | P0 | User feature | S6f-3b (to create) | Render and preview. B is stretched (pitch kept), key-shifted and placed at its offset on A's grid, then goes through the existing per-stem chain. Stem export includes B's stems. Comes with a parity fixture and a measured preview CPU cost, which is D1's go/no-go |
-| 3 | P0 | User feature | S6f-3c (to create) | Studio. An "Add a second track" picker. B's tempo, key (with a suggested shift), offset and downbeat controls. Denials name the source that blocks the action. The release page credits both artists. Updates the guide and the feature page, with a screenshot |
+| 1 | P0 | Foundation | [#2558](https://github.com/akoita/resonate/issues/2558) (S6f-3a of #1903) | Backend. Adds `secondarySourceTrackId`. Project stems can come from source A or B. Eligibility runs per source, and each denial carries a `sourceTrackId`. Adds the `remix-mashup/v1` recipe (stretch 0.75–1.33, Pro gate). Publish and export re-check both sources, and the lineage lists both with `role: lead/secondary` |
+| 2 | P0 | User feature | [#2559](https://github.com/akoita/resonate/issues/2559) (S6f-3b of #1903) | Render and preview. B is stretched (pitch kept), key-shifted and placed at its offset on A's grid, then goes through the existing per-stem chain. Stem export includes B's stems. Comes with a parity fixture and a measured preview CPU cost, which is D1's go/no-go |
+| 3 | P0 | User feature | [#2560](https://github.com/akoita/resonate/issues/2560) (S6f-3c of #1903) | Studio. An "Add a second track" picker. B's tempo, key (with a suggested shift), offset and downbeat controls. Denials name the source that blocks the action. The release page credits both artists. Updates the guide and the feature page, with a screenshot |
 
 ## Decisions applied (from the RFC)
 
