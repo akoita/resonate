@@ -1041,7 +1041,7 @@ const REMIX_TARGETS = [
       await bar.press("Enter");
       await panel.getByRole("button", { name: "Add point at bar 1" }).click();
       await panel.getByRole("slider", { name: "Level at bar 1" }).fill("-24");
-      await panel.getByRole("img", { name: "Level lane: 2 points" }).waitFor();
+      await panel.getByRole("group", { name: "Level lane: 2 points" }).waitFor();
       await panel.scrollIntoViewIfNeeded();
       return { locator: panel };
     },

@@ -20,6 +20,7 @@ import {
   removeAutomationPoint,
   sameAutomation,
   setAutomationPoint,
+  snapAutomationValue,
   type AutomationLaneName,
 } from "../../lib/remixAutomation";
 
@@ -28,53 +29,179 @@ const btn =
 const field = "rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100";
 const LANES: AutomationLaneName[] = ["level", "filter"];
 
-/** The lane as a line across the song: bar 0 left, the last bar right. */
+const CURVE_W = 600;
+const CURVE_H = 72;
+const CURVE_PAD = 6;
+
+/** The bar under a horizontal position (0..1 across the lane), whole bars only. */
+export function curveBarAt(ratioX: number, barCount: number): number {
+  const span = Math.max(1, barCount - 1);
+  const inner = (ratioX * CURVE_W - CURVE_PAD) / (CURVE_W - 2 * CURVE_PAD);
+  return Math.max(0, Math.min(barCount - 1, Math.round(inner * span)));
+}
+
+/** The lane value under a vertical position (0 top .. 1 bottom), snapped to the lane's step. */
+export function curveValueAt(ratioY: number, lane: AutomationLaneName): number {
+  const spec = AUTOMATION_LANES[lane];
+  const inner = (ratioY * CURVE_H - CURVE_PAD) / (CURVE_H - 2 * CURVE_PAD);
+  return snapAutomationValue(lane, spec.max - Math.max(0, Math.min(1, inner)) * (spec.max - spec.min));
+}
+
+type CurvePoint = { bar: number; value: number };
+
+/**
+ * The lane as a line across the song (#2541), editable on the curve (#2551):
+ * click an empty spot to add a point, drag a point (bar and value snap),
+ * double-click or Delete to remove it, arrows to nudge it (Shift: 10 steps).
+ * A drag previews locally and commits once, on release, so the preview
+ * restarts once per edit.
+ */
 function LaneCurve({
   points,
   lane,
   barCount,
   playheadBar,
+  disabled,
+  onAdd,
+  onMove,
+  onRemove,
 }: {
-  points: Array<{ bar: number; value: number }>;
+  points: CurvePoint[];
   lane: AutomationLaneName;
   barCount: number;
   playheadBar: number | null;
+  disabled?: boolean;
+  onAdd(bar: number, value: number): void;
+  /** Move the point on `fromBar` to `to` (replacing a point already there). */
+  onMove(fromBar: number, to: CurvePoint): void;
+  onRemove(bar: number): void;
 }) {
   const spec = AUTOMATION_LANES[lane];
-  const w = 600;
-  const h = 72;
-  const pad = 6;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [drag, setDrag] = useState<{ fromBar: number; to: CurvePoint } | null>(null);
+  // A keyboard nudge re-keys the point (by bar); keep the focus on it.
+  const focusBar = useRef<number | null>(null);
+  useEffect(() => {
+    if (focusBar.current === null) return;
+    const el = svgRef.current?.querySelector<SVGCircleElement>(`circle[data-bar="${focusBar.current}"]`);
+    focusBar.current = null;
+    el?.focus();
+  }, [points]);
+  const w = CURVE_W;
+  const h = CURVE_H;
+  const pad = CURVE_PAD;
   const span = Math.max(1, barCount - 1);
   const x = (bar: number) => pad + ((w - 2 * pad) * Math.min(bar, span)) / span;
   const y = (value: number) => pad + ((h - 2 * pad) * (spec.max - value)) / (spec.max - spec.min);
   const neutralY = y(spec.neutral);
+  // While dragging, draw the lane as it would be after the drop.
+  const shown: CurvePoint[] = drag
+    ? [...points.filter((p) => p.bar !== drag.fromBar && p.bar !== drag.to.bar), drag.to].sort((a, b) => a.bar - b.bar)
+    : points;
   const line =
-    points.length > 0
+    shown.length > 0
       ? [
-          `M ${pad} ${y(points[0].value)}`,
-          ...points.map((p) => `L ${x(p.bar)} ${y(p.value)}`),
-          `L ${w - pad} ${y(points[points.length - 1].value)}`,
+          `M ${pad} ${y(shown[0].value)}`,
+          ...shown.map((p) => `L ${x(p.bar)} ${y(p.value)}`),
+          `L ${w - pad} ${y(shown[shown.length - 1].value)}`,
         ].join(" ")
       : `M ${pad} ${neutralY} L ${w - pad} ${neutralY}`;
+  const pointAt = (clientX: number, clientY: number): CurvePoint | null => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      bar: curveBarAt((clientX - rect.left) / rect.width, barCount),
+      value: curveValueAt((clientY - rect.top) / rect.height, lane),
+    };
+  };
+  const nudge = (point: CurvePoint, key: string, shift: boolean): CurvePoint | null => {
+    const steps = shift ? 10 : 1;
+    if (key === "ArrowLeft") return point.bar > 0 ? { ...point, bar: point.bar - 1 } : null;
+    if (key === "ArrowRight") return point.bar < barCount - 1 ? { ...point, bar: point.bar + 1 } : null;
+    if (key === "ArrowUp") return { ...point, value: snapAutomationValue(lane, point.value + steps * spec.step) };
+    if (key === "ArrowDown") return { ...point, value: snapAutomationValue(lane, point.value - steps * spec.step) };
+    return null;
+  };
   return (
     <svg
+      ref={svgRef}
       viewBox={`0 0 ${w} ${h}`}
-      className="mt-2 h-16 w-full rounded border border-zinc-800 bg-zinc-900/70"
-      role="img"
+      className={`mt-2 h-16 w-full touch-none select-none rounded border border-zinc-800 bg-zinc-900/70 ${disabled ? "" : "cursor-crosshair"}`}
+      role="group"
       aria-label={`${spec.label} lane: ${points.length === 0 ? "no points" : `${points.length} point${points.length === 1 ? "" : "s"}`}`}
       preserveAspectRatio="none"
+      onPointerDown={(e) => {
+        if (disabled || e.button !== 0 || e.target !== e.currentTarget) return;
+        const at = pointAt(e.clientX, e.clientY);
+        if (at && !points.some((p) => p.bar === at.bar)) onAdd(at.bar, at.value);
+      }}
     >
       {Array.from({ length: Math.floor(span / 4) + 1 }, (_, i) => i * 4).map((bar) => (
-        <line key={bar} x1={x(bar)} x2={x(bar)} y1={pad} y2={h - pad} stroke="#27272a" strokeWidth={1} />
+        <line key={bar} x1={x(bar)} x2={x(bar)} y1={pad} y2={h - pad} stroke="#27272a" strokeWidth={1} pointerEvents="none" />
       ))}
-      <line x1={pad} x2={w - pad} y1={neutralY} y2={neutralY} stroke="#3f3f46" strokeDasharray="4 4" strokeWidth={1} />
+      <line x1={pad} x2={w - pad} y1={neutralY} y2={neutralY} stroke="#3f3f46" strokeDasharray="4 4" strokeWidth={1} pointerEvents="none" />
       {playheadBar !== null && (
-        <line x1={x(playheadBar)} x2={x(playheadBar)} y1={0} y2={h} stroke="#a78bfa" strokeWidth={1.5} />
+        <line x1={x(playheadBar)} x2={x(playheadBar)} y1={0} y2={h} stroke="#a78bfa" strokeWidth={1.5} pointerEvents="none" />
       )}
-      <path d={line} fill="none" stroke={points.length > 0 ? "#c084fc" : "#52525b"} strokeWidth={2} />
-      {points.map((p) => (
-        <circle key={p.bar} cx={x(p.bar)} cy={y(p.value)} r={4} fill="#e9d5ff" />
-      ))}
+      <path d={line} fill="none" stroke={shown.length > 0 ? "#c084fc" : "#52525b"} strokeWidth={2} pointerEvents="none" />
+      {points.map((p) => {
+        const at = drag?.fromBar === p.bar ? drag.to : p;
+        return (
+          <circle
+            key={p.bar}
+            cx={x(at.bar)}
+            cy={y(at.value)}
+            r={5}
+            fill={drag?.fromBar === p.bar ? "#ffffff" : "#e9d5ff"}
+            stroke="#7c3aed"
+            strokeWidth={1}
+            className={disabled ? "" : "cursor-grab focus:outline-none"}
+            data-bar={p.bar}
+            role="slider"
+            tabIndex={disabled ? -1 : 0}
+            aria-label={`${spec.label} point at bar ${p.bar + 1}`}
+            aria-valuemin={spec.min}
+            aria-valuemax={spec.max}
+            aria-valuenow={p.value}
+            aria-valuetext={`Bar ${p.bar + 1}, ${automationValueLabel(lane, p.value)}`}
+            aria-disabled={disabled || undefined}
+            onPointerDown={(e) => {
+              if (disabled || e.button !== 0) return;
+              e.stopPropagation();
+              e.currentTarget.setPointerCapture?.(e.pointerId);
+              setDrag({ fromBar: p.bar, to: p });
+            }}
+            onPointerMove={(e) => {
+              if (!drag || drag.fromBar !== p.bar) return;
+              const to = pointAt(e.clientX, e.clientY);
+              if (to && (to.bar !== drag.to.bar || to.value !== drag.to.value)) setDrag({ fromBar: p.bar, to });
+            }}
+            onPointerUp={() => {
+              if (!drag || drag.fromBar !== p.bar) return;
+              setDrag(null);
+              if (drag.to.bar !== p.bar || drag.to.value !== p.value) onMove(p.bar, drag.to);
+            }}
+            onPointerCancel={() => setDrag(null)}
+            onDoubleClick={() => {
+              if (!disabled) onRemove(p.bar);
+            }}
+            onKeyDown={(e) => {
+              if (disabled) return;
+              if (e.key === "Delete" || e.key === "Backspace") {
+                e.preventDefault();
+                onRemove(p.bar);
+                return;
+              }
+              const to = nudge(p, e.key, e.shiftKey);
+              if (!to) return;
+              e.preventDefault();
+              if (to.bar === p.bar && to.value === p.value) return;
+              focusBar.current = to.bar;
+              onMove(p.bar, to);
+            }}
+          />
+        );
+      })}
     </svg>
   );
 }
@@ -219,10 +346,29 @@ export function RemixAutomationPanel({
           </button>
         )}
       </div>
-      <LaneCurve points={points} lane={lane} barCount={barCount} playheadBar={here} />
+      <LaneCurve
+        points={points}
+        lane={lane}
+        barCount={barCount}
+        playheadBar={here}
+        disabled={locked}
+        onAdd={(bar, value) => onChange(setAutomationPoint(draft, selected, lane, bar, value))}
+        onMove={(fromBar, to) =>
+          onChange(
+            setAutomationPoint(
+              removeAutomationPoint(draft, selected, lane, fromBar),
+              selected,
+              lane,
+              to.bar,
+              to.value,
+            ),
+          )
+        }
+        onRemove={(bar) => onChange(removeAutomationPoint(draft, selected, lane, bar))}
+      />
       {points.length === 0 ? (
         <p className="mt-2 text-zinc-500">
-          No {spec.label.toLowerCase()} points on {stemLabel(selected)}. Move the playhead to a bar and add one.
+          No {spec.label.toLowerCase()} points on {stemLabel(selected)}. Click the lane to add one, or move the playhead to a bar and use Add point.
         </p>
       ) : (
         <ul className="mt-2 space-y-1" aria-label={`${stemLabel(selected)} ${spec.label.toLowerCase()} points`}>
