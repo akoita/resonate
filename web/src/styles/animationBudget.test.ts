@@ -136,3 +136,23 @@ describe("animation budget (#2436)", () => {
     expect(stale).toEqual([]);
   });
 });
+
+describe("full-page blur budget (#2534)", () => {
+  // The main column fills the viewport and holds every page, so a
+  // backdrop-filter on it is recomputed on every frame of any running loop
+  // (about half the compositor time per frame on Home, Player and Shows).
+  // Behind it is only the shell's static gradient, so the blur showed nothing.
+  it("keeps backdrop-filter off .app-main", () => {
+    const offenders: string[] = [];
+    for (const { file, css } of sheets()) {
+      if (!file.endsWith(".css")) continue;
+      const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const rule of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const selectors = rule[1].split(",").map((s) => s.trim());
+        if (!selectors.some((s) => /(^|\s|>)\.app-main$/.test(s))) continue;
+        if (/(^|[;\s])(-webkit-)?backdrop-filter\s*:/.test(rule[2])) offenders.push(path.relative(SRC, file));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

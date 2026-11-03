@@ -16,6 +16,11 @@
  *   - requests, timer callbacks and running infinite animations while the tab
  *     reports `hidden`
  *   - running infinite animations under prefers-reduced-motion: reduce
+ *   - IN USE (#2534): compositor time per frame (and GPU-process CPU %) while
+ *     the pointer keeps moving, so the idle hold never kicks in. Two controls
+ *     run in the same window shape: every loop held, and every backdrop-filter
+ *     removed. They show how much of the cost is the loops and how much is the
+ *     blurred surfaces being re-composited each frame.
  *
  * The "hidden" phase overrides document.visibilityState / document.hidden and
  * fires `visibilitychange`. That exercises the app's own visibility guards
@@ -43,6 +48,8 @@
  *   IDLE_API_ORIGIN   API origin to mock (default http://localhost:3000)
  *   IDLE_SIGNED_IN    "true"/"false"; inject the E2E mock session (default true)
  *   IDLE_OUT_DIR      JSON output directory (default web/build/perf, gitignored)
+ *   IDLE_IN_USE       "true"/"false"; run the in-use GPU phase (default true)
+ *   IDLE_IN_USE_MS    in-use window per variant (default 8000)
  *   PLAYWRIGHT_CHROMIUM_EXECUTABLE  optional Chromium binary override
  *
  * Caveat: compare numbers only with other runs on the same machine and build.
@@ -67,6 +74,8 @@ const MOCK_API =
 const SIGNED_IN = (process.env.IDLE_SIGNED_IN ?? "true") === "true";
 const VIEWPORT = { width: 1440, height: 900 };
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const IN_USE = (process.env.IDLE_IN_USE ?? "true") === "true";
+const IN_USE_MS = Number(process.env.IDLE_IN_USE_MS ?? 8000);
 const OUT_DIR = process.env.IDLE_OUT_DIR ?? path.resolve(__dirname, "..", "build", "perf");
 
 // Same mock session as tests/auth.setup.ts (not a real credential).
@@ -288,6 +297,81 @@ async function measureHidden(page) {
   };
 }
 
+/** CPU seconds used so far by the browser's GPU process (null if none is reported). */
+async function gpuCpuSeconds(browserCdp) {
+  const { processInfo } = await browserCdp.send("SystemInfo.getProcessInfo");
+  const gpu = processInfo.filter((p) => p.type === "GPU");
+  return gpu.length ? gpu.reduce((sum, p) => sum + p.cpuTime, 0) : null;
+}
+
+/**
+ * Controls for the in-use phase, injected as a stylesheet. "loops held" uses
+ * the same attribute rule the idle guard relies on, so it holds exactly the
+ * decorative loops a person would see stop.
+ */
+const IN_USE_VARIANTS = [
+  { name: "as built", css: "" },
+  {
+    name: "loops held",
+    css: "*, *::before, *::after { animation-play-state: paused !important; }",
+  },
+  {
+    name: "blur off",
+    css: "*, *::before, *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }",
+  },
+];
+
+/**
+ * Compositor cost while someone is using the page (#2534). The pointer moves a
+ * few pixels every 500 ms over the page's bottom-left corner, which keeps the
+ * idle guard from holding the loops but hovers nothing new.
+ *
+ * Headless Chromium composites in software, so the GPU process saturates one
+ * core (~98%) as soon as any loop runs and its CPU % cannot tell a cheap frame
+ * from an expensive one. The number that carries over to a laptop GPU is the
+ * compositor time per frame (viz `Display::DrawAndSwap`): it grows with how
+ * much blurred area each frame has to recompute.
+ */
+async function measureInUse(page, browser, browserCdp) {
+  const out = {};
+  for (const variant of IN_USE_VARIANTS) {
+    const handle = variant.css ? await page.addStyleTag({ content: variant.css }) : null;
+    let step = 0;
+    const nudge = async () => {
+      step += 1;
+      await page.mouse.move(4 + (step % 2) * 4, VIEWPORT.height - 40 - (step % 2) * 4);
+    };
+    await nudge();
+    await page.waitForTimeout(1000);
+    await browser.startTracing(page, { categories: ["viz"] });
+    const start = await gpuCpuSeconds(browserCdp);
+    const t0 = Date.now();
+    while (Date.now() - t0 < IN_USE_MS) {
+      await nudge();
+      await page.waitForTimeout(500);
+    }
+    const end = await gpuCpuSeconds(browserCdp);
+    const seconds = (Date.now() - t0) / 1000;
+    const trace = JSON.parse((await browser.stopTracing()).toString("utf8"));
+    const events = Array.isArray(trace) ? trace : trace.traceEvents ?? [];
+    let frames = 0;
+    let drawUs = 0;
+    for (const event of events) {
+      if (event.name === "Display::DrawAndSwap" && event.ph === "X") {
+        frames += 1;
+        drawUs += event.dur ?? 0;
+      }
+    }
+    out[variant.name] = {
+      gpuPct: start === null || end === null ? null : +(((end - start) / seconds) * 100).toFixed(1),
+      framesPerSec: +(frames / seconds).toFixed(1),
+      msPerFrame: frames ? +(drawUs / 1000 / frames).toFixed(1) : 0,
+    };
+    if (handle) await handle.evaluate((node) => node.remove());
+  }
+  return out;
+}
+
 /** Client-side navigation keeps the player (and its paused track) mounted. */
 async function navigate(page, route) {
   const current = new URL(page.url()).pathname;
@@ -332,13 +416,15 @@ async function main() {
     const page = await context.newPage();
     const cdp = await context.newCDPSession(page);
     await cdp.send("Performance.enable");
+    const browserCdp = await browser.newBrowserCDPSession();
 
     if (MOCK_API) await loadPausedTrack(page);
     for (const route of ROUTES) {
       await navigate(page, route);
       const idle = await measureIdle(page, cdp, browser, route);
       const hidden = await measureHidden(page);
-      results.routes.push({ ...idle, hidden });
+      const inUse = IN_USE ? await measureInUse(page, browser, browserCdp) : undefined;
+      results.routes.push({ ...idle, hidden, inUse });
       console.log(`measured ${route}`);
     }
 
@@ -373,6 +459,17 @@ async function main() {
       "reduced-motion anims": r.reducedMotion?.running,
     })),
   );
+  if (IN_USE) {
+    console.log("\nIn use (pointer moving): compositor ms per frame, frames/s, GPU-process CPU %");
+    console.table(
+      results.routes.map((r) => ({
+        route: r.label,
+        ...Object.fromEntries(
+          Object.entries(r.inUse ?? {}).map(([name, v]) => [name, `${v.msPerFrame} ms · ${v.framesPerSec}/s · ${v.gpuPct}%`]),
+        ),
+      })),
+    );
+  }
   for (const r of results.routes) {
     console.log(`\n${r.label} running infinite animations:`, r.infiniteAnimations.byName);
     if (r.reducedMotion?.running) console.log(`${r.label} under reduced motion:`, r.reducedMotion.byName);

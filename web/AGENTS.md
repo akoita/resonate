@@ -62,6 +62,12 @@ Keep the visuals; pay for them on the compositor.
   idle, so name a new loading loop that way. Pause a loop for your own reasons with
   CSS (`animation-play-state` or a class), never with `Animation.pause()`,
   which would fight the guard.
+- Keep `backdrop-filter` off large or full-page containers (#2534). A frame
+  that changes anything over a blurred surface recomputes that whole blur,
+  however small the change and whatever its stacking context, so one blurred
+  page-sized wrapper makes every loop on the page expensive. Blur small chrome
+  only, and only where something actually moves behind it. Measure with the
+  in-use phase of `npm run perf:idle` (ms per frame).
 - Pollers and countdowns use `registerVisibleInterval` from
   `src/lib/visibleInterval.ts`: they pause, or back off, while the tab is
   hidden and catch up once when it returns. `src/lib/visibleIntervalBudget.test.ts`
