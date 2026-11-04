@@ -37,6 +37,14 @@ import { TrackSelectionBar } from "../../components/player/TrackSelectionBar";
 import { FeatureTip } from "../../components/ui/FeatureTip";
 import { useListSelection } from "../../lib/useListSelection";
 import { useUIStore } from "../../lib/uiStore";
+import { usePlayerConsoleLayout } from "../../components/player/usePlayerConsoleLayout";
+import {
+  PlayerConsoleDockPreview,
+  PlayerConsoleLayoutButtons,
+  PlayerConsoleMoveHandle,
+} from "../../components/player/PlayerConsoleLayoutControls";
+
+const PLAYER_CONSOLE_ID = "player-console";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -46,6 +54,13 @@ function PlayerContent() {
   const immersive = useImmersiveMode(playerStageRef);
   // In immersive mode the console steps aside once the listener settles.
   const immersiveIdle = useIdleReveal(immersive.active);
+  // Dock left/right, float, move, resize and minimize, remembered per device (#2569).
+  const consoleRef = useRef<HTMLElement>(null);
+  const consoleLayout = usePlayerConsoleLayout({
+    stageRef: playerStageRef,
+    consoleRef,
+    immersive: immersive.active,
+  });
   const queueActions = useQueueActions();
   // The live AI DJ set, so queue rows it picked can say so (#2312).
   const djSet = useDjSet();
@@ -503,6 +518,8 @@ function PlayerContent() {
     <div
       ref={playerStageRef}
       className={`player-master-stage ${immersive.active ? "is-immersive" : ""} ${immersive.fallback ? "is-immersive-fallback" : ""} ${immersiveIdle ? "is-settled" : ""}`}
+      data-console-dock={consoleLayout.dock}
+      data-console-minimized={consoleLayout.minimized ? "true" : undefined}
     >
       {/* Mesh Backdrop Layer */}
       {artworkUrl && (
@@ -580,10 +597,24 @@ function PlayerContent() {
       )}
 
       {/* THE FLOATING CONSOLE */}
-      <aside className="player-floating-console">
-        <div className="player-status-area">
+      <PlayerConsoleDockPreview side={consoleLayout.snapPreview} />
+
+      <aside
+        ref={consoleRef}
+        id={PLAYER_CONSOLE_ID}
+        aria-label="Player console"
+        className={[
+          "player-floating-console",
+          consoleLayout.minimized ? "is-minimized" : "",
+          consoleLayout.interaction === "move" ? "is-moving" : "",
+          consoleLayout.interaction === "resize" ? "is-resizing" : "",
+        ].filter(Boolean).join(" ")}
+        style={consoleLayout.style}
+      >
+        <div className="player-status-area" onPointerDown={consoleLayout.onHeaderPointerDown}>
+          <PlayerConsoleMoveHandle layout={consoleLayout} />
           <div className="studio-label">System Monitoring</div>
-          <div className="player-status-signal">
+          <div className="player-status-signal" title="Live Sync Active">
             <div className="status-led" />
             <span className="status-text">Live Sync Active</span>
           </div>
@@ -605,6 +636,7 @@ function PlayerContent() {
               </svg>
             )}
           </button>
+          <PlayerConsoleLayoutButtons layout={consoleLayout} bodyId={PLAYER_CONSOLE_ID} />
         </div>
 
         <div className="player-controls-backstage">
@@ -803,6 +835,15 @@ function PlayerContent() {
             pending={!shareTrack.releaseId && Boolean(actionTrackId) && !visibleTrackActions && !actionsFailed}
           />
         </div>
+
+        {consoleLayout.dock === "floating" && !consoleLayout.minimized && (
+          <div
+            className="console-resize-handle"
+            onPointerDown={consoleLayout.onResizePointerDown}
+            aria-hidden="true"
+            title="Drag to resize"
+          />
+        )}
       </aside>
 
       {showAddToPlaylist && currentTrack && (

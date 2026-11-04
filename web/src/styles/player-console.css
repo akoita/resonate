@@ -468,6 +468,210 @@
   }
 }
 
+/* ---- Console layout: dock, float, minimize (#2569) ------------------
+ * The stage carries data-console-dock (right | left | floating | stacked)
+ * and data-console-minimized; the hero keeps clear of whatever the console
+ * still covers. Floating position and size are inline styles from
+ * usePlayerConsoleLayout. Phone ("stacked") keeps the stacked layout from
+ * globals.css and only honours minimize. */
+
+.player-floating-console {
+  /* Lets the header drop its secondary text when the console is narrow. */
+  container: player-console / inline-size;
+}
+
+.console-move-handle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 32px;
+  margin-left: -6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-radius-sm);
+  background: transparent;
+  color: var(--r-on-surface-muted);
+  cursor: grab;
+  touch-action: none;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.console-move-handle::after {
+  content: "";
+  position: absolute;
+  inset: -6px -12px; /* 32 + 12 = 44px tall, 44px wide */
+}
+
+.console-move-handle:hover {
+  color: var(--r-on-surface);
+  background: var(--r-chrome-hover);
+}
+
+.console-move-handle:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+/* The whole header drags, except its buttons. */
+.player-master-stage:not([data-console-dock="stacked"]) .player-status-area {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.player-master-stage:not([data-console-dock="stacked"]) .player-status-area button {
+  cursor: pointer;
+}
+
+.player-floating-console.is-moving,
+.player-floating-console.is-moving .player-status-area,
+.player-floating-console.is-moving .console-move-handle {
+  cursor: grabbing;
+}
+
+.player-floating-console.is-moving,
+.player-floating-console.is-resizing {
+  user-select: none;
+  transition: none !important;
+}
+
+/* Narrow console: the live-sync LED stays, its words step aside. */
+@container player-console (max-width: 470px) {
+  .player-status-signal .status-text {
+    display: none;
+  }
+}
+
+@container player-console (max-width: 340px) {
+  .player-status-area .studio-label {
+    letter-spacing: 0.25em;
+  }
+}
+
+/* Docked left: mirror the right dock. */
+.player-master-stage[data-console-dock="left"] .player-floating-console {
+  right: auto;
+  left: var(--space-4);
+  box-shadow: 20px 0 80px rgba(0, 0, 0, 0.6);
+}
+
+.player-master-stage[data-console-dock="left"] .player-hero-stage {
+  padding-right: var(--space-10);
+  padding-left: clamp(340px, 35vw, 520px);
+}
+
+/* Floating: positioned and sized inline; the hero takes the whole stage. */
+.player-master-stage[data-console-dock="floating"] .player-floating-console {
+  right: auto;
+  bottom: auto;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(124, 92, 255, 0.08);
+}
+
+.player-master-stage[data-console-dock="floating"] .player-hero-stage,
+.player-master-stage[data-console-minimized="true"]:not([data-console-dock="stacked"]) .player-hero-stage {
+  padding-right: var(--space-10);
+  padding-left: var(--space-10);
+}
+
+/* Minimized: the header row only, wherever the console sits. */
+.player-floating-console.is-minimized {
+  bottom: auto;
+  overflow: hidden;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-radius: 22px;
+}
+
+/* !important: some console sections set display inline. */
+.player-floating-console.is-minimized > :not(.player-status-area) {
+  display: none !important;
+}
+
+.player-floating-console.is-minimized .player-status-area {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* Phone keeps a flat stacked card; minimized it is just the header. */
+.player-master-stage[data-console-dock="stacked"] .player-floating-console.is-minimized {
+  border-radius: 20px;
+}
+
+/* Corner grip for resizing a floating console. It is sticky so it stays on
+ * the visible corner while the console scrolls. */
+.console-resize-handle {
+  position: sticky;
+  bottom: calc(-1 * var(--space-4) + 2px);
+  align-self: flex-end;
+  width: 22px;
+  height: 22px;
+  margin: -22px calc(-1 * var(--space-4) + 4px) 0 0;
+  cursor: nwse-resize;
+  touch-action: none;
+  z-index: 2;
+  background:
+    linear-gradient(135deg, transparent 0 55%, rgba(255, 255, 255, 0.28) 55% 62%, transparent 62% 72%, rgba(255, 255, 255, 0.28) 72% 79%, transparent 79%);
+  border-bottom-right-radius: 14px;
+  opacity: 0.7;
+  transition: opacity 0.18s ease;
+}
+
+.console-resize-handle:hover,
+.player-floating-console.is-resizing .console-resize-handle {
+  opacity: 1;
+}
+
+/* Where a drop docks, outlined while dragging near a side edge. */
+.console-dock-preview {
+  position: absolute;
+  top: var(--space-3);
+  bottom: 110px;
+  width: clamp(320px, 30vw, 500px);
+  z-index: 999;
+  border-radius: 32px;
+  border: 2px dashed rgba(124, 92, 255, 0.6);
+  background: rgba(124, 92, 255, 0.1);
+  pointer-events: none;
+}
+
+.console-dock-preview--right {
+  right: var(--space-4);
+}
+
+.console-dock-preview--left {
+  left: var(--space-4);
+}
+
+.player-master-stage.is-immersive .console-dock-preview {
+  bottom: var(--space-3);
+}
+
+/* Immersive keeps the chosen layout. */
+.player-master-stage.is-immersive[data-console-dock="left"] .player-hero-stage {
+  padding-right: var(--r-lg);
+  padding-left: clamp(340px, 32vw, 520px);
+}
+
+.player-master-stage.is-immersive[data-console-dock="floating"] .player-hero-stage,
+.player-master-stage.is-immersive[data-console-minimized="true"] .player-hero-stage {
+  padding-right: var(--r-lg);
+  padding-left: var(--r-lg);
+}
+
+.player-master-stage.is-immersive.is-settled[data-console-dock="left"]
+  .player-floating-console:not(:focus-within) {
+  transform: translateX(-24px) scale(0.985);
+}
+
+.player-master-stage.is-immersive.is-settled:not(:focus-within)[data-console-dock="left"]
+  .player-hero-stage {
+  padding-left: var(--r-lg);
+}
+
 /* ---- Split button ------------------------------------------------------
  * One control, two tiers: the common action stays a single click and its
  * rarer sibling lives behind a caret, instead of every queue action

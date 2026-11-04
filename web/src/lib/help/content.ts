@@ -868,7 +868,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog", "album", "go to album", "go to artist"],
+    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog", "album", "go to album", "go to artist", "dock", "undock", "minimize", "move console", "float", "console layout"],
     sections: [
       {
         id: "playing",
@@ -922,6 +922,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Select the sound icon to mute; select it again to restore your previous volume. The slider stays synchronized.",
               "With a keyboard, use Tab to reach named playback controls and the position or volume sliders, then use the arrow keys to adjust a slider. A Skip to main content link appears when it receives focus, and the current navigation page and open playlist panel are announced to assistive technology.",
               "Open immersive mode from the Player for artwork, track details, controls, volume, and queue access. Use the visible control or Escape to leave it without losing your place.",
+              "Move the console out of the way. Select the minimize button in its header to fold it down to that header, and select it again to restore it. On a computer, the layout button next to it docks the console to the left or right edge, undocks it so it floats over the artwork, or resets it. Drag the header (or the dotted handle at its start) to move the console anywhere; drop it against the left or right edge to dock it there. Drag the corner of a floating console to resize it. With a keyboard, focus the dotted handle and use the arrow keys: left and right dock a docked console to that side, and they move a floating one, with Shift for larger steps. The console remembers its layout on this device. On a phone it stays under the artwork, and only minimize applies.",
               "Signed-in listeners see Saved in green when the current track is already in their library. Select Saved to remove it again.",
             ],
           },
