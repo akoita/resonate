@@ -3,6 +3,7 @@ import {
     catalogTrackIdOf,
     isCatalogTrack,
     isLocalFileTrack,
+    isLocalFileTrackId,
     isOwnFileTrack,
     matchesLibraryOriginFilter,
 } from "./trackIdentity";
@@ -46,5 +47,17 @@ describe("library origin filter", () => {
         expect(rows.filter((t) => matchesLibraryOriginFilter(t, "all"))).toHaveLength(3);
         expect(rows.filter((t) => matchesLibraryOriginFilter(t, "local"))).toEqual([local, legacyCopy]);
         expect(rows.filter((t) => matchesLibraryOriginFilter(t, "catalog"))).toEqual([catalog]);
+    });
+});
+
+describe("isLocalFileTrackId", () => {
+    it("recognises a device file's client id", () => {
+        expect(isLocalFileTrackId("local_1730000000000_abc123")).toBe(true);
+    });
+
+    it("leaves catalog and library ids alone", () => {
+        expect(isLocalFileTrackId("trk_1")).toBe(false);
+        expect(isLocalFileTrackId("cm3x9local_1")).toBe(false);
+        expect(isLocalFileTrackId(undefined)).toBe(false);
     });
 });

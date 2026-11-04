@@ -99,6 +99,7 @@ import { LocalTrack, resolveTrackPlayback, getArtworkUrl, savePlayerState, loadP
 import {
     buildPlaybackCompletedPayload,
     buildPlaybackLifecyclePayload,
+    getPlayerControlSubject,
     createPlaybackAnalyticsInstanceId,
     getPlaybackAnalyticsSessionId,
     getPlaybackDjSessionId,
@@ -542,11 +543,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const reportControl = useCallback((eventName: ProductAnalyticsEventName, payload: ProductAnalyticsPayload) => {
         const track = queueRef.current[currentIndexRef.current];
+        const subject = getPlayerControlSubject(track);
         recordProductAnalyticsFromBrowser(eventName, {
             source: "player", sessionId: getPlaybackAnalyticsSessionId(),
-            subjectType: track ? "track" : undefined, subjectId: track?.catalogTrackId || track?.id,
-            payload: { trackId: track?.catalogTrackId || track?.id, artistId: track?.artistId,
-                releaseId: track?.releaseId, playbackInstanceId: playbackInstanceIdRef.current,
+            subjectType: subject.subjectType, subjectId: subject.subjectId,
+            payload: { ...subject.payload, playbackInstanceId: playbackInstanceIdRef.current,
                 queueLength: queueRef.current.length, shuffle: shuffleRef.current, ...payload },
         });
     }, []);

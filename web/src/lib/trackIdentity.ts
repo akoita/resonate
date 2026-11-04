@@ -32,6 +32,15 @@ export function catalogTrackIdOf(track: TrackIdentityFields): string | null {
     return track.source === "remote" || track.remoteUrl ? track.id : null;
 }
 
+/**
+ * Whether a bare library id names a device file. Device files carry client ids
+ * of the form `local_<time>_<random>` (the server enforces the prefix), so a
+ * caller holding only an id can still keep it on the device (#2507).
+ */
+export function isLocalFileTrackId(id: string | null | undefined): boolean {
+    return typeof id === "string" && id.startsWith("local_");
+}
+
 /** A platform track with a catalog identity. */
 export function isCatalogTrack(track: TrackIdentityFields): boolean {
     return catalogTrackIdOf(track) !== null;

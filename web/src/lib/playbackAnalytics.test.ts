@@ -7,6 +7,7 @@ import {
   getPlaybackDjSessionId,
   getPlaybackPlaylistId,
   getPlaybackAnalyticsSessionId,
+  getPlayerControlSubject,
   PLAYBACK_HEARTBEAT_SECONDS,
   PLAYED_THROUGH_RATIO,
   shouldReportPlaybackCompleted,
@@ -375,5 +376,24 @@ describe("playback analytics helpers", () => {
 
   it("does not attribute an ad hoc track to a playlist", () => {
     expect(getPlaybackPlaylistId(track, null)).toBeUndefined();
+  });
+});
+
+describe("player control subject (#2507)", () => {
+  it("names a catalog track by its catalog id", () => {
+    expect(getPlayerControlSubject(track)).toEqual({
+      subjectType: "track",
+      subjectId: "catalog-track-1",
+      payload: { trackId: "catalog-track-1", artistId: "artist-1", releaseId: "release-1" },
+    });
+  });
+
+  it("never names a device file, so a loop on it cannot reach the server as a track", () => {
+    const localFile: LocalTrack = { ...track, id: "local_1730000000000_abc123", catalogTrackId: null, artistId: null, releaseId: null, source: "local" };
+    expect(getPlayerControlSubject(localFile)).toEqual({ payload: {} });
+  });
+
+  it("has no subject without a current track", () => {
+    expect(getPlayerControlSubject(null)).toEqual({ payload: {} });
   });
 });

@@ -16,6 +16,7 @@ import {
     deleteFolderAPI,
 } from "./api";
 import { recordProductAnalyticsFromBrowser } from "./productAnalytics";
+import { isLocalFileTrackId } from "./trackIdentity";
 
 // Configure localforage instances
 const playlistStore = localforage.createInstance({
@@ -455,7 +456,8 @@ export async function addTrackToPlaylist(
 
         await playlistStore.setItem(playlistId, playlist);
         reportPlaylistEvent("playlist.track_added", playlist, {
-            trackId,
+            // A device file's id never leaves the device (#2507).
+            trackId: isLocalFileTrackId(trackId) ? undefined : trackId,
             addedCount: 1,
             position: typeof index === "number" ? index : playlist.trackIds.length - 1,
         });

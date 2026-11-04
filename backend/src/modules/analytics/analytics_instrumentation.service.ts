@@ -15,6 +15,7 @@ import {
   type AgentSignalAction,
   type AgentSignalTelemetryDescriptor,
 } from "../agents/agent_learning.service";
+import { isLocalFileClientId } from "../library/local_file_id";
 
 type LocalHourBucket = "night" | "morning" | "afternoon" | "evening";
 type WeekdayKind = "weekday" | "weekend";
@@ -380,7 +381,8 @@ export class AnalyticsInstrumentationService {
     return result;
   }
 
-  async recordProductEvent(input: ProductAnalyticsInput) {
+  async recordProductEvent(rawInput: ProductAnalyticsInput) {
+    const input = withoutLocalFileTrack(rawInput);
     // A client must not be able to record a play through the generic product route either.
     if (input.eventName.startsWith("playback.")) {
       const notCounted = await this.playbackNotCounted({
@@ -789,6 +791,24 @@ export class AnalyticsInstrumentationService {
 function payloadString(payload: Record<string, unknown> | undefined, key: string) {
   const value = payload?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * #2507: a listener's own device file never becomes a track in analytics. A
+ * product event that names one (a loop or repeat on a local file, a file added
+ * to a playlist) is still recorded, but without the track, so it cannot reach
+ * artist attribution or an agent/taste signal whatever the client sent.
+ */
+export function withoutLocalFileTrack(input: ProductAnalyticsInput): ProductAnalyticsInput {
+  const localSubject = input.subjectType === "track" && isLocalFileClientId(input.subjectId);
+  const localPayloadTrack = isLocalFileClientId(input.payload?.trackId);
+  if (!localSubject && !localPayloadTrack) return input;
+  const { trackId: _localTrackId, ...payload } = input.payload ?? {};
+  return {
+    ...input,
+    ...(localSubject ? { subjectType: undefined, subjectId: undefined } : {}),
+    payload: localPayloadTrack ? payload : input.payload,
+  };
 }
 
 function productTrackId(input: ProductAnalyticsInput) {

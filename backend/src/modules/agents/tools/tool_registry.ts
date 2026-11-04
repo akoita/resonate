@@ -22,6 +22,7 @@ import {
   genreFamilyById,
   releaseGenreFamilies,
 } from "../../recommendations/genre_families";
+import { isLocalFileClientId } from "../../library/local_file_id";
 
 /** Upper bound on candidates lazily embedded / ranked per tool call. */
 const EMBEDDINGS_SIMILARITY_MAX_CANDIDATES = 100;
@@ -341,7 +342,9 @@ export class ToolRegistry {
         });
         if (!playlist) return { items: [], status: "forbidden" };
 
-        const playlistTrackIds = [...new Set(playlist.trackIds)];
+        // A listener's own device files are not catalog tracks; they must not
+        // take sample slots from the tracks that describe the playlist (#2507).
+        const playlistTrackIds = [...new Set(playlist.trackIds)].filter((id) => !isLocalFileClientId(id));
         if (playlistTrackIds.length === 0) return { items: [], status: "ok", playlistTrackIds };
         const inPlaylist = new Set(playlistTrackIds);
         const sample = playlistTrackIds.slice(-PLAYLIST_SEED_SAMPLE_TRACKS);

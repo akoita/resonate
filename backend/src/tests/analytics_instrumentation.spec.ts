@@ -72,6 +72,41 @@ describe("AnalyticsInstrumentationService", () => {
     expect(await ingest.listEvents()).toHaveLength(0);
   });
 
+  it("records a product event about a device-local file without naming the file (#2507)", async () => {
+    const ingest = new AnalyticsIngestService();
+    const agentLearning = { recordSignal: jest.fn().mockResolvedValue({}) };
+    const catalog = { findTracks: jest.fn().mockResolvedValue(new Map()) };
+    const instrumentation = new AnalyticsInstrumentationService(ingest, catalog as any, agentLearning as any);
+    const localId = "local_1730000000000_abc123";
+
+    await instrumentation.recordProductEvent({
+      eventName: "player.segment_loop_enabled",
+      actorUserId: "user-1",
+      actorId: "listener_hash",
+      sessionId: "browser-session-1",
+      subjectType: "track",
+      subjectId: localId,
+      payload: { trackId: localId, startMs: 0, endMs: 4000 },
+    });
+    await instrumentation.recordProductEvent({
+      eventName: "playlist.track_added",
+      actorUserId: "user-1",
+      actorId: "listener_hash",
+      subjectType: "playlist",
+      subjectId: "playlist-1",
+      payload: { playlistId: "playlist-1", trackId: localId, addedCount: 1 },
+    });
+
+    const events = await ingest.listEvents();
+    expect(events).toHaveLength(2);
+    expect(JSON.stringify(events)).not.toContain(localId);
+    expect(events[0]).toMatchObject({ eventName: "player.segment_loop_enabled", payload: expect.objectContaining({ startMs: 0 }) });
+    expect(events[0].subjectId).toBeUndefined();
+    expect(events[1]).toMatchObject({ subjectType: "playlist", subjectId: "playlist-1" });
+    expect(agentLearning.recordSignal).not.toHaveBeenCalled();
+    expect(catalog.findTracks).not.toHaveBeenCalled();
+  });
+
   it("emits generation events with the required personal-data consent basis", async () => {
     const ingest = new AnalyticsIngestService();
     const instrumentation = new AnalyticsInstrumentationService(ingest);
