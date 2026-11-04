@@ -47,13 +47,11 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest closed: [Vision Sprint 49 — Owned means owned, every moment named](2026-11-02-vision-sprint-49-owned-and-named.md)
-on 2026-11-01. Waiting on the owner: Stripe test keys
+Latest closed: [Vision Sprint 50 — Light while you use it, nothing left red](2026-11-03-vision-sprint-50-light-while-you-use-it.md)
+on 2026-11-04, after Sprints 51–53. Waiting on the owner: Stripe test keys
 (resonate-iac#325), the #1421 pricing sign-off, legal review of the consent,
 refund and cancellation wording, and the #2367 remix-challenge decision.
-The #2436 idle-GPU follow-up continues in its own thread.
-Current: none. Vision Sprint 49 closed on 2026-11-01. Approved next (2026-11-02): [Vision Sprint 50](2026-11-03-vision-sprint-50-light-while-you-use-it.md)
-and [Vision Sprint 51](2026-11-17-vision-sprint-51-remix-pro-on-the-grid.md).
+Current: [Vision Sprint 54 — Traceable remixes](2026-11-05-vision-sprint-54-traceable-remixes.md).
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -107,7 +105,8 @@ and [Vision Sprint 51](2026-11-17-vision-sprint-51-remix-pro-on-the-grid.md).
 | [2026-10-31](2026-10-31-vision-sprint-47-share-and-show-support.md) | Vision Sprint 47 — Share what you did, show who you back (licence and remix shares, supporter/collector badges, listing cancellation) | ✅ Closed 2026-10-31 — #1915 closed (#2485), #1106 (#2483), #284 (#2479) and follow-up #2480 edit listing (#2482) |
 | [2026-10-31](2026-10-31-vision-sprint-48-golden-moments.md) | Vision Sprint 48 — Golden moments in every genre (any source layer and the full mix for collectible moments, genre skins) | ✅ Closed 2026-10-31 — #1476 slices 1 and 2 (#2489): any stem or the full mix (10 s cap), moment kinds; slice 3 open |
 | [2026-11-02](2026-11-02-vision-sprint-49-owned-and-named.md) | Vision Sprint 49 — Owned means owned, every moment named (library ownership from holdings, moment kinds on every surface, idle-cost check, suggested moment ranges) | ✅ Closed 2026-11-01 — #2511 (#2524, closes epic #2503), #2522 (#2525), #1476 slice 3 (#2526, closes #1476); #2436 owner check done, follow-up in its own thread |
-| [2026-11-03](2026-11-03-vision-sprint-50-light-while-you-use-it.md) | Vision Sprint 50 — Light while you use it, nothing left red (GPU while in use, mutation testing green, web x402/zod bump, album details lookup) | 🟡 In progress — #2535 (#2543), #2534 first GPU fix (#2544), #2538 (#2545) merged and on staging; #2537 waits on npm's release-age hold, #2534 on the owner's laptop reading; milestone 48 |
+| [2026-11-03](2026-11-03-vision-sprint-50-light-while-you-use-it.md) | Vision Sprint 50 — Light while you use it, nothing left red (GPU while in use, mutation testing green, web x402/zod bump, album details lookup) | ✅ Closed 2026-11-04 — all 4 items closed: #2535 (#2543), #2534 (#2544; GPU at 20.6% while in use, down from 97%, so the tinted fill was not needed), #2538 (#2545), #2537 (#2568; duplicate #2567 closed); milestone 48 |
 | [2026-11-17](2026-11-17-vision-sprint-51-remix-pro-on-the-grid.md) | Vision Sprint 51 — Remix Pro on the grid (grid correction, cue and loop points with DJ extended export, automation stretch) | ✅ Closed 2026-11-03 — all 3 items merged (#2539 → #2546, #2540 → #2547, #2541 → #2549) and deployed to staging (release run 234); milestone 49 |
 | [2026-11-03](2026-11-03-vision-sprint-52-stems-out.md) | Vision Sprint 52 — Remix Pro, stems out (stem export, automation on the curve, mashups design) | ✅ Closed 2026-11-03 — all 3 items merged (#2551 → #2554, #2552 → #2555, #2550 → #2556) and deployed to staging (release run 235); mashups decisions D1–D5 accepted as recommended; milestone 50 |
-| [2026-11-03](2026-11-03-vision-sprint-53-two-tracks.md) | Vision Sprint 53 — Two tracks, one remix (mashups first slice: second source checked per source, conform in render and preview, studio picker and both credits) | 🟡 Approved and started 2026-11-03 — #2558, #2559, #2560; milestone 51 |
+| [2026-11-03](2026-11-03-vision-sprint-53-two-tracks.md) | Vision Sprint 53 — Two tracks, one remix (mashups first slice: second source checked per source, conform in render and preview, studio picker and both credits) | ✅ Closed 2026-11-03 — all 3 items merged (#2558 → #2561, #2559 → #2562, #2560 → #2563) and deployed to staging; #1903 closed; milestone 51 |
+| [2026-11-05](2026-11-05-vision-sprint-54-traceable-remixes.md) | Vision Sprint 54 — Traceable remixes (watermark scheme spike, embed at render time, disclosure, admin detect) | 🟡 Approved and started 2026-11-04 — #2572, #2573, #2574, #2575 (slices of #2566), stretch #2576; deploy half resonate-iac#333; milestone 52 |

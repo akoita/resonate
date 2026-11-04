@@ -1,5 +1,7 @@
 # Vision Sprint 52: Remix Pro, stems out
 
+> **Outcome (closed 2026-11-03):** all three items merged (#2551 → #2554, #2552 → #2555, #2550 → #2556) and deployed to staging (release run 235). The owner accepted mashups decisions D1–D5 as recommended. Milestone 50 closed.
+
 **Status:** 🟡 Planned and started 2026-11-03 under the owner's overnight
 instruction ("if you finish the sprint, start a new one"); the owner reviews
 the scope in the morning and can change it.
