@@ -233,6 +233,21 @@ export function cleanFolderName(value: string | null | undefined): string | null
     return name ? name.slice(0, 255) : null;
 }
 
+/**
+ * A device file's path as the browser reports it: from the added folder down
+ * (`Album/01 Song.flac`). A full path names the drive and the folders above,
+ * which usually include the person's user name, so the server never stores one
+ * whatever the client sends.
+ */
+export function isFolderRelativePath(value: string): boolean {
+    const path = value.trim();
+    if (!path || path.length > 1024) return false;
+    if (/^[\\/~]/.test(path)) return false; // POSIX root, UNC share, home directory
+    if (/^[A-Za-z]:/.test(path)) return false; // Windows drive
+    if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(path)) return false; // file:// and other URLs
+    return !path.split(/[\\/]/).includes("..");
+}
+
 function present(value: unknown): boolean {
     return value !== undefined && value !== null && value !== "";
 }
@@ -267,6 +282,9 @@ export function validateLibraryTrackInput(data: SaveTrackInput): { source: Libra
         }
         if (clientKey && !LOCAL_CLIENT_KEY.test(clientKey)) {
             throw new BadRequestException("A local file id must start with local_");
+        }
+        if (present(data.sourcePath) && !isFolderRelativePath(String(data.sourcePath))) {
+            throw new BadRequestException("sourcePath must be relative to the added folder");
         }
         return { source, clientKey };
     }

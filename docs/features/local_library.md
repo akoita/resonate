@@ -132,6 +132,10 @@ music on Resonate for others stays an artist operation (release upload).
   `isOwned`, and its id must start with `local_`.
 - A remote row needs a catalog reference and cannot carry `sourcePath` or
   `fileSize`.
+- A local row's `sourcePath` must start at the added folder. A full path
+  (drive letter, leading `/` or `\`, `~`, a URL) or a `..` segment is
+  refused (`isFolderRelativePath`): it would name the folders above, which
+  usually include the person's user name.
 - The primary key is always server-generated. Ids a client names (device files,
   owned stems) are stored as `clientKey`, unique per user, and returned as the
   row's `id`. Every lookup is scoped to the owner.
@@ -150,7 +154,17 @@ Outside the library:
   (`privateTrackCount`) — see [Public Playlists](public_playlists.md).
 - **Analytics and learning** drop playback with `source: "web_player_local"`
   (`LOCAL_FILE_NOT_COUNTED`); the web player never attaches a catalog id to a
-  local file (`catalogTrackIdOf`). AI DJ learning no longer counts local plays.
+  local file (`catalogTrackIdOf`) and sends no playback event for one. AI DJ
+  learning no longer counts local plays.
+- **Product events never name a device file.** Player controls (segment loop,
+  repeat count) on a local file are still counted, without the track
+  (`getPlayerControlSubject`), and adding one file to a playlist reports no
+  `trackId` (`isLocalFileTrackId`). The server strips a `local_` track id
+  from any product event before it is stored (`withoutLocalFileTrack`), so it
+  never reaches artist attribution or an `AgentSignal`.
+- **AI DJ playlist seeds** skip `local_` entries before sampling the
+  playlist (`isLocalFileClientId`, `catalog.playlist_seed`), so a playlist
+  full of the listener's files still seeds from its catalog tracks.
 - **Community cohorts** read only `source: "remote"` library rows.
 - **Release, stem, mint, remix and upload flows** have no entry point that
   accepts a local file; uploading stays artist-only.
@@ -174,7 +188,8 @@ section of Settings explains this; the rest of Settings works.
   `library.controller.http.spec.ts`, `playlist-public.integration.spec.ts`,
   `playlist-discovery.integration.spec.ts`,
   `community_cohort_generation.integration.spec.ts`,
-  `analytics_instrumentation.spec.ts`.
+  `analytics_instrumentation.spec.ts`, `library-source-folder.spec.ts`,
+  `agent_dj_playlist_pattern.integration.spec.ts`.
 
 ## Manual test
 

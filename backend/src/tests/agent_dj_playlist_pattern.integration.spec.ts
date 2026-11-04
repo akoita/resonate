@@ -153,4 +153,17 @@ describe("playlist seed follows the playlist's pattern (integration)", () => {
     expect(own.length).toBe(PLAYLIST_SEED_OWN_TRACKS);
     expect(new Set(own.map((item) => genreOf(item.name))).size).toBeGreaterThan(1);
   });
+
+  it("ignores the listener's own device files, even when they would fill the whole sample (#2507)", async () => {
+    const withFiles = `${PLAYLIST}_with_files`;
+    const localFiles = Array.from({ length: 60 }, (_, index) => `local_1730000000000_${index.toString(16).padStart(6, "0")}`);
+    await prisma.playlist.create({
+      data: { id: withFiles, userId: LISTENER, name: "Mixed bag and my files", visibility: "private", trackIds: [...inPlaylist.map(key), ...localFiles] },
+    });
+    const result = await seed({ playlistId: withFiles });
+    expect(result.status).toBe("ok");
+    expect(result.playlistTrackIds).toEqual(inPlaylist.map(key));
+    const others = ours(result.items).filter((item) => item.playlistSeed !== "own");
+    expect(new Set(others.map((item) => genreOf(item.name)))).toEqual(new Set<Genre>(["house", "jazz", "afro"]));
+  });
 });

@@ -279,6 +279,25 @@ export function buildPlaybackLifecyclePayload(input: {
   };
 }
 
+/**
+ * The track fields a player control event (loop, repeat count) carries. A
+ * device file's id never leaves the device (#2507): the control is still
+ * counted, without naming the track, so it cannot become a taste signal.
+ */
+export function getPlayerControlSubject(track: LocalTrack | null | undefined): {
+  subjectType?: "track";
+  subjectId?: string;
+  payload: { trackId?: string; artistId?: string; releaseId?: string };
+} {
+  const trackId = track ? getPlaybackAnalyticsTrackId(track) : undefined;
+  if (!track || !trackId) return { payload: {} };
+  return {
+    subjectType: "track",
+    subjectId: trackId,
+    payload: { trackId, artistId: track.artistId ?? undefined, releaseId: track.releaseId ?? undefined },
+  };
+}
+
 /** A device-local file never becomes a catalog play (#2507). */
 function getPlaybackAnalyticsTrackId(track: LocalTrack) {
   return catalogTrackIdOf(track) ?? undefined;

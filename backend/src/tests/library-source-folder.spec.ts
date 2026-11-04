@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { cleanFolderName, validateLibraryTrackInput } from "../modules/library/library.service";
+import { cleanFolderName, isFolderRelativePath, validateLibraryTrackInput } from "../modules/library/library.service";
 
 describe("library folder names (local files across devices)", () => {
     it("keeps a folder name and drops any path in front of it", () => {
@@ -34,5 +34,37 @@ describe("library tags for your own files", () => {
         expect(validateLibraryTrackInput({
             source: "local", id: "local_1", title: "Uragano", trackNumber: 2, discNumber: 1, label: "L", isrc: "FR1",
         })).toEqual({ source: "local", clientKey: "local_1" });
+    });
+});
+
+describe("local file paths never include the folders above the added folder (#2507)", () => {
+    it("accepts a path from the added folder down", () => {
+        expect(isFolderRelativePath("Caravelle/01 Intro.wav")).toBe(true);
+        expect(isFolderRelativePath("01 Intro.wav")).toBe(true);
+        expect(isFolderRelativePath("Disc 1\\02 Song.flac")).toBe(true);
+        expect(isFolderRelativePath("..hidden/a.mp3")).toBe(true);
+    });
+
+    it("rejects full paths, home paths, URLs and parent segments", () => {
+        for (const path of [
+            "/home/me/Music/a.mp3",
+            "C:\\Users\\me\\Music\\a.mp3",
+            "c:/Users/me/a.mp3",
+            "\\\\server\\share\\a.mp3",
+            "~/Music/a.mp3",
+            "file:///Users/me/a.mp3",
+            "Music/../../etc/a.mp3",
+            "",
+        ]) {
+            expect(isFolderRelativePath(path)).toBe(false);
+        }
+    });
+
+    it("refuses to save a local row with a full path", () => {
+        expect(() =>
+            validateLibraryTrackInput({ source: "local", id: "local_1", title: "x", sourcePath: "C:\\Users\\me\\a.mp3", fileSize: 1 }),
+        ).toThrow(BadRequestException);
+        expect(validateLibraryTrackInput({ source: "local", id: "local_1", title: "x", sourcePath: "Album/a.mp3", fileSize: 1 }))
+            .toEqual({ source: "local", clientKey: "local_1" });
     });
 });
