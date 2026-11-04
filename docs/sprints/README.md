@@ -51,7 +51,7 @@ Latest closed: [Vision Sprint 50 — Light while you use it, nothing left red](2
 on 2026-11-04, after Sprints 51–53. Waiting on the owner: Stripe test keys
 (resonate-iac#325), the #1421 pricing sign-off, legal review of the consent,
 refund and cancellation wording, and the #2367 remix-challenge decision.
-Current: none. Proposed next (2026-11-04): [Vision Sprint 54 — Traceable remixes](2026-11-05-vision-sprint-54-traceable-remixes.md).
+Current: [Vision Sprint 54 — Traceable remixes](2026-11-05-vision-sprint-54-traceable-remixes.md).
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -109,4 +109,4 @@ Current: none. Proposed next (2026-11-04): [Vision Sprint 54 — Traceable remix
 | [2026-11-17](2026-11-17-vision-sprint-51-remix-pro-on-the-grid.md) | Vision Sprint 51 — Remix Pro on the grid (grid correction, cue and loop points with DJ extended export, automation stretch) | ✅ Closed 2026-11-03 — all 3 items merged (#2539 → #2546, #2540 → #2547, #2541 → #2549) and deployed to staging (release run 234); milestone 49 |
 | [2026-11-03](2026-11-03-vision-sprint-52-stems-out.md) | Vision Sprint 52 — Remix Pro, stems out (stem export, automation on the curve, mashups design) | ✅ Closed 2026-11-03 — all 3 items merged (#2551 → #2554, #2552 → #2555, #2550 → #2556) and deployed to staging (release run 235); mashups decisions D1–D5 accepted as recommended; milestone 50 |
 | [2026-11-03](2026-11-03-vision-sprint-53-two-tracks.md) | Vision Sprint 53 — Two tracks, one remix (mashups first slice: second source checked per source, conform in render and preview, studio picker and both credits) | ✅ Closed 2026-11-03 — all 3 items merged (#2558 → #2561, #2559 → #2562, #2560 → #2563) and deployed to staging; #1903 closed; milestone 51 |
-| [2026-11-05](2026-11-05-vision-sprint-54-traceable-remixes.md) | Vision Sprint 54 — Traceable remixes (watermark scheme spike, embed at render time, disclosure, admin detect) | 🟡 Proposed 2026-11-04 — slices of #2566; deploy half resonate-iac#333 |
+| [2026-11-05](2026-11-05-vision-sprint-54-traceable-remixes.md) | Vision Sprint 54 — Traceable remixes (watermark scheme spike, embed at render time, disclosure, admin detect) | 🟡 Approved and started 2026-11-04 — #2572, #2573, #2574, #2575 (slices of #2566), stretch #2576; deploy half resonate-iac#333; milestone 52 |

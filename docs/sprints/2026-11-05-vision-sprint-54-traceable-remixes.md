@@ -1,7 +1,7 @@
 # Vision Sprint 54: Traceable remixes
 
-**Status:** 🟡 Proposed 2026-11-04, waiting on the owner's approval.
-**Milestone:** Vision Sprint 54 (created once the scope is approved).
+**Status:** 🟡 Approved by the owner and started on 2026-11-04.
+**Milestone:** [Vision Sprint 54](https://github.com/akoita/resonate/milestone/52).
 Each item is a sub-issue of #2566, so the milestone can close when the
 feature works end to end.
 **Goal:** Every remix render (master, rendered stems, DJ extended) carries an
@@ -27,11 +27,11 @@ export.
 
 | Order | Tier | Axis | Issue | Outcome |
 | --- | --- | --- | --- | --- |
-| 1 | P0 | Technical | #2566 slice 1 (spike) | Test set of remix drafts and mashups across genres. Attack set: MP3 128/64 kbit/s, AAC 128 kbit/s, 44.1↔48 kHz, -14 LUFS, ±5% speed, ±2 semitones, 30 s excerpts, mixed under other music at -6 dB. audiowmark vs AudioSeal (WavMark optional): payload recovery, false positives on ≥1,000 unwatermarked catalog tracks, cost per minute of audio, blind A/B listening check. Decision and GPLv3 separate-process note in `docs/rfc/remix-watermarking.md` |
-| 2 | P0 | User feature | #2566 slice 2 (embed) | `StemAudioMixer` embeds an opaque 128-bit token on the PCM mix before the final encode, behind a config flag. `RemixRenderWatermark` table (Prisma migration) maps the token to project, job, owner, sources, stems, licence proof, policy and key ID. Render metadata records scheme and version, or `watermark: none` when no key is set. Parity tests: preview still matches within tolerance; DJ extended and the stems zip keep a readable mark |
-| 3 | P0 | User feature | #2566 slice 4 (disclosure) | Licence templates, the studio export panel, the in-app Remix guide, `docs/features/remix_studio.md` and `docs/features/README.md` say renders carry an inaudible Resonate watermark that identifies the project. Ships in the same release as slice 2 |
-| 4 | P1 | User feature | #2566 slice 3 (detect) | Admin-only detect action on an uploaded clip, tried with the active and retired keys, returning the matching record and a bit-error figure. The result attaches as typed evidence to the rights evidence and dispute flow (#471, #476), with copy that says a token proves which render, not who uploaded it |
-| 5 | P2 | Technical | #347 check | Confirm whether the Vertex `synthid-audio:verify` endpoint that `synthid.service.ts` calls is real and documented, and record the answer on #347 |
+| 1 | P0 | Technical | [#2572](https://github.com/akoita/resonate/issues/2572) (#2566 slice 1, spike) | Test set of remix drafts and mashups across genres. Attack set: MP3 128/64 kbit/s, AAC 128 kbit/s, 44.1↔48 kHz, -14 LUFS, ±5% speed, ±2 semitones, 30 s excerpts, mixed under other music at -6 dB. audiowmark vs AudioSeal (WavMark optional): payload recovery, false positives on ≥1,000 unwatermarked catalog tracks, cost per minute of audio, blind A/B listening check. Decision and GPLv3 separate-process note in `docs/rfc/remix-watermarking.md` |
+| 2 | P0 | User feature | [#2573](https://github.com/akoita/resonate/issues/2573) (#2566 slice 2, embed) | `StemAudioMixer` embeds an opaque 128-bit token on the PCM mix before the final encode, behind a config flag. `RemixRenderWatermark` table (Prisma migration) maps the token to project, job, owner, sources, stems, licence proof, policy and key ID. Render metadata records scheme and version, or `watermark: none` when no key is set. Parity tests: preview still matches within tolerance; DJ extended and the stems zip keep a readable mark |
+| 3 | P0 | User feature | [#2574](https://github.com/akoita/resonate/issues/2574) (#2566 slice 4, disclosure) | Licence templates, the studio export panel, the in-app Remix guide, `docs/features/remix_studio.md` and `docs/features/README.md` say renders carry an inaudible Resonate watermark that identifies the project. Ships in the same release as slice 2 |
+| 4 | P1 | User feature | [#2575](https://github.com/akoita/resonate/issues/2575) (#2566 slice 3, detect) | Admin-only detect action on an uploaded clip, tried with the active and retired keys, returning the matching record and a bit-error figure. The result attaches as typed evidence to the rights evidence and dispute flow (#471, #476), with copy that says a token proves which render, not who uploaded it |
+| 5 | P2 | Technical | [#2576](https://github.com/akoita/resonate/issues/2576) (for #347) | Confirm whether the Vertex `synthid-audio:verify` endpoint that `synthid.service.ts` calls is real and documented, and record the answer on #347 |
 
 Deployment half: [resonate-iac#333](https://github.com/akoita/resonate-iac/issues/333)
 (key secret per environment with a retired key slot, the embedder/detector in
@@ -40,7 +40,7 @@ workflows). The operator runs the secret write.
 
 ## Owner decisions (from #2566)
 
-Recommended, pending the owner's confirmation:
+Accepted by the owner as recommended on 2026-11-04 (recorded on #2566):
 
 1. **Account erasure:** keep the token row with the owner pseudonymised, since
    evidence of a licence breach outlives the account. Fits the existing
