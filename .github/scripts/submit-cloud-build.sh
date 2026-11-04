@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 usage() {
   cat <<'EOF' >&2
 Usage: submit-cloud-build.sh \
@@ -289,27 +291,36 @@ if [[ -n "${content_image}" ]]; then
       echo "Content-addressed reuse HIT: ${content_image} -> ${cached_digest}"
       echo "Build inputs are unchanged, so no Cloud Build is submitted."
 
-      current_target_digest=""
-      if current_target_digest="$(resolve_image_digest "${image}" 1)" && [[ "${current_target_digest}" == "${cached_digest}" ]]; then
-        echo "Target tag ${image} already points to ${cached_digest}; skipping tag addition."
-      else
-        gcloud artifacts docker tags add "${content_image}" "${image}" \
-          --project "${project_id}" \
-          --quiet
+      # Point the release tag at a per-release copy of the cached manifest
+      # (same config and layers, release annotations added) instead of at the
+      # cached digest itself. Each release then signs and attests its own
+      # digest, so evidence does not pile up as referrers on one long-reused
+      # digest, where cosign stops seeing new attestations once the registry
+      # paginates the referrers list.
+      release_source_sha="${git_source_revision:-${GITHUB_SHA:-}}"
+      release_digest=""
+      if ! release_digest="$(gcloud auth print-access-token | python3 "${script_dir}/stamp_release_manifest.py" \
+        --image "${image}" \
+        --reused-digest "${cached_digest}" \
+        --source-sha "${release_source_sha}" \
+        ${STAMP_REGISTRY_URL:+--registry-url "${STAMP_REGISTRY_URL}"})"; then
+        echo "Could not publish a per-release manifest for ${image}." >&2
+        exit 1
       fi
+      echo "Release tag ${image} -> ${release_digest} (stamped copy of ${cached_digest})."
 
       confirmed_digest=""
       if ! confirmed_digest="$(resolve_image_digest "${image}" 6)"; then
         echo "Artifact Registry did not return one valid sha256 digest for ${image}." >&2
         exit 1
       fi
-      if [[ "${confirmed_digest}" != "${cached_digest}" ]]; then
-        echo "Tag ${image} resolves to ${confirmed_digest}, expected ${cached_digest}." >&2
+      if [[ "${confirmed_digest}" != "${release_digest}" ]]; then
+        echo "Tag ${image} resolves to ${confirmed_digest}, expected ${release_digest}." >&2
         exit 1
       fi
 
       write_build_metadata \
-        "${cached_digest}" \
+        "${release_digest}" \
         "reused-content-tag:${content_tag}" \
         "${content_image}"
       exit 0

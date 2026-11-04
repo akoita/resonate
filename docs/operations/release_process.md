@@ -134,7 +134,14 @@ the workflow-call-only
 creates selected SHA-tagged images, resolves immutable registry digests, and
 retains build metadata, SBOM, signature, and attestation evidence. Unchanged
 content-addressed images may be reused when their digest-bound evidence is
-valid; the build metadata and image evidence record the reuse result.
+valid; the build metadata and image evidence record the reuse result. A reused
+image does not keep the cached digest: the publisher pushes a copy of the
+cached manifest with the release's `org.opencontainers.image.revision` and
+`co.resonate.image.reused-from-digest` annotations under the SHA tag. Config
+and layers are shared, but each release signs and attests its own digest, so
+evidence never piles up as OCI referrers on one long-reused digest (cosign
+reads only the first page of a paginated referrers list, and a digest reused
+across about 20 releases hid the newest build attestation from the deployer).
 
 The deploy manifest is eligible only after the selected image work completes
 as one successful aggregate. A failed or partial publication never dispatches
