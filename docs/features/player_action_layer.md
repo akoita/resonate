@@ -120,6 +120,29 @@ when fullscreen is unavailable or denied, it uses an in-page immersive fallback.
 Escape and the visible exit control leave immersive mode without replacing the
 audio element or queue.
 
+### Console layout (#2569)
+
+The console docks to the right edge (the default) or the left edge, floats
+anywhere on the stage, or minimizes to its header row in any of those places.
+The header carries a move handle, a layout menu (Dock left, Dock right, Undock,
+Reset layout) and minimize/restore. Dragging the header undocks a docked console;
+dropping a floating one within 56px of a side edge docks it there, with a dashed
+preview of the dock while dragging. A floating console resizes from its corner,
+down to 300×240px. It is kept inside the stage and above the player bar at
+render time, so a window that shrinks briefly does not overwrite the remembered
+spot. The move handle takes the arrow keys: on a docked console left and right
+pick the side; on a floating one they move it by 16px, or 64px with Shift. The
+hero artwork re-centres while the console floats or is minimized, and leaves the
+left side free when it is docked left; immersive mode keeps the chosen layout.
+
+The layout is stored per device in `localStorage` under
+`resonate.player.consoleLayout.v1` (`web/src/lib/playerConsoleLayout.ts`) and
+never sent to the server; a missing or corrupted value falls back to docked
+right, and resetting removes the key. Under 768px the console stays stacked under
+the artwork and only minimize applies. Drags write to the panel's style directly
+and commit on release, so moving the console does not re-render the player at
+pointer rate. This is vision-neutral product quality work.
+
 The Shows campaign action is part of the implemented conversion feed for revenue
 line (1) Shows campaign fees: active campaigns render as `Support a show` chips
 linking to `/shows/<slug>`. Non-active campaign states stay disabled here
@@ -277,6 +300,12 @@ Manual:
    starts another cycle; add and remove entries during the cycle.
 10. Mute and unmute with pointer and keyboard, then enter and exit immersive mode
    with its button and Escape; confirm playback position and queue stay unchanged.
+12. Dock the console left from its layout menu, minimize it, and reload: it
+    stays docked left and minimized. Drag the header into the stage to undock
+    it, resize it from the corner, drop it on the right edge to dock it, and
+    focus the move handle to move it with the arrow keys. On a phone width only
+    minimize is offered. `npx playwright test tests/player.spec.ts` covers this
+    (PLAYER-06, PLAYER-07).
 11. Play a published track and use each Broadcast Signal button; confirm the
     link opens `/release/<id>` with `utm_campaign=listening_share` and the X
     and Reddit drafts carry the track copy. Play a device file and confirm the
@@ -287,6 +316,7 @@ Manual:
 - [#1005](https://github.com/akoita/resonate/issues/1005)
 - [#1367](https://github.com/akoita/resonate/issues/1367)
 - [#1614](https://github.com/akoita/resonate/issues/1614)
+- [#2569](https://github.com/akoita/resonate/issues/2569)
 - [Strategy execution plan](../strategy/next_generation_music_platform_execution_plan.md)
 - [Agent Taste Intelligence](agent_taste_intelligence.md)
 - [Marketplace Listing Lifecycle](marketplace_listing_lifecycle.md)
