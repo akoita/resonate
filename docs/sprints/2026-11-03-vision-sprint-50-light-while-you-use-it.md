@@ -1,5 +1,7 @@
 # Vision Sprint 50: Light while you use it, nothing left red
 
+> **Outcome (closed 2026-11-04):** all four items closed. #2535 (#2543), #2534 (#2544; GPU use while active fell to 20.6% from 97%, so the tinted fill was not needed), #2538 (#2545) and #2537 (#2568; duplicate #2567 closed). Milestone 48 closed.
+
 **Status:** ✅ Approved 2026-11-02 by the owner, with the #2534 design call
 (isolate the loops first, fill only if needed).
 **Milestone:** Vision Sprint 50 (created by the owner once the scope is
