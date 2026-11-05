@@ -61,8 +61,10 @@ def run(cmd: list[str]) -> subprocess.CompletedProcess:
 class Audiowmark:
     name = "audiowmark"
 
-    def __init__(self, binary: str, key: str, strength: float | None = None):
+    def __init__(self, binary: str, key: str, strength: float | None = None,
+                 inverse_search: bool = False):
         self.bin, self.key, self.strength = binary, key, strength
+        self.inverse_search = inverse_search
 
     def new_token(self) -> str:
         return secrets.token_hex(16)  # 128 bits, opaque
@@ -90,7 +92,35 @@ class Audiowmark:
             t1 = time.perf_counter()
             got += self._get(path, speed=True)
             extra.update(speed_pass=True, speed_s=round(time.perf_counter() - t1, 3))
+        if self.inverse_search and not (set(got) & (wanted or set())):
+            t2 = time.perf_counter()
+            hit, tries = self._inverse_search(path, wanted or set())
+            got += hit
+            extra.update(inverse_tries=tries, inverse_s=round(time.perf_counter() - t2, 3))
         return got, extra
+
+    @staticmethod
+    def inverse_grid() -> list[tuple[str, float]]:
+        """Candidate undo-transforms, likeliest first: whole semitones and
+        whole tempo percents, then a fine grid. audiowmark only tolerates
+        about 0.1 semitone / 0.2 % of residual error, hence the fine steps."""
+        coarse = [("p", -float(st)) for st in (1, 2, -1, -2)]
+        coarse += [("t", 1 / (1 + pc / 100)) for pc in (1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6)]
+        fine = [("p", -round(st / 10, 1)) for st in range(-25, 26) if st % 10]
+        fine += [("t", 1 / (1 + pc / 500)) for pc in range(-30, 31) if pc % 5]
+        return coarse + fine
+
+    def _inverse_search(self, path: Path, wanted: set[str]) -> tuple[list[str], int]:
+        tmp = path.with_suffix(".inv.wav")
+        for n, (kind, v) in enumerate(self.inverse_grid(), 1):
+            arg = ["-p", str(v)] if kind == "p" else ["-T", str(v)]
+            subprocess.run(["rubberband", "-q", *arg, str(path), str(tmp)], capture_output=True)
+            got = self._get(tmp, speed=False)
+            if set(got) & wanted:
+                tmp.unlink()
+                return got, n
+        tmp.unlink(missing_ok=True)
+        return [], n
 
 
 class AudioSeal:
@@ -151,7 +181,7 @@ class AudioSeal:
 
 def make_scheme(args):
     if args.scheme == "audiowmark":
-        return Audiowmark(args.audiowmark, args.key, args.strength)
+        return Audiowmark(args.audiowmark, args.key, args.strength, args.inverse_search)
     return AudioSeal()
 
 
@@ -242,7 +272,8 @@ def robustness(args) -> None:
             ex.unlink()
         return rows
 
-    jobs = [(f.stem, a) for f in fixtures for a in ATTACKS]
+    attacks = [a for a in ATTACKS if not args.attacks or any(k in a for k in args.attacks)]
+    jobs = [(f.stem, a) for f in fixtures for a in attacks]
     results = []
     with cf.ThreadPoolExecutor(max_workers=args.jobs) as ex:
         for rows in ex.map(lambda j: trial(*j), jobs):
@@ -251,7 +282,7 @@ def robustness(args) -> None:
             print(f"{r['fixture']:>24} {r['attack']:<24} {sum(x['hit'] for x in rows)}/{len(rows)}", flush=True)
 
     summary = {}
-    for att in ATTACKS:
+    for att in attacks:
         rs = [r for r in results if r["attack"] == att]
         summary[att] = {"hits": sum(r["hit"] for r in rs), "trials": len(rs),
                         "wrong_token": sum(r["wrong_token"] for r in rs),
@@ -316,5 +347,8 @@ if __name__ == "__main__":
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--count", type=int, default=1000)
     ap.add_argument("--db", type=int, default=10000)
+    ap.add_argument("--inverse-search", action="store_true",
+                    help="audiowmark: try undoing pitch/tempo shifts before giving up")
+    ap.add_argument("--attacks", nargs="*", help="substring filter on attack names")
     a = ap.parse_args()
     robustness(a) if a.mode == "robustness" else falsepos(a)
