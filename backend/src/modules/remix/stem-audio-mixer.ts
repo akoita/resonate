@@ -97,7 +97,7 @@ import {
   REMIX_WATERMARK_SCHEME_VERSION,
   type RemixRenderWatermark,
   type RemixRenderWatermarkMetadata,
-  type RemixWatermarkEmbedder,
+  RemixWatermarkEmbedder,
 } from "./remix-watermark";
 
 const execFileAsync = promisify(execFile);
@@ -1541,8 +1541,12 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
   constructor(
     private readonly storageProvider: StorageProvider,
     private readonly encryptionService: EncryptionService,
-    /** #2573: null when no watermark key is configured. */
-    private readonly watermarkEmbedder: RemixWatermarkEmbedder | null = null,
+    /**
+     * #2573: absent when no watermark key is configured. Optional plain class
+     * type, not `| null` (#2492 guard); the module builds this class through a
+     * factory.
+     */
+    private readonly watermarkEmbedder?: RemixWatermarkEmbedder,
   ) {}
 
   async mixUnmutedStems(
@@ -1626,7 +1630,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     const label = authorization.remixProjectId;
     const stemTaps = options?.stemTaps;
     // #2573: one token per render job covers the master and every stem tap.
-    const embedder = options?.watermark ? this.watermarkEmbedder : null;
+    const embedder = options?.watermark ? (this.watermarkEmbedder ?? null) : null;
     const watermarkToken = embedder ? newRemixWatermarkToken() : null;
     // A muted beat (#1902) is skipped entirely: the graph and metadata are
     // identical to a render without a beat.

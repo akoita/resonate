@@ -932,7 +932,7 @@ const audiowmarkAvailable = (() => {
         encryptionService as unknown as EncryptionService,
         binary
           ? new RemixWatermarkEmbedder({ key: KEY, keyId: "test-key", strength: 15, binary })
-          : null,
+          : undefined,
       );
 
     beforeAll(async () => {

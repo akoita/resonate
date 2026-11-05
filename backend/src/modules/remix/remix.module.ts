@@ -82,8 +82,8 @@ import {
         new FfmpegStemAudioMixer(
           storageProvider,
           encryptionService,
-          // #2573: null (no watermark) unless REMIX_WATERMARK_KEY is set.
-          remixWatermarkEmbedderFromEnv(new Logger("RemixWatermark")),
+          // #2573: no embedder (no watermark) unless REMIX_WATERMARK_KEY is set.
+          remixWatermarkEmbedderFromEnv(new Logger("RemixWatermark")) ?? undefined,
         ),
       inject: [StorageProvider, EncryptionService],
     },
