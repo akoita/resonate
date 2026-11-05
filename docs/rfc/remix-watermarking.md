@@ -31,11 +31,10 @@ payout change. ADR-BM-4: no effect.
 
 ## Decision
 
-**Pick: audiowmark 0.6.5, default strength 10, run as a separate process.**
-
-**Pick: audiowmark at strength 15** (the final value is set by the owner's
-blind A/B check), with a three-stage detector: plain decode, then
-`--detect-speed`, then an inverse pitch/tempo search.
+**Pick: audiowmark 0.6.5 at strength 15, run as a separate process.** The
+owner's blind A/B check sets the final strength. Detection runs in three
+stages: plain decode, then `--detect-speed`, then an inverse pitch/tempo
+search.
 
 Why:
 
@@ -204,10 +203,9 @@ loudness of (watermarked − original), against programme loudness of
 
 audiowmark shapes the mark to the music (quieter material gets a quieter
 mark), so the residual sits 32–36 dB under the programme on real renders and
-about 46 dB under it on the sparse pad. That is in the range where a
-psychoacoustically shaped mark is normally inaudible, and upstream reports
-strength 10 as inaudible in its listening tests. **But SNR is not a listening
-test.** The blind A/B check is still open: run `make_abx_kit.py` at strength
+about 46 dB under it on the sparse pad. That is a low level for a mark shaped to the music, and upstream describes
+lower strengths as less audible and higher ones as more robust. **But SNR is
+not a listening test.** The blind A/B check is still open: run `make_abx_kit.py` at strength
 15 (and 10 if needed), listen on good headphones, and score. A score near
 50 % passes.
 
@@ -273,10 +271,10 @@ when we keep it a separate program:
 
 - **Separate process, no linking.** The backend calls the `audiowmark`
   executable with `execFile`, passing audio through files or stdin/stdout,
-  the same way it already calls `ffmpeg`. The FSF's GPL FAQ treats programs
-  that communicate through pipes, files and command-line arguments as
-  separate works ("aggregate"), so the GPL does not extend to the Node
-  backend. Do **not** link `libaudiowmark`/its C++ sources into a Node
+  the same way it already calls `ffmpeg`. The FSF's GPL FAQ (on "mere aggregation")
+  says pipes, sockets and command-line arguments are the mechanisms normally
+  used between two separate programs, so the GPL does not extend to the Node
+  backend that calls it. Do **not** link `libaudiowmark`/its C++ sources into a Node
   native addon, and do not vendor its source into this repository.
 - **Running it on our servers is not distribution.** GPLv3 (unlike AGPL)
   attaches no obligation to running the program as a network service. The
@@ -317,7 +315,7 @@ from proprietary code), but the owner can ask counsel to confirm before
   `docs/deployment/environment.md`):** the active key (the audiowmark key-file
   text: `key <32 hex chars>`, plus a `name`), a key ID recorded in the token
   row, an optional retired key for detection after rotation, the strength
-  (default 10), and the binary path (default `audiowmark` on `PATH`). The
+  (default 15, see [Decision](#decision)), and the binary path (default `audiowmark` on `PATH`). The
   backend writes the key to a 0600 file in its private temp dir at startup,
   because `--key` takes a file path. Never log it.
 - **No key → no watermark.** Render metadata records `watermark: none`. If the
@@ -327,10 +325,10 @@ from proprietary code), but the owner can ask counsel to confirm before
 - **Metadata:** record scheme `audiowmark`, version `0.6.5`, strength and key
   ID with the token row, so the detector (#2575) knows which key and settings
   to try.
-- **Cost:** about 0.3 s per minute of audio per render on one core, small
+- **Cost:** about 0.3 s per minute of audio per render, small
   next to the ffmpeg mix. Use a timeout well above that (e.g. 30 s per
   minute of audio) so a stuck process cannot hold a render slot.
-- **Preview parity:** strength 10 adds a residual about 36 dB below the
+- **Preview parity:** strength 15 adds a residual about 32–36 dB below the
   programme loudness (see [Audible quality](#audible-quality)). The parity
   tests compare against the browser preview within tolerance, so check them
   with the mark on; if a tolerance trips, compare against the pre-watermark
