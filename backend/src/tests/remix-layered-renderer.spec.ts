@@ -77,6 +77,10 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
       [expect.objectContaining({ label: "generated-layer", gainDb: 0 })],
       authorization,
       fx,
+      undefined,
+      undefined,
+      undefined,
+      { watermark: true },
     );
   });
 
@@ -113,6 +117,9 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
       authorization,
       undefined,
       structure,
+      undefined,
+      undefined,
+      { watermark: true },
     );
   });
 
@@ -170,6 +177,8 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
       undefined,
       undefined,
       beat,
+      undefined,
+      { watermark: true },
     );
   });
 
@@ -205,6 +214,11 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
         }),
       ],
       authorization,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { watermark: true },
     );
     expect(storageProvider.upload).toHaveBeenCalledWith(
       Buffer.from("layered-mix"),

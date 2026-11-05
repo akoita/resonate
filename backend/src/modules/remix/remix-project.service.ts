@@ -75,6 +75,7 @@ import {
   type RemixCues,
 } from "./remix-cues";
 import { renderDjExtended } from "./remix-dj-export";
+import { recordRemixRenderWatermark } from "./remix-watermark-record";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 import { publicTrackAudioFeatures } from "../catalog/track-audio-features";
 import {
@@ -2468,6 +2469,28 @@ export class RemixProjectService {
               ...(renderBeat ? { beat: renderBeat } : {}),
               ...(renderParts ? { parts: renderParts } : {}),
             });
+      // #2573: the admin-only token row for a watermarked draft. A failure is
+      // logged, never thrown: the render has succeeded and ships either way.
+      if (providerJob.watermark) {
+        await recordRemixRenderWatermark({
+          watermark: providerJob.watermark,
+          remixProjectId: project.id,
+          generationJobId: data.jobId,
+          renderJobId: providerJob.jobId,
+          userId: data.userId,
+          sourceTrackId: project.sourceTrackId,
+          secondarySourceTrackId: project.secondarySourceTrackId ?? null,
+          stemIds: activeStemIds,
+          eligibility: renderEligibility.stems,
+          policyVersion: renderEligibility.policyVersion,
+        }).catch((error: unknown) => {
+          this.logger.warn(
+            `Remix project ${project.id}: watermark token row not recorded for job ${data.jobId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+      }
       const completedAt = new Date().toISOString();
       // #1901: a render that mixed at least one AI part is AI-assisted — a
       // stem_audio draft becomes stem_plus_ai with aiGenerated true.

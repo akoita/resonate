@@ -15,6 +15,7 @@ import {
   buildStemMixFfmpegArgs,
   type StemArrangementEntry,
   type StemAudioMixer,
+  type StemMixOptions,
   type StemTapSink,
 } from "./stem-audio-mixer";
 import {
@@ -97,57 +98,30 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
           });
         }
       : null;
-    const mixed = stemTaps
-      ? await this.mixer
-          .mixUnmutedStems(
-          input.stems,
-          input.authorization,
-          input.fx,
-          input.structure,
-          input.beat,
-          input.parts,
-          { stemTaps },
-        )
-          .catch(async (error: unknown) => {
-            // A failed render keeps no half set of stems.
-            await Promise.all(
-              stemFiles.map((file) =>
-                this.storageProvider.delete(file.uri).catch(() => undefined),
-              ),
-            );
-            throw error;
-          })
-      : input.parts
-      ? await this.mixer.mixUnmutedStems(
-          input.stems,
-          input.authorization,
-          input.fx,
-          input.structure,
-          input.beat,
-          input.parts,
-        )
-      : input.beat
-      ? await this.mixer.mixUnmutedStems(
-          input.stems,
-          input.authorization,
-          input.fx,
-          input.structure,
-          input.beat,
-        )
-      : input.structure
-      ? await this.mixer.mixUnmutedStems(
-          input.stems,
-          input.authorization,
-          input.fx,
-          input.structure,
-        )
-      : input.fx
-      ? await this.mixer.mixUnmutedStems(
-          input.stems,
-          input.authorization,
-          input.fx,
-        )
-      : await this.mixer.mixUnmutedStems(input.stems, input.authorization);
+    // #2573: a stem_mix draft is a final draft, so it asks for a watermark
+    // (embedded only when a key is configured).
+    const options: StemMixOptions = stemTaps
+      ? { stemTaps, watermark: true }
+      : { watermark: true };
+    const mixed = await this.mixer
+      .mixUnmutedStems(
+        input.stems,
+        input.authorization,
+        input.fx,
+        input.structure,
+        input.beat,
+        input.parts,
+        options,
+      )
+      .catch(async (error: unknown) => {
+        // A failed render keeps no half set of stems.
+        await Promise.all(
+          stemFiles.map((file) =>
+            this.storageProvider.delete(file.uri).catch(() => undefined),
+          ),
+        );
+        throw error;
+      });
 
     // Flat object name (#1162 review precedent): the local storage provider
     // cannot create subdirectories.
@@ -164,6 +138,7 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
       estimatedCostUsd: 0,
       sourceArrangement: input.stems,
       renderMetadata: mixed.renderMetadata,
+      ...(mixed.watermark ? { watermark: mixed.watermark } : {}),
       ...(stemFiles.length > 0
         ? { renderedStems: renderedStemsRecord(stemFiles) }
         : {}),

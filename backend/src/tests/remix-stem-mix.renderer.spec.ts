@@ -179,7 +179,15 @@ describe("FfmpegStemMixRenderer effects (#1897)", () => {
       fx,
     });
 
-    expect(mixer.mixUnmutedStems).toHaveBeenCalledWith(stems, authorization, fx);
+    expect(mixer.mixUnmutedStems).toHaveBeenCalledWith(
+      stems,
+      authorization,
+      fx,
+      undefined,
+      undefined,
+      undefined,
+      { watermark: true },
+    );
     expect(job.renderMetadata).toEqual(renderMetadata);
   });
 
@@ -217,6 +225,9 @@ describe("FfmpegStemMixRenderer effects (#1897)", () => {
       authorization,
       undefined,
       structure,
+      undefined,
+      undefined,
+      { watermark: true },
     );
     const fx = {
       effects: { schemaVersion: "remix-fx/v1" as const, master: { speed: 0.9 } },
@@ -228,6 +239,9 @@ describe("FfmpegStemMixRenderer effects (#1897)", () => {
       authorization,
       fx,
       structure,
+      undefined,
+      undefined,
+      { watermark: true },
     );
 
     // #1902: a beat is forwarded as the fifth argument, with or without
@@ -266,6 +280,8 @@ describe("FfmpegStemMixRenderer effects (#1897)", () => {
       undefined,
       undefined,
       beat,
+      undefined,
+      { watermark: true },
     );
     await renderer.render({ remixProjectId: "project", stems, authorization, fx, structure, beat });
     expect(mixer.mixUnmutedStems).toHaveBeenLastCalledWith(
@@ -274,6 +290,8 @@ describe("FfmpegStemMixRenderer effects (#1897)", () => {
       fx,
       structure,
       beat,
+      undefined,
+      { watermark: true },
     );
   });
 });

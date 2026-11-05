@@ -278,6 +278,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "AI part takes this person generated in Remix Studio (#1901): role, style words, seed, provider and conform parameters.",
   },
   {
+    model: "RemixRenderWatermark",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2573. One row per watermarked remix render: the project, source track, stems, licence proof "
+      + "and when. The embedded token and the key id are redacted.",
+  },
+  {
     model: "Session",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],
@@ -889,6 +897,11 @@ export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, st
   },
   EmailDelivery: {
     providerMessageId: "The mail provider's internal message id (#2169); an operational reference, not the person's data.",
+  },
+  RemixRenderWatermark: {
+    token:
+      "The forensic watermark payload (#2573); handing it out would help strip or forge the mark. The row says the render was watermarked.",
+    keyId: "Internal watermark key reference (#2573); operational, not the person's data.",
   },
   AdminAuditEvent: {
     actorUserId: "Internal operator identity (#2166); the person can export that their account was viewed or acted on, and when, without the operator's account id.",

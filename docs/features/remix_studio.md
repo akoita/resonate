@@ -1499,6 +1499,23 @@ from the JWT, never the request body.
   project-generated demo song, so the examples cannot drift from the studio.
   The bass example uses the stub part generator and says so in the guide.
   Generation and provenance: `docs/features/user_manual.md` (Audio examples).
+- Render watermarking (#2573, slice 2 of #2566; scheme from the #2572 spike,
+  `docs/rfc/remix-watermarking.md`): when `REMIX_WATERMARK_KEY` is set, every
+  final draft (stem_mix and the Lyria layered render) gets an opaque random
+  128-bit token embedded with audiowmark 0.6.5 at strength 15 on the PCM mix,
+  before the one MP3 encode. The same token goes into each rendered stem FLAC
+  (#2550), and the DJ extended export (#2540) re-renders the marked master, so
+  it carries the mark too. Render metadata records `watermark` (`embedded` with
+  scheme, version, strength and key id, or `none` with `no_key` /
+  `embed_failed`), never the token. The worker writes an admin-only
+  `RemixRenderWatermark` row: token, project, generation and render job ids,
+  owner, source track(s), stems with their licence basis and purchase ids,
+  policy version, scheme and key id. Free on every tier. A watermark failure
+  ships the render unwatermarked; it never fails a render. On account erasure
+  the row is kept and the owner pseudonymised (owner decision, 2026-11-04).
+  Not yet marked: drafts from the `audio-conditioned` provider alone, which
+  bypass the mixer (follow-up). Detection is #2575; the deploy half (binary in
+  the backend image, key secret) is resonate-iac#333.
 
 ## Planned Surfaces
 

@@ -1,7 +1,7 @@
 Resonate — Third-Party Model Attribution & Notices
 ==================================================
 
-This file records attribution and notice obligations for third-party AI models
+This file records attribution and notice obligations for third-party AI models and programs
 that Resonate uses. It is the NOTICE text required to be kept "with our copies"
 of the materials it covers. See the per-model determinations in
 docs/rfc/stable-audio-3-license-review.md.
@@ -85,3 +85,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+audiowmark (Stefan Westerfeld)
+------------------------------
+
+Resonate's backend can embed a forensic watermark in Remix Studio renders with
+audiowmark 0.6.5 (https://github.com/swesterfeld/audiowmark), licensed under the
+GNU General Public License v3.0 or later. It is invoked as a separate program,
+like ffmpeg, through execFile with file arguments. It is never linked into,
+vendored in, or distributed with Resonate's source. An image that contains the
+binary ships with this notice, the licence text and a pointer to the upstream
+source for the pinned tag. See docs/rfc/remix-watermarking.md ("Licence").

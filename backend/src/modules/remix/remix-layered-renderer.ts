@@ -96,45 +96,18 @@ export class FfmpegLayeredRemixRenderer implements LayeredRemixRenderer {
     ];
     // Effects (#1897) apply in the same final graph: the layer follows the
     // varispeed and the master chain, but gets no per-stem fx.
-    const mixed = input.parts
-      ? await this.mixer.mixUnmutedStemsWithAudioBuffers(
-          input.stems,
-          layerInputs,
-          input.authorization,
-          input.fx,
-          input.structure,
-          input.beat,
-          input.parts,
-        )
-      : input.beat
-      ? await this.mixer.mixUnmutedStemsWithAudioBuffers(
-          input.stems,
-          layerInputs,
-          input.authorization,
-          input.fx,
-          input.structure,
-          input.beat,
-        )
-      : input.structure
-      ? await this.mixer.mixUnmutedStemsWithAudioBuffers(
-          input.stems,
-          layerInputs,
-          input.authorization,
-          input.fx,
-          input.structure,
-        )
-      : input.fx
-      ? await this.mixer.mixUnmutedStemsWithAudioBuffers(
-          input.stems,
-          layerInputs,
-          input.authorization,
-          input.fx,
-        )
-      : await this.mixer.mixUnmutedStemsWithAudioBuffers(
-          input.stems,
-          layerInputs,
-          input.authorization,
-        );
+    // #2573: the layered draft is a final draft, so it asks for a watermark
+    // (embedded only when a key is configured).
+    const mixed = await this.mixer.mixUnmutedStemsWithAudioBuffers(
+      input.stems,
+      layerInputs,
+      input.authorization,
+      input.fx,
+      input.structure,
+      input.beat,
+      input.parts,
+      { watermark: true },
+    );
 
     const jobId = randomUUID();
     const filename = `remix-draft-${input.remixProjectId}-${jobId}.mp3`;
@@ -158,6 +131,7 @@ export class FfmpegLayeredRemixRenderer implements LayeredRemixRenderer {
       estimatedCostUsd: input.layer.estimatedCostUsd ?? undefined,
       sourceArrangement: input.stems,
       renderMetadata: mixed.renderMetadata,
+      ...(mixed.watermark ? { watermark: mixed.watermark } : {}),
       generatedLayers: [generatedLayer],
       outputMetadata: {
         outputUri: stored.uri,
