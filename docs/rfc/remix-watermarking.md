@@ -33,7 +33,45 @@ payout change. ADR-BM-4: no effect.
 
 **Pick: audiowmark 0.6.5, default strength 10, run as a separate process.**
 
-<!-- DECISION-DETAIL -->
+**Pick: audiowmark at strength 15** (the final value is set by the owner's
+blind A/B check), with a three-stage detector: plain decode, then
+`--detect-speed`, then an inverse pitch/tempo search.
+
+Why:
+
+1. **It is the only candidate that carries the payload the design needs.**
+   128 bits, keyed with an AES-128 key, so a random per-render token fits and
+   rotation works by key. AudioSeal carries 16 bits; WavMark carries 32.
+2. **It meets the robustness bar on real remix and mashup renders.** At
+   strength 15, the token came back from **every one of the 312 30-second
+   excerpts** taken from the 8 real renders under all 13 attacks (codec,
+   resample, loudness, speed, tempo, pitch, mix-under), each delivered as MP3
+   128 kbit/s. Over all 10 fixtures, including two synthetic hard cases, it
+   was 365/378 (96.6 %).
+3. **No false positives.** 0 of 1,000 unwatermarked excerpts produced a payload
+   that matched any of 10,000 database tokens. A false match needs all 128
+   bits to agree with a stored token.
+4. **Cheap and small.** Embedding takes about 0.3 s per minute of audio, the
+   stripped binary is 0.65 MB, and it runs as a separate process like ffmpeg.
+   No GPU, no Python, no model download.
+5. **The GPLv3 licence is fine for us** when it runs as a separate program
+   (see [Licence](#licence-audiowmark-is-gplv3)).
+
+What it does **not** do on its own: survive pitch shifts or tempo changes
+that keep pitch. Plain decoding scored 0 % on both. The inverse search fixes
+this for whole-semitone and whole-percent changes (27/27 each), but it only
+works when the guess lands within about 0.1 semitone or 0.2 % tempo of the real
+change. Arbitrary shifts need the fine grid, which is slower (see
+[Pitch and tempo](#pitch-and-tempo)). That is acceptable for a detector run
+by an admin, and it is the main robustness caveat to know about.
+
+**Strength 10 versus 15.** Strength 10 (upstream default) was as good on
+codecs, resampling, loudness and speed for the real renders. It recovered only
+13/24 under the -6 dB music bed, against 24/24 at strength 15. Strength 15
+costs about 3.5 dB more watermark residual (still about 32 dB below the
+programme). If the blind check hears strength 15, use 10 and accept the
+weaker mix-under result. The strength is a config value, so changing it later
+needs no code change.
 
 ## What was measured
 
@@ -80,19 +118,113 @@ under other, never-watermarked music.
 
 ### Robustness: token recovered from 30-second excerpts
 
-<!-- RESULTS-TABLE -->
+Hits out of trials (10 renders × 3 excerpts; "real" means the 8 remix and
+mashup renders, without the two synthetic hard cases). Every attacked file
+is delivered as MP3 128 kbit/s before cutting the excerpt. Wrong-token
+matches: **0 in every run.**
+
+| Attack | s10, all | s10, real | s15, all | s15, real | s15 + inverse search (real / sparse pad) |
+| --- | --- | --- | --- | --- | --- |
+| none (320k master) | 30/30 | 24/24 | 30/30 | 24/24 | – |
+| MP3 128k | 30/30 | 24/24 | 30/30 | 24/24 | – |
+| MP3 64k | 27/30 | 24/24 | 30/30 | 24/24 | – |
+| AAC 128k | 27/30 | 24/24 | 29/30 | 24/24 | – |
+| resample 48 → 44.1 kHz | 30/30 | 24/24 | 30/30 | 24/24 | – |
+| -14 LUFS re-normalisation | 30/30 | 24/24 | 30/30 | 24/24 | – |
+| speed +5 % | 27/30 | 24/24 | 27/30 | 24/24 | – |
+| speed -5 % | 27/30 | 24/24 | 27/30 | 24/24 | – |
+| tempo +5 %, pitch kept | 0/30 | 0/24 | 0/30 | 0/24 | 24/24 / 3/3 |
+| tempo -5 %, pitch kept | 0/30 | 0/24 | 0/30 | 0/24 | 24/24 / 3/3 |
+| pitch +2 semitones | 0/30 | 0/24 | 0/30 | 0/24 | 24/24 / 3/3 |
+| pitch -2 semitones | 0/30 | 0/24 | 0/30 | 0/24 | 24/24 / 3/3 |
+| under other music at -6 dB | 13/30 | 13/24 | 24/30 | 24/24 | – |
+
+The misses in the "all" columns are the two synthetic signals. The
+**electro loop** (a kick and hi-hat with near-silence between hits) lost the
+mark under MP3 64k/AAC at strength 10, under ±5 % speed, and under the music
+bed. The **sparse pad** lost it under the music bed: at -6 dB under another
+track, its quiet mark is buried. Real music, which has more energy for the
+watermark to hide in, did not fail. The inverse search was not run on the
+electro loop, since it already fails the speed attack.
+
+Speed changes (pitch moves with tempo, like a turntable) are handled by
+audiowmark's own `--detect-speed`. Of the 241 strength-10 hits, 54 came from
+that second pass.
+
+#### Pitch and tempo
+
+audiowmark hides the bits in fixed frequency bands over fixed time frames, so
+a pitch shift (bands move) or a time stretch with pitch kept (frames move)
+breaks decoding completely. Speed detection does not help: it corrects a
+combined pitch-and-tempo change, not one alone.
+
+The fix is on the detector side. Undo a guessed shift with `rubberband` and
+decode again, likeliest guesses first: ±1 and ±2 semitones, then ±1…6 %
+tempo, then (`--inverse-search full`) a 0.1-semitone / 0.2 % grid over
+±2.5 semitones and ±6 %. Measured by hand, decoding still works with about
+0.1 semitone of leftover pitch error and fails at 0.25. For tempo it works
+with an exact undo and fails at 0.27 % off. The coarse grid recovered all
+attacked excerpts in a median of 6.5 tries (maximum 15), taking 13–68 s per
+excerpt on the shared container. A full-grid search over a clip with no
+watermark at all costs about 140 decodes, a few minutes of CPU. That is fine
+for an async admin job (#2575) and unacceptable inline.
 
 ### False positives
 
-<!-- FP -->
+Detector: plain `audiowmark get` with the spike key. Database: 10,000
+random 128-bit tokens. Clips: **1,000 never-watermarked 30-second
+excerpts**, each a different combination of 25 sources (the 10 clean
+fixtures plus 15 processed variants of the demo renders), the 13 attacks and
+a random offset.
+
+| Detector | Clips | Candidate payloads decoded | Matches in the database |
+| --- | --- | --- | --- |
+| plain | 1,000 | ~8,000 (every clip yields some) | **0** |
+<!-- FP-FULL -->
+
+audiowmark always prints its best guesses, even for unmarked audio, so
+"decoded something" is meaningless. Only an exact database match counts,
+which is why the token must be random and must be looked up. With a 128-bit
+token, the chance that one junk guess equals one of N stored tokens is
+N / 2¹²⁸, which is negligible at any realistic N. The extra decodes from speed
+and inverse search multiply the guesses by a few hundred at most, which does
+not change that.
 
 ### Audible quality
 
-<!-- QUALITY -->
+Measured on the PCM mix, before the MP3 encode. Residual is the integrated
+loudness of (watermarked − original), against programme loudness of
+-14 LUFS.
+
+| Fixture group | SNR, strength 10 | Residual, strength 10 | SNR, strength 15 | Residual, strength 15 |
+| --- | --- | --- | --- | --- |
+| 8 real renders | 37.9–42.4 dB | -49.6 to -51.9 LUFS | 34.3–38.9 dB | -46.1 to -48.3 LUFS |
+| sparse pad | 52.6 dB | -63.1 LUFS | 49.0 dB | -60.0 LUFS |
+| electro loop | 42.7 dB | -57.1 LUFS | 39.1 dB | -53.6 LUFS |
+
+audiowmark shapes the mark to the music (quieter material gets a quieter
+mark), so the residual sits 32–36 dB under the programme on real renders and
+about 46 dB under it on the sparse pad. That is in the range where a
+psychoacoustically shaped mark is normally inaudible, and upstream reports
+strength 10 as inaudible in its listening tests. **But SNR is not a listening
+test.** The blind A/B check is still open: run `make_abx_kit.py` at strength
+15 (and 10 if needed), listen on good headphones, and score. A score near
+50 % passes.
 
 ### Cost and footprint
 
-<!-- COST -->
+| | audiowmark 0.6.5 | AudioSeal 0.2.1 (16-bit) |
+| --- | --- | --- |
+| Embed, per minute of audio | **0.28–0.35 s** (wall time, shared 4 vCPU) | 9.6 s (1 thread) |
+| Detect, per 30 s clip | 2.1 s median unloaded / 3.3 s under load; about 15 s more with `--detect-speed`; 13–68 s with the coarse inverse search | 2.4 s (1 thread) |
+| Runtime footprint | stripped binary 0.65 MB, plus FFTW, libsndfile, libgcrypt, zita-resampler and mpg123 (13 MB of shared libraries in total including glibc; most are already in the image for ffmpeg) | PyTorch: 5.5 GB virtualenv from PyPI (CUDA build); CPU-only build not measurable here. About 94 MB of weights |
+| Runs as | separate CLI process, streams stdin → stdout | Python library, so a Python service |
+| Payload | 128 bits, keyed | 16 bits, unkeyed |
+| Licence | GPL-3.0-or-later | MIT |
+
+The detect times include the speed and inverse passes only when the earlier
+stages found nothing. On an exported file that was not pitch- or
+tempo-shifted, the plain pass answers in 2–4 s.
 
 ## AudioSeal
 
@@ -242,7 +374,12 @@ No GPU, no Python worker and no model download are needed.
 
 ## Exit criteria check
 
-<!-- EXIT -->
+| #2572 exit criterion | Result |
+| --- | --- |
+| Token recovered from ≥95 % of 30 s excerpts after the attack set at 128 kbit/s | **Met on the real renders:** 312/312 (100 %) at strength 15 with the full detector. All 10 fixtures: 365/378 (96.6 %), with the 13 misses all on the two synthetic signals and the electro loop's 12 pitch/tempo trials not run (93.6 % if all 12 count as misses). Caveat: the inverse search recovers whole-number pitch/tempo changes quickly. Arbitrary values need the slower fine grid. |
+| No false positive on the unwatermarked set | **Met on the proxy set:** 0 of 1,000 excerpts from 25 sources. The ≥1,000 *catalog tracks* run waits for staging access (#2575). |
+| No audible difference in a blind check | **Open:** needs a human listener. Kit: `make_abx_kit.py`. Objective residual: 32–36 dB under programme at strength 15. |
+| If no open-source option meets the bar, name the fallback | audiowmark meets it, apart from the human check. Fallback if the blind check fails at every usable strength, or if pitch/tempo-robustness without a detector search becomes a requirement: commercial forensic watermarking, for an owner decision. |
 
 ## Limits of this spike
 
