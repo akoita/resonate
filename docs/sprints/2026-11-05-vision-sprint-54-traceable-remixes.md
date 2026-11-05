@@ -33,6 +33,12 @@ export.
 | 4 | P1 | User feature | [#2575](https://github.com/akoita/resonate/issues/2575) (#2566 slice 3, detect) | Admin-only detect action on an uploaded clip, tried with the active and retired keys, returning the matching record and a bit-error figure. The result attaches as typed evidence to the rights evidence and dispute flow (#471, #476), with copy that says a token proves which render, not who uploaded it |
 | 5 | P2 | Technical | [#2576](https://github.com/akoita/resonate/issues/2576) (for #347) | Confirm whether the Vertex `synthid-audio:verify` endpoint that `synthid.service.ts` calls is real and documented, and record the answer on #347 |
 
+**Spike result (#2572):** audiowmark 0.6.5 at strength 15, run as a separate
+process, with an inverse pitch/tempo search in the detector. Measurements,
+GPLv3 note and the hand-off to #2573 and resonate-iac#333 are in
+[`docs/rfc/remix-watermarking.md`](../rfc/remix-watermarking.md). The blind
+listening check is still open for the owner.
+
 Deployment half: [resonate-iac#333](https://github.com/akoita/resonate-iac/issues/333)
 (key secret per environment with a retired key slot, the embedder/detector in
 the backend image or a worker image, env var wired into both apply
