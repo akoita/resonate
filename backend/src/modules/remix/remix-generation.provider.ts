@@ -1,4 +1,8 @@
 import type { RenderedStems } from "./remix-stems";
+import type {
+  RemixRenderWatermark,
+  RemixRenderWatermarkMetadata,
+} from "./remix-watermark";
 import { Injectable } from "@nestjs/common";
 import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
 import type { RemixFxRecipe, RemixRenderFx } from "./remix-fx";
@@ -534,6 +538,12 @@ export type RemixRenderMetadata = {
    * and "ai_part" (#1901, at least one audible AI part). Absent when none.
    */
   addedParts?: Array<"beat" | "ai_part">;
+  /**
+   * #2573: whether the artifact carries a remix watermark, and with which
+   * scheme and key id, or why it does not. Never the token. Absent on renders
+   * that are not final drafts and on drafts rendered before #2573.
+   */
+  watermark?: RemixRenderWatermarkMetadata;
 };
 
 export type RemixConditioningEffects = {
@@ -644,6 +654,11 @@ export type RemixGenerationJob = {
    * draft when "Also render stems" was on; absent otherwise.
    */
   renderedStems?: RenderedStems;
+  /**
+   * #2573: the token the final draft (and its stems) embedded, for the
+   * admin-only token row. Never persisted into the draft metadata.
+   */
+  watermark?: RemixRenderWatermark;
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
   outputMetadata: RemixGenerationOutputMetadata;
 };

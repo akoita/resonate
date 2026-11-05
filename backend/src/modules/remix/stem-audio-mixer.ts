@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { execFile } from "child_process";
-import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { mkdtemp, readFile, rename, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { promisify } from "util";
@@ -91,6 +91,14 @@ import {
   REMIX_AUTOMATION_DSP_VERSION,
   type TimedStemAutomation,
 } from "./remix-automation";
+import {
+  newRemixWatermarkToken,
+  REMIX_WATERMARK_SCHEME,
+  REMIX_WATERMARK_SCHEME_VERSION,
+  type RemixRenderWatermark,
+  type RemixRenderWatermarkMetadata,
+  type RemixWatermarkEmbedder,
+} from "./remix-watermark";
 
 const execFileAsync = promisify(execFile);
 
@@ -143,6 +151,28 @@ export type MixedStemAudio = {
   /** Number of unmuted stems that went into the mix. */
   stemCount: number;
   renderMetadata: RemixRenderMetadata;
+  /**
+   * #2573: the token a watermarked render embedded, for the token row. Present
+   * only when the caller asked for a watermark and the master carries it.
+   */
+  watermark?: RemixRenderWatermark;
+};
+
+/**
+ * Per-call mixer options. Absent = the pre-#2550/#2573 behaviour,
+ * byte-identical.
+ */
+export type StemMixOptions = {
+  /**
+   * #2550: also write each layer as a pre-master stem file and hand it to
+   * `stemTaps` before cleanup.
+   */
+  stemTaps?: StemTapSink;
+  /**
+   * #2573: embed a watermark in the master (and every stem tap) when a key is
+   * configured. Only final drafts ask; conditioning mixes never do.
+   */
+  watermark?: boolean;
 };
 
 /**
@@ -190,6 +220,8 @@ export type MixedAudioBuffers = {
   mimeType: string;
   inputCount: number;
   renderMetadata: RemixRenderMetadata;
+  /** #2573: see {@link MixedStemAudio.watermark}. */
+  watermark?: RemixRenderWatermark;
 };
 
 /**
@@ -226,11 +258,8 @@ export interface StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
-    /**
-     * #2550: also write each layer as a pre-master stem file and hand it to
-     * `stemTaps` before cleanup. Absent = no stems, byte-identical.
-     */
-    options?: { stemTaps?: StemTapSink },
+    /** Stem taps (#2550) and watermarking (#2573); see {@link StemMixOptions}. */
+    options?: StemMixOptions,
   ): Promise<MixedStemAudio>;
   mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
@@ -240,6 +269,8 @@ export interface StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
+    /** Watermarking (#2573); stem taps are a stem_mix-only feature. */
+    options?: Pick<StemMixOptions, "watermark">,
   ): Promise<MixedAudioBuffers>;
 }
 
@@ -433,11 +464,41 @@ function pushOutputArgs(
   outputPath: string,
 ): string[] {
   const policy = REMIX_RENDER_AUDIO_POLICY;
+  // #2573: a watermarked render writes the master as 32-bit float PCM, so the
+  // mark goes onto the mix before the one lossy encode. An MP3 path keeps
+  // today's args byte-identical.
+  const codec = outputPath.endsWith(".wav")
+    ? ["-codec:a", "pcm_f32le"]
+    : ["-codec:a", "libmp3lame", "-b:a", `${policy.outputBitrateKbps}k`];
   args.push(
     "-filter_complex",
     filter,
     "-map",
     "[mix]",
+    ...codec,
+    "-ar",
+    String(policy.outputSampleRateHz),
+    "-ac",
+    String(policy.outputChannels),
+    outputPath,
+  );
+  return args;
+}
+
+/**
+ * #2573: the final MP3 encode of a watermarked PCM master, with the same
+ * settings as the single-pass render ({@link pushOutputArgs}).
+ */
+export function buildMasterEncodeArgs(inputPath: string, outputPath: string): string[] {
+  const policy = REMIX_RENDER_AUDIO_POLICY;
+  return [
+    "-y",
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    inputPath,
     "-codec:a",
     "libmp3lame",
     "-b:a",
@@ -447,8 +508,53 @@ function pushOutputArgs(
     "-ac",
     String(policy.outputChannels),
     outputPath,
-  );
-  return args;
+  ];
+}
+
+/** #2573: re-encodes a watermarked stem tap to the stem policy's FLAC. */
+export function buildStemTapEncodeArgs(inputPath: string, outputPath: string): string[] {
+  const policy = REMIX_STEM_TAP_AUDIO_POLICY;
+  return [
+    "-y",
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    inputPath,
+    "-codec:a",
+    policy.codec,
+    "-sample_fmt",
+    "s32",
+    "-bits_per_raw_sample",
+    String(policy.bitDepth),
+    "-ar",
+    String(policy.sampleRateHz),
+    "-ac",
+    String(policy.channels),
+    outputPath,
+  ];
+}
+
+/**
+ * A short reason for the log. Never the error message itself: execFile puts
+ * the whole command line in it, and that holds the token.
+ */
+function watermarkErrorMessage(error: unknown): string {
+  const failure = error as {
+    code?: unknown;
+    signal?: unknown;
+    killed?: unknown;
+    stderr?: unknown;
+  } | null;
+  const parts: string[] = [];
+  if (failure?.killed) parts.push("timed out");
+  if (failure?.code !== undefined && failure?.code !== null) parts.push(`code ${String(failure.code)}`);
+  if (failure?.signal) parts.push(`signal ${String(failure.signal)}`);
+  const stderr =
+    typeof failure?.stderr === "string" ? failure.stderr.trim().split("\n")[0] : "";
+  if (stderr) parts.push(stderr.slice(0, 200));
+  return parts.length > 0 ? parts.join(", ") : "unknown error";
 }
 
 /** One 24-bit FLAC output per stem tap `[stem<i>]` (#2550). */
@@ -1435,6 +1541,8 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
   constructor(
     private readonly storageProvider: StorageProvider,
     private readonly encryptionService: EncryptionService,
+    /** #2573: null when no watermark key is configured. */
+    private readonly watermarkEmbedder: RemixWatermarkEmbedder | null = null,
   ) {}
 
   async mixUnmutedStems(
@@ -1444,7 +1552,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
-    options?: { stemTaps?: StemTapSink },
+    options?: StemMixOptions,
   ): Promise<MixedStemAudio> {
     return this.mixStemArrangement(
       stems,
@@ -1455,7 +1563,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       structure,
       beat,
       parts,
-      options?.stemTaps,
+      options,
     );
   }
 
@@ -1467,6 +1575,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
+    options?: Pick<StemMixOptions, "watermark">,
   ): Promise<MixedAudioBuffers> {
     return this.mixStemArrangement(
       stems,
@@ -1477,6 +1586,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       structure,
       beat,
       parts,
+      options,
     );
   }
 
@@ -1489,7 +1599,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
-    stemTaps?: StemTapSink,
+    options?: StemMixOptions,
   ): Promise<MixedStemAudio>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -1500,6 +1610,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     structure?: RemixRenderStructure,
     beat?: RemixRenderBeat,
     parts?: RemixRenderParts,
+    options?: Pick<StemMixOptions, "watermark">,
   ): Promise<MixedAudioBuffers>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -1510,9 +1621,13 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     structure?: RemixRenderStructure,
     renderBeat?: RemixRenderBeat,
     renderParts?: RemixRenderParts,
-    stemTaps?: StemTapSink,
+    options?: StemMixOptions,
   ): Promise<MixedStemAudio | MixedAudioBuffers> {
     const label = authorization.remixProjectId;
+    const stemTaps = options?.stemTaps;
+    // #2573: one token per render job covers the master and every stem tap.
+    const embedder = options?.watermark ? this.watermarkEmbedder : null;
+    const watermarkToken = embedder ? newRemixWatermarkToken() : null;
     // A muted beat (#1902) is skipped entirely: the graph and metadata are
     // identical to a render without a beat.
     const beat = renderBeat && !renderBeat.beat.muted ? renderBeat : undefined;
@@ -1659,6 +1774,9 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       }
 
       const outputPath = join(workDir, "mix.mp3");
+      // #2573: with a watermark, ffmpeg writes the PCM master, the mark goes
+      // on it, then one MP3 encode (see encodeWatermarkedMaster).
+      const mixPath = embedder ? join(workDir, "mix.wav") : outputPath;
       let ffmpegFx: StemMixFfmpegFx | undefined;
       if (fx) {
         // #1897: the reverb IR is code-generated (deterministic, unlicensed)
@@ -1688,14 +1806,14 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       const args = stemOutputs
         ? buildStemMixFfmpegArgs(
             ffmpegInputs,
-            outputPath,
+            mixPath,
             ffmpegFx,
             structure ?? null,
             stemOutputs,
           )
         : structure
-        ? buildStemMixFfmpegArgs(ffmpegInputs, outputPath, ffmpegFx, structure)
-        : buildStemMixFfmpegArgs(ffmpegInputs, outputPath, ffmpegFx);
+        ? buildStemMixFfmpegArgs(ffmpegInputs, mixPath, ffmpegFx, structure)
+        : buildStemMixFfmpegArgs(ffmpegInputs, mixPath, ffmpegFx);
       const started = Date.now();
       try {
         // The FLAC encodes add work to the same pass: twice the budget.
@@ -1715,11 +1833,67 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         `[mix] ${label}: mixed ${ffmpegInputs.length} stems in ${Date.now() - started}ms`,
       );
 
+      let watermark: RemixRenderWatermark | undefined;
+      let watermarkMetadata: RemixRenderWatermarkMetadata | undefined;
+      if (options?.watermark && !embedder) {
+        watermarkMetadata = { status: "none", reason: "no_key" };
+      }
+      if (embedder && watermarkToken) {
+        const embedded = await this.encodeWatermarkedMaster(
+          embedder,
+          workDir,
+          mixPath,
+          outputPath,
+          watermarkToken,
+          label,
+        );
+        watermarkMetadata = embedded
+          ? {
+              status: "embedded",
+              scheme: REMIX_WATERMARK_SCHEME,
+              schemeVersion: REMIX_WATERMARK_SCHEME_VERSION,
+              strength: embedder.strength,
+              keyId: embedder.keyId,
+            }
+          : { status: "none", reason: "embed_failed" };
+        if (embedded) {
+          watermark = {
+            token: watermarkToken,
+            scheme: REMIX_WATERMARK_SCHEME,
+            schemeVersion: REMIX_WATERMARK_SCHEME_VERSION,
+            strength: embedder.strength,
+            keyId: embedder.keyId,
+            stemIndexes: [],
+          };
+        }
+      }
       const buffer = await readFile(outputPath);
       if (stemTaps && stemOutputs) {
+        let stemsFailed = 0;
         // One at a time, before the temp dir goes: the sink uploads each.
         for (const [index, input] of ffmpegInputs.entries()) {
+          // #2573: the same token goes into each stem on its own, so every
+          // stem file carries a readable mark. Only when the master has it.
+          if (watermark && embedder) {
+            const ok = await this.watermarkStemTap(
+              embedder,
+              workDir,
+              stemOutputs[index],
+              watermark.token,
+              index,
+              label,
+            );
+            if (ok) watermark.stemIndexes.push(index);
+            else stemsFailed += 1;
+          }
           await stemTaps(stemTapLayer(input, index), stemOutputs[index]);
+        }
+        if (watermark && watermarkMetadata?.status === "embedded") {
+          watermarkMetadata = {
+            ...watermarkMetadata,
+            stemsEmbedded: watermark.stemIndexes.length,
+            ...(stemsFailed > 0 ? { stemsFailed } : {}),
+          };
         }
       }
       const automationStemIds = ffmpegInputs
@@ -1741,6 +1915,8 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
               automationStemIds,
             }
           : {}),
+        // #2573: whether the artifact carries a watermark (never the token).
+        ...(watermarkMetadata ? { watermark: watermarkMetadata } : {}),
       };
       return stemOnly
         ? {
@@ -1748,12 +1924,14 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
             mimeType: REMIX_RENDER_AUDIO_POLICY.outputMimeType,
             stemCount: activeStems.length,
             renderMetadata: metadata,
+            ...(watermark ? { watermark } : {}),
           }
         : {
             buffer,
             mimeType: REMIX_RENDER_AUDIO_POLICY.outputMimeType,
             inputCount: ffmpegInputs.length,
             renderMetadata: metadata,
+            ...(watermark ? { watermark } : {}),
           };
     } finally {
       // Plaintext for encrypted stems lives only here; deletion must run on
@@ -1767,6 +1945,91 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           }`,
         );
       });
+    }
+  }
+
+  /**
+   * #2573: embeds the token in the PCM master and encodes the MP3 the policy
+   * ships. On any embed failure the unwatermarked PCM is encoded instead and
+   * the render goes on: a watermark problem never fails a render. An encode
+   * failure is a render failure, as it was before.
+   */
+  private async encodeWatermarkedMaster(
+    embedder: RemixWatermarkEmbedder,
+    workDir: string,
+    mixPath: string,
+    outputPath: string,
+    token: string,
+    label: string,
+  ): Promise<boolean> {
+    const markedPath = join(workDir, "mix.wm.wav");
+    let embedded = true;
+    const started = Date.now();
+    try {
+      await embedder.embed(mixPath, markedPath, token);
+    } catch (error) {
+      embedded = false;
+      this.logger.warn(
+        `[watermark] ${label}: embed failed, shipping the render unwatermarked: ${watermarkErrorMessage(error)}`,
+      );
+    }
+    try {
+      await execFileAsync(
+        "ffmpeg",
+        buildMasterEncodeArgs(embedded ? markedPath : mixPath, outputPath),
+        { timeout: FFMPEG_TIMEOUT_MS },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`ffmpeg master encode failed for ${label}: ${message}`);
+      throw new RemixGenerationProviderError(
+        "provider_unavailable",
+        "The stems could not be mixed. Please try again later.",
+        true,
+      );
+    }
+    if (embedded) {
+      this.logger.log(
+        `[watermark] ${label}: embedded and encoded in ${Date.now() - started}ms`,
+      );
+    }
+    return embedded;
+  }
+
+  /**
+   * #2573: embeds the token in one stem-tap FLAC, rewriting it in place as
+   * 24-bit FLAC. On failure the original file is left as it was.
+   */
+  private async watermarkStemTap(
+    embedder: RemixWatermarkEmbedder,
+    workDir: string,
+    stemPath: string,
+    token: string,
+    index: number,
+    label: string,
+  ): Promise<boolean> {
+    const markedPath = join(workDir, `stem-wm-${index}.wav`);
+    const encodedPath = join(
+      workDir,
+      `stem-wm-${index}${REMIX_STEM_TAP_AUDIO_POLICY.extension}`,
+    );
+    try {
+      await embedder.embed(stemPath, markedPath, token);
+      await execFileAsync(
+        "ffmpeg",
+        buildStemTapEncodeArgs(markedPath, encodedPath),
+        { timeout: FFMPEG_TIMEOUT_MS },
+      );
+      await rename(encodedPath, stemPath);
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `[watermark] ${label}: stem ${index} embed failed, shipping it unwatermarked: ${watermarkErrorMessage(error)}`,
+      );
+      return false;
+    } finally {
+      await rm(markedPath, { force: true }).catch(() => undefined);
+      await rm(encodedPath, { force: true }).catch(() => undefined);
     }
   }
 

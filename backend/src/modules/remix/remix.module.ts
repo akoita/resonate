@@ -1,5 +1,6 @@
 import { backgroundLoopProviders } from "../../config/runtime_mode";
-import { Module } from "@nestjs/common";
+import { Logger, Module } from "@nestjs/common";
+import { remixWatermarkEmbedderFromEnv } from "./remix-watermark";
 import { BullModule } from "@nestjs/bullmq";
 import { SharedModule } from "../shared/shared.module";
 import { GenerationModule } from "../generation/generation.module";
@@ -77,7 +78,13 @@ import {
       useFactory: (
         storageProvider: StorageProvider,
         encryptionService: EncryptionService,
-      ) => new FfmpegStemAudioMixer(storageProvider, encryptionService),
+      ) =>
+        new FfmpegStemAudioMixer(
+          storageProvider,
+          encryptionService,
+          // #2573: null (no watermark) unless REMIX_WATERMARK_KEY is set.
+          remixWatermarkEmbedderFromEnv(new Logger("RemixWatermark")),
+        ),
       inject: [StorageProvider, EncryptionService],
     },
     // Provider boundary (#896): REMIX_GENERATION_PROVIDER_KIND selects the

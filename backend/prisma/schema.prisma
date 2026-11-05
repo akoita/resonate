@@ -75,6 +75,7 @@ model User {
   stemQualityRatings          StemQualityRating[]
   remixProjects               RemixProject[]
   remixPartTakes              RemixPartTake[]
+  remixWatermarks             RemixRenderWatermark[]
   reputationFeedbackSubmitted AgentReputationFeedback[]     @relation("AgentReputationFeedbackSubmitter")
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
@@ -1792,6 +1793,43 @@ model RemixProjectStem {
 
   @@unique([remixProjectId, stemId])
   @@index([stemId])
+}
+
+// Remix render watermark tokens (#2566 slice 2, #2573). One row per watermarked
+// render job: the opaque random 128-bit token embedded in the draft master,
+// its rendered stems (#2550) and anything re-encoded from them, and what the
+// render was made from. Admin-only: the detector (#2575) looks a decoded token
+// up here. The token never encodes a person. On account erasure the row is
+// kept and the owner pseudonymised through the `userId` cascade.
+model RemixRenderWatermark {
+  id                     String   @id @default(uuid())
+  // 32 lowercase hex characters (the audiowmark payload).
+  token                  String   @unique
+  remixProjectId         String
+  // The queued generation job and the render job that produced the audio.
+  generationJobId        String
+  renderJobId            String
+  userId                 String
+  sourceTrackId          String
+  secondarySourceTrackId String?
+  // Source stems in the render, and the licence proof for each at render
+  // time: [{ stemId, basis: "owner" | "commercial" | "remix" | "none",
+  //   stemPurchaseIds, x402SettlementIds }].
+  stemIds                String[]
+  stemLicenses           Json
+  // Stem-tap layer indexes (#2550) whose files carry the same token.
+  renderedStemIndexes    Int[]
+  policyVersion          String
+  scheme                 String
+  schemeVersion          String
+  strength               Float
+  keyId                  String
+  createdAt              DateTime @default(now())
+  user                   User     @relation(fields: [userId], references: [id])
+
+  @@index([remixProjectId])
+  @@index([userId])
+  @@index([sourceTrackId])
 }
 
 // Per-chain block cursor for the contract indexer. Also carries the fenced,

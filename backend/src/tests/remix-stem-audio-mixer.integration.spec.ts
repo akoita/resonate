@@ -17,9 +17,17 @@
  */
 
 import { execFileSync } from "child_process";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "../db/prisma";
 import {
@@ -28,6 +36,13 @@ import {
 } from "../modules/encryption/encryption.service";
 import { AesEncryptionProvider } from "../modules/encryption/providers/aes_encryption_provider";
 import { FfmpegStemAudioMixer } from "../modules/remix/stem-audio-mixer";
+import { RemixWatermarkEmbedder } from "../modules/remix/remix-watermark";
+import { renderDjExtended } from "../modules/remix/remix-dj-export";
+import {
+  djExtendedPlan,
+  REMIX_CUES_SCHEMA_VERSION,
+  REMIX_DRAFT_GRID_SCHEMA_VERSION,
+} from "../modules/remix/remix-cues";
 import { structureTimeline } from "../modules/remix/remix-structure";
 import {
   REMIX_BEAT_SCHEMA_VERSION,
@@ -859,6 +874,280 @@ function sineWav(
   header.writeUInt32LE(16, 16);
   header.writeUInt16LE(1, 20); // PCM
   header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(data.length, 40);
+  return Buffer.concat([header, data]);
+}
+
+const audiowmarkAvailable = (() => {
+  try {
+    execFileSync("audiowmark", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+(ffmpegAvailable ? describe : describe.skip)(
+  "FfmpegStemAudioMixer remix watermark (#2573)",
+  () => {
+    const WM_PREFIX = `mixer_wm_${Date.now()}_`;
+    const WM_TRACK = `${WM_PREFIX}track`;
+    const WM_STEM = `${WM_PREFIX}stem`;
+    const KEY = "key 00112233445566778899aabbccddeeff";
+    const storageProvider = {
+      upload: jest.fn(),
+      download: jest.fn().mockResolvedValue(null),
+      downloadRange: jest.fn(),
+      delete: jest.fn(),
+    };
+    const encryptionService = { decryptForRender: jest.fn() };
+    let binDir: string;
+    const auth = (): StemRenderAuthorization => ({
+      userId: `${WM_PREFIX}user`,
+      remixProjectId: `${WM_PREFIX}project`,
+      authorizedStemIds: new Set([WM_STEM]),
+    });
+    const stems = [{ stemId: WM_STEM, gainDb: 0, muted: false }];
+
+    /** A stand-in for audiowmark add: copies its input to its output (or fails). */
+    function fakeAudiowmark(fail = false): string {
+      const path = join(binDir, fail ? "fail.sh" : "copy.sh");
+      writeFileSync(
+        path,
+        fail
+          ? "#!/bin/sh\necho boom >&2\nexit 1\n"
+          : '#!/bin/sh\nexec ffmpeg -y -loglevel error -i "$6" -c:a pcm_f32le "$7"\n',
+      );
+      chmodSync(path, 0o755);
+      return path;
+    }
+    const mixerWith = (binary: string | null) =>
+      new FfmpegStemAudioMixer(
+        storageProvider as unknown as StorageProvider,
+        encryptionService as unknown as EncryptionService,
+        binary
+          ? new RemixWatermarkEmbedder({ key: KEY, keyId: "test-key", strength: 15, binary })
+          : null,
+      );
+
+    beforeAll(async () => {
+      binDir = mkdtempSync(join(tmpdir(), "wm-bin-"));
+      await prisma.user.create({
+        data: { id: `${WM_PREFIX}user`, email: `${WM_PREFIX}@test.resonate` },
+      });
+      await prisma.artist.create({
+        data: { id: `${WM_PREFIX}artist`, displayName: "WM Artist" },
+      });
+      await prisma.release.create({
+        data: {
+          id: `${WM_PREFIX}release`,
+          artistId: `${WM_PREFIX}artist`,
+          title: "WM Release",
+          status: "ready",
+        },
+      });
+      await prisma.track.create({
+        data: { id: WM_TRACK, releaseId: `${WM_PREFIX}release`, title: "T", position: 1 },
+      });
+      await prisma.stem.create({
+        data: {
+          id: WM_STEM,
+          trackId: WM_TRACK,
+          type: "other",
+          uri: "db://bytes",
+          data: noisyWav(20),
+          mimeType: "audio/wav",
+          isEncrypted: false,
+        },
+      });
+    });
+
+    afterAll(async () => {
+      rmSync(binDir, { recursive: true, force: true });
+      await prisma.stem.deleteMany({ where: { trackId: WM_TRACK } });
+      await prisma.track.deleteMany({ where: { id: WM_TRACK } });
+      await prisma.release.deleteMany({ where: { id: `${WM_PREFIX}release` } });
+      await prisma.artist.deleteMany({ where: { id: `${WM_PREFIX}artist` } });
+      await prisma.user.deleteMany({ where: { id: `${WM_PREFIX}user` } });
+    });
+
+    it("embeds one token in the master and every stem tap, and records it without the token", async () => {
+      const before = remixMixTempDirs();
+      const stemFiles: Buffer[] = [];
+      const mixed = await mixerWith(fakeAudiowmark()).mixUnmutedStems(
+        stems,
+        auth(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          watermark: true,
+          stemTaps: async (_layer, path) => {
+            stemFiles.push(readFileSync(path));
+          },
+        },
+      );
+      expect(mixed.mimeType).toBe("audio/mpeg");
+      expect(mixed.buffer.subarray(0, 3).toString("latin1")).toMatch(/^(ID3|\xff)/);
+      expect(mixed.watermark).toEqual({
+        token: expect.stringMatching(/^[0-9a-f]{32}$/),
+        scheme: "audiowmark",
+        schemeVersion: "0.6.5",
+        strength: 15,
+        keyId: "test-key",
+        stemIndexes: [0],
+      });
+      expect(mixed.renderMetadata.watermark).toEqual({
+        status: "embedded",
+        scheme: "audiowmark",
+        schemeVersion: "0.6.5",
+        strength: 15,
+        keyId: "test-key",
+        stemsEmbedded: 1,
+      });
+      expect(JSON.stringify(mixed.renderMetadata)).not.toContain(mixed.watermark!.token);
+      expect(stemFiles).toHaveLength(1);
+      expect(stemFiles[0].subarray(0, 4).toString("latin1")).toBe("fLaC");
+      const after = remixMixTempDirs();
+      expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
+    });
+
+    it("ships the render unwatermarked when the embedder fails", async () => {
+      const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+      const stemFiles: Buffer[] = [];
+      const mixed = await mixerWith(fakeAudiowmark(true)).mixUnmutedStems(
+        stems,
+        auth(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          watermark: true,
+          stemTaps: async (_layer, path) => {
+            stemFiles.push(readFileSync(path));
+          },
+        },
+      );
+      expect(mixed.buffer.length).toBeGreaterThan(0);
+      expect(mixed.watermark).toBeUndefined();
+      expect(mixed.renderMetadata.watermark).toEqual({
+        status: "none",
+        reason: "embed_failed",
+      });
+      expect(stemFiles).toHaveLength(1);
+      // The log says why, but never carries the command line (it holds the token).
+      const logged = warn.mock.calls.map(([message]) => String(message)).join("\n");
+      expect(logged).toContain("embed failed");
+      expect(logged).toContain("code 1");
+      expect(logged).not.toMatch(/[0-9a-f]{32}/);
+      expect(logged).not.toContain("--key");
+      warn.mockRestore();
+    });
+
+    it("records watermark none without a key, and nothing when the caller did not ask", async () => {
+      const unkeyed = await mixerWith(null).mixUnmutedStems(
+        stems,
+        auth(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { watermark: true },
+      );
+      expect(unkeyed.watermark).toBeUndefined();
+      expect(unkeyed.renderMetadata.watermark).toEqual({ status: "none", reason: "no_key" });
+
+      // A conditioning mix (no watermark asked) is untouched even with a key.
+      const conditioning = await mixerWith(fakeAudiowmark()).mixUnmutedStems(stems, auth());
+      expect(conditioning.watermark).toBeUndefined();
+      expect("watermark" in conditioning.renderMetadata).toBe(false);
+    });
+
+    (audiowmarkAvailable ? it : it.skip)(
+      "embeds a token the real audiowmark decodes from the MP3 master, the DJ extended export and the stem FLAC",
+      async () => {
+        const dir = mkdtempSync(join(tmpdir(), "wm-real-"));
+        try {
+          const keyPath = join(dir, "key");
+          writeFileSync(keyPath, `${KEY}\n`);
+          const stemPaths: string[] = [];
+          const mixed = await mixerWith("audiowmark").mixUnmutedStems(
+            stems,
+            auth(),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            {
+              watermark: true,
+              stemTaps: async (_layer, path) => {
+                const copy = join(dir, `stem-${stemPaths.length}.flac`);
+                writeFileSync(copy, readFileSync(path));
+                stemPaths.push(copy);
+              },
+            },
+          );
+          const token = mixed.watermark!.token;
+          const masterPath = join(dir, "master.mp3");
+          writeFileSync(masterPath, mixed.buffer);
+          // DJ extended (#2540) re-renders the stored master: the mark carries.
+          const plan = djExtendedPlan(
+            {
+              schemaVersion: REMIX_DRAFT_GRID_SCHEMA_VERSION,
+              bpm: 120,
+              downbeatsSec: Array.from({ length: 10 }, (_, bar) => bar * 2),
+              timelineEndSec: 20,
+            },
+            {
+              schemaVersion: REMIX_CUES_SCHEMA_VERSION,
+              intro: { startBar: 1, bars: 2, repeats: 1 },
+              outro: null,
+            },
+          );
+          if ("unavailable" in plan) throw new Error(plan.unavailable);
+          const djPath = join(dir, "dj-extended.mp3");
+          writeFileSync(djPath, await renderDjExtended(mixed.buffer, ".mp3", plan));
+          for (const path of [masterPath, djPath, ...stemPaths]) {
+            const out = execFileSync("audiowmark", ["get", "--key", keyPath, path], {
+              encoding: "utf8",
+            });
+            expect(out).toContain(token);
+          }
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
+      60_000,
+    );
+  },
+);
+
+/** 16-bit mono 44.1 kHz noise + tone: a carrier audiowmark can hide a payload in. */
+function noisyWav(seconds: number, sampleRate = 44_100): Buffer {
+  const samples = Math.floor(seconds * sampleRate);
+  const data = Buffer.alloc(samples * 2);
+  let seed = 12345;
+  for (let i = 0; i < samples; i++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    const noise = (seed / 0x7fffffff - 0.5) * 6000;
+    const tone = Math.sin((2 * Math.PI * 220 * i) / sampleRate) * 4000;
+    data.writeInt16LE(Math.round(noise + tone), i * 2);
+  }
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
   header.writeUInt32LE(sampleRate, 24);
   header.writeUInt32LE(sampleRate * 2, 28);
   header.writeUInt16LE(2, 32);

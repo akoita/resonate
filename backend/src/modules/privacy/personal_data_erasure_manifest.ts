@@ -631,6 +631,16 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     matchOn: "creatorUserId",
   },
   {
+    model: "RemixRenderWatermark",
+    disposition: "retain",
+    reason:
+      "A watermark token row is the trail from a leaked remix back to the licence it was rendered under "
+      + "(#2573): an owner decision (2026-11-04) keeps it after erasure, with the owner pseudonymised.",
+    note:
+      "The row holds no free text. `userId` cascades to the rotated pseudonymous id, and the token is random, "
+      + "so nothing in it names the person.",
+  },
+  {
     model: "RemixPartTake",
     disposition: "anonymize",
     reason:

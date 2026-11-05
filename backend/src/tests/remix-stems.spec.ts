@@ -327,11 +327,12 @@ describe("stem-mix renderer stores each stem (#2550)", () => {
     }
   });
 
-  it("calls the mixer as before without the option", async () => {
+  it("asks the mixer only for the watermark without the stems option", async () => {
     const h = harness();
     try {
       const job = await h.renderer.render({ ...input, renderStems: undefined } as never);
-      expect(h.mixer.mixUnmutedStems.mock.calls[0]).toHaveLength(2);
+      // #2573: only the watermark option, no stem taps.
+      expect(h.mixer.mixUnmutedStems.mock.calls[0][6]).toEqual({ watermark: true });
       expect(job.renderedStems).toBeUndefined();
     } finally {
       rmSync(h.dir, { recursive: true, force: true });
