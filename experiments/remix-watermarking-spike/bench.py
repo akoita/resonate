@@ -62,9 +62,9 @@ class Audiowmark:
     name = "audiowmark"
 
     def __init__(self, binary: str, key: str, strength: float | None = None,
-                 inverse_search: bool = False):
+                 inverse_search: str | None = None, speed: bool = True):
         self.bin, self.key, self.strength = binary, key, strength
-        self.inverse_search = inverse_search
+        self.inverse_search, self.speed = inverse_search, speed
 
     def new_token(self) -> str:
         return secrets.token_hex(16)  # 128 bits, opaque
@@ -88,7 +88,7 @@ class Audiowmark:
         t0 = time.perf_counter()
         got = self._get(path, speed=False)
         extra = {"plain_s": round(time.perf_counter() - t0, 3), "speed_pass": False}
-        if not wanted or not (set(got) & wanted):
+        if self.speed and (not wanted or not (set(got) & wanted)):
             t1 = time.perf_counter()
             got += self._get(path, speed=True)
             extra.update(speed_pass=True, speed_s=round(time.perf_counter() - t1, 3))
@@ -99,8 +99,7 @@ class Audiowmark:
             extra.update(inverse_tries=tries, inverse_s=round(time.perf_counter() - t2, 3))
         return got, extra
 
-    @staticmethod
-    def inverse_grid() -> list[tuple[str, float]]:
+    def inverse_grid(self) -> list[tuple[str, float]]:
         """Candidate undo-transforms, likeliest first: whole semitones and
         whole tempo percents, then a fine grid. audiowmark only tolerates
         about 0.1 semitone / 0.2 % of residual error, hence the fine steps."""
@@ -108,7 +107,7 @@ class Audiowmark:
         coarse += [("t", 1 / (1 + pc / 100)) for pc in (1, 2, 3, 4, 5, 6, -1, -2, -3, -4, -5, -6)]
         fine = [("p", -round(st / 10, 1)) for st in range(-25, 26) if st % 10]
         fine += [("t", 1 / (1 + pc / 500)) for pc in range(-30, 31) if pc % 5]
-        return coarse + fine
+        return coarse if self.inverse_search == "coarse" else coarse + fine
 
     def _inverse_search(self, path: Path, wanted: set[str]) -> tuple[list[str], int]:
         tmp = path.with_suffix(".inv.wav")
@@ -181,7 +180,8 @@ class AudioSeal:
 
 def make_scheme(args):
     if args.scheme == "audiowmark":
-        return Audiowmark(args.audiowmark, args.key, args.strength, args.inverse_search)
+        return Audiowmark(args.audiowmark, args.key, args.strength, args.inverse_search,
+                          speed=not args.no_speed)
     return AudioSeal()
 
 
@@ -236,7 +236,8 @@ def robustness(args) -> None:
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     bed = fx / "other" / "bed.wav"
-    fixtures = sorted((fx / "clean").glob("*.wav"))
+    fixtures = [f for f in sorted((fx / "clean").glob("*.wav"))
+                if not args.only or any(k in f.stem for k in args.only)]
     embedded: dict[str, dict] = {}
     for f in fixtures:
         tok = scheme.new_token()
@@ -328,6 +329,8 @@ def falsepos(args) -> None:
             if n % 100 == 0:
                 print(f"{n}/{len(plan)} fp so far={sum(bool(x['db_matches']) for x in rows)}", flush=True)
     out = {"scheme": scheme.name, "clips": len(rows), "db_size": len(db),
+           "detector": {"speed_pass": getattr(scheme, "speed", None),
+                        "inverse_search": getattr(scheme, "inverse_search", None)},
            "false_positives": sum(bool(r["db_matches"]) for r in rows),
            "clips_with_any_decoded_payload": sum(r["decoded"] > 0 for r in rows), "rows": rows}
     Path(args.out).write_text(json.dumps(out, indent=1))
@@ -347,8 +350,11 @@ if __name__ == "__main__":
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--count", type=int, default=1000)
     ap.add_argument("--db", type=int, default=10000)
-    ap.add_argument("--inverse-search", action="store_true",
-                    help="audiowmark: try undoing pitch/tempo shifts before giving up")
+    ap.add_argument("--inverse-search", choices=["coarse", "full"],
+                    help="audiowmark: try undoing pitch/tempo shifts before giving up "
+                         "(coarse: whole semitones/percents; full: adds a 0.1 st / 0.2 %% grid)")
+    ap.add_argument("--no-speed", action="store_true", help="audiowmark: skip the --detect-speed retry")
+    ap.add_argument("--only", nargs="*", help="substring filter on fixture names")
     ap.add_argument("--attacks", nargs="*", help="substring filter on attack names")
     a = ap.parse_args()
     robustness(a) if a.mode == "robustness" else falsepos(a)

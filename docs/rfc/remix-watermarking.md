@@ -246,8 +246,55 @@ No GPU, no Python worker and no model download are needed.
 
 ## Limits of this spike
 
-<!-- LIMITS -->
+- **Small, derived test set.** 10 renders, built from the five Remix Studio
+  demo renders (the only real remix audio in the repository), plus two
+  synthetic hard cases. The demos are 10–21 s long and were looped to 60 s.
+  Genres are narrow. Before #2573 is called done, repeat the robustness table
+  on 20+ real staging remix and mashup renders across genres (the harness
+  takes any folder of WAVs in `clean/`).
+- **False positives were measured on 1,000 excerpts from 25 sources**, not on
+  1,000 distinct catalog tracks: this sandbox has no catalog access. Each
+  excerpt is a different source/attack/offset combination, which exercises
+  the decoder's chance of emitting a matching payload, but it is not the
+  catalog-scale check #2572 asks for. #2575 should run the detector over
+  ≥1,000 staging catalog tracks once the detect path exists.
+- **No human listening test yet.** The blind A/B check needs ears;
+  `make_abx_kit.py` builds the kit (10 randomised pairs plus a sealed answer
+  key) for the owner to run. Until then, audibility rests on the residual
+  measurements below.
+- **AudioSeal robustness not measured** (checkpoint host unreachable from the
+  sandbox). Its payload size disqualifies it for per-render tokens anyway.
+- **Timings come from a shared 4-vCPU container**, with several jobs running at
+  once. Treat them as order-of-magnitude figures, not benchmarks.
 
 ## Reproduce
 
-<!-- REPRO -->
+Needs `ffmpeg`, `rubberband` (CLI), Python 3 with `numpy` and
+`soundfile`, and an `audiowmark` 0.6.5 build.
+
+```bash
+experiments/remix-watermarking-spike/build_fixtures.sh /tmp/wm/fx
+```
+
+```bash
+experiments/remix-watermarking-spike/build_unmarked.sh /tmp/wm/fx
+```
+
+```bash
+audiowmark gen-key /tmp/wm/spike.key
+```
+
+```bash
+python3 experiments/remix-watermarking-spike/bench.py robustness --scheme audiowmark \
+  --key /tmp/wm/spike.key --fixtures /tmp/wm/fx --work /tmp/wm/work --out /tmp/wm/robustness.json
+```
+
+```bash
+python3 experiments/remix-watermarking-spike/bench.py falsepos --scheme audiowmark \
+  --key /tmp/wm/spike.key --fixtures /tmp/wm/fx --work /tmp/wm/work --out /tmp/wm/fp.json --count 1000
+```
+
+Options: `--strength 15`, `--inverse-search coarse|full`, `--no-speed`,
+`--attacks <substring…>`, `--only <fixture substring…>`. The result JSON files
+behind the tables are in `experiments/remix-watermarking-spike/results/`
+(spike tokens redacted).
