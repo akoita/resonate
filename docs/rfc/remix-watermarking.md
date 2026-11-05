@@ -179,7 +179,7 @@ a random offset.
 | Detector | Clips | Candidate payloads decoded | Matches in the database |
 | --- | --- | --- | --- |
 | plain | 1,000 | ~8,000 (every clip yields some) | **0** |
-<!-- FP-FULL -->
+| plain → `--detect-speed` → coarse inverse search (the #2575 detector) | 200 (subset, same generator) | 4,320 | **0** |
 
 audiowmark always prints its best guesses, even for unmarked audio, so
 "decoded something" is meaningless. Only an exact database match counts,
@@ -375,7 +375,7 @@ No GPU, no Python worker and no model download are needed.
 | #2572 exit criterion | Result |
 | --- | --- |
 | Token recovered from ≥95 % of 30 s excerpts after the attack set at 128 kbit/s | **Met on the real renders:** 312/312 (100 %) at strength 15 with the full detector. All 10 fixtures: 365/378 (96.6 %), with the 13 misses all on the two synthetic signals and the electro loop's 12 pitch/tempo trials not run (93.6 % if all 12 count as misses). Caveat: the inverse search recovers whole-number pitch/tempo changes quickly. Arbitrary values need the slower fine grid. |
-| No false positive on the unwatermarked set | **Met on the proxy set:** 0 of 1,000 excerpts from 25 sources. The ≥1,000 *catalog tracks* run waits for staging access (#2575). |
+| No false positive on the unwatermarked set | **Met on the proxy set:** 0 of 1,000 excerpts from 25 sources (plain detector), and 0 of 200 with the full three-stage detector. The ≥1,000 *catalog tracks* run waits for staging access (#2575). |
 | No audible difference in a blind check | **Open:** needs a human listener. Kit: `make_abx_kit.py`. Objective residual: 32–36 dB under programme at strength 15. |
 | If no open-source option meets the bar, name the fallback | audiowmark meets it, apart from the human check. Fallback if the blind check fails at every usable strength, or if pitch/tempo-robustness without a detector search becomes a requirement: commercial forensic watermarking, for an owner decision. |
 
