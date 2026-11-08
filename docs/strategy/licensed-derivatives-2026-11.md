@@ -176,11 +176,19 @@ with money flowing back) land before the expected early-2027 mainstream
 launches. That way, the first wave of artists comparing options finds a
 serious alternative.
 
-## Open questions for the owner
+## Owner decisions (2026-11-08)
 
-1. Default source share of a remix sale (ADR-LD-1).
-2. Default consent state for new uploads (ADR-LD-2).
-3. Whether a free, private, preview-only restyle of a short excerpt is allowed
-   without a licence (ADR-LD-8).
-4. Whether a source artist may require approval before *any* remix is
-   published, or only for AI-assisted ones (ADR-LD-5).
+The owner chose the recommended answer to each open question:
+
+1. **Default source share** (ADR-LD-1): 50% of the creators' portion of a
+   derivative sale, which the source artist can set between 30% and 70% per
+   release. Mashups split it by time used, with a 20% floor per source.
+2. **Consent for new uploads** (ADR-LD-2): an explicit choice at upload with
+   nothing pre-selected. Existing releases keep their state and get a one-time
+   review prompt.
+3. **Free preview** (ADR-LD-8): a free, private, preview-only DSP restyle of up
+   to 60 seconds, never saved, shared or exported. A licence is needed to save,
+   share, publish or export.
+4. **Approval scope** (ADR-LD-5): per release, the artist may require approval
+   for AI-assisted derivatives only, or for all. AI-assisted only is the
+   suggested default when approval is turned on.

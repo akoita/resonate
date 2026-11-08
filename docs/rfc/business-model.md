@@ -354,7 +354,7 @@ are operator decisions recorded here first. Decision record:
 
 1. **On-chain proof of licensing** — License NFTs (ERC-1155) serve as verifiable, immutable proof of rights. No more "I bought a license but lost the email."
 2. **Recursive remix royalties** — When a remix gets remixed, the original artist still earns via the ancestry chain. This is not possible on any competing platform.
-   *Status (2026-11-08): designed, not shipped. Today the source artist earns on the stem licence sale only; later sales of the remix pay the remixer. A source share on every derivative sale is proposed in [ADR-LD-1](../strategy/licensed-derivatives-decisions.md#adr-ld-1--the-original-earns-from-every-derivative) and is not canonical until accepted and reconciled here.*
+   *Status (2026-11-08): designed, not shipped. Today the source artist earns on the stem licence sale only; later sales of the remix pay the remixer. The source share on every derivative sale (ADR-LD-1, accepted 2026-11-08) is canonical in §5d and not yet built.*
 3. **AI-assisted negotiation** — The agent can negotiate license terms within the buyer's budget. No more back-and-forth emails with labels.
 4. **Stem-level granularity** — License just the vocals, just the drums, or any combination. Not possible on BeatStars (whole beat or nothing).
 
@@ -464,6 +464,30 @@ in `docs/compliance/ai_generation_acceptable_use.md`). Decision record:
 `docs/strategy/business-model-phase0-decisions.md` §ADR-BM-5.
 
 ---
+
+## 5d. Derivative Source Share (canonical — ADR-LD-1, accepted 2026-11-08)
+
+Every sale of a derivative (a remix licence, a remix master ownership product,
+or an agent's remix purchase) pays a **source share** to the source artist(s):
+
+1. The source share comes out of the creators' portion (the ≥85% of §5b),
+   never out of the platform fee, and never lowers the creators' total below
+   85%.
+2. **Default: 50% of the creators' portion.** The source artist may set it
+   between **30% and 70%** per release.
+3. Mashups divide the source share between sources in proportion to the time
+   each one is used, with a floor of 20% per source.
+4. Derivatives of derivatives pay each ancestor with a diminishing share
+   (#309). Until on-chain ancestry ships (backlog E3, #1431), the share is
+   settled from an auditable off-chain ledger keyed on published lineage.
+5. When Listener Pro launches, a listener's pre-funded spend on a derivative is
+   split the same way, user-centric, with no pool (§5b rule 3).
+
+Example: a $4.00 Remix-tier sale (10% fee) pays Resonate $0.40, the source
+artist $1.80 and the remixer $1.80 at the default share.
+
+**Status: decided, not built.** Decision record:
+`docs/strategy/licensed-derivatives-decisions.md` §ADR-LD-1.
 
 ## 6. Why This Model Works (Strategic Analysis)
 

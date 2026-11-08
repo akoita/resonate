@@ -18,8 +18,11 @@ Eight ADR-style decisions that turn the
 [Licensed Derivatives Review](licensed-derivatives-2026-11.md) into binding
 rules for Remix Studio, publishing, discovery and payouts.
 
-Decision status legend: **proposed** → accepted when the owner confirms it on
-the decision issue. An accepted decision that changes a fee, a split or a price
+Decision status legend: **proposed** → accepted when the owner confirms it
+(on the decision issue or in the project thread). On 2026-11-08 the owner
+accepted the recommended answers to the four open questions, which accepts
+ADR-LD-1, ADR-LD-2, ADR-LD-5 and ADR-LD-8. ADR-LD-3, 4, 6 and 7 stay proposed
+until this document is merged. An accepted decision that changes a fee, a split or a price
 (ADR-LD-1, ADR-LD-3) must then be reconciled into
 [`docs/rfc/business-model.md`](../rfc/business-model.md), the canonical source,
 before any code ships. Until then, nothing in this file changes a live number.
@@ -36,10 +39,11 @@ The others are vision-neutral trust and quality infrastructure.
 
 ## ADR-LD-1 — The original earns from every derivative
 
-> **Status: proposed.** Revenue line 3. Changes a split, so the RFC must be
-> reconciled first.
+> **Status: ACCEPTED — 2026-11-08, confirmed by @akoita** (owner chose the
+> recommended defaults in the project thread). Revenue line 3. The source-share
+> rule is reconciled into `docs/rfc/business-model.md` §5d. Not yet built.
 
-- **Decision (proposed):**
+- **Decision (accepted):**
   1. Every sale of a derivative carries a **source share** for the source
      artist(s): a remix licence, a remix master ownership product, or a remix
      purchase by an agent. The source share is paid out of the creators' ≥85%,
@@ -67,9 +71,10 @@ The others are vision-neutral trust and quality infrastructure.
 
 ## ADR-LD-2 — Consent per song and per capability, chosen explicitly
 
-> **Status: proposed.** Vision-neutral trust infrastructure.
+> **Status: ACCEPTED — 2026-11-08, confirmed by @akoita** (explicit choice at
+> upload, as recommended). Vision-neutral trust infrastructure. Not yet built.
 
-- **Decision (proposed):**
+- **Decision (accepted):**
   1. Remix consent is set **per release** (with a per-track override). It is
      broken into capabilities:
      - **Restyle (DSP):** tempo, key, filters, Vibes, stem mix
@@ -141,9 +146,12 @@ The others are vision-neutral trust and quality infrastructure.
 
 ## ADR-LD-5 — Artists see and control what is built on them
 
-> **Status: proposed.** Vision-neutral trust infrastructure.
+> **Status: ACCEPTED — 2026-11-08, confirmed by @akoita** (approval scope as
+> recommended: per release, AI-assisted only or all, AI-assisted only being the
+> suggested default when approval is on). Vision-neutral trust infrastructure.
+> Not yet built.
 
-- **Decision (proposed):**
+- **Decision (accepted):**
   1. **Notify** the source artist when a derivative of their work is published.
   2. Add a **"Remixes of my music" inbox** that lists every published derivative
      with its plays, sales and source share, plus actions: feature, hold
@@ -209,9 +217,11 @@ The others are vision-neutral trust and quality infrastructure.
 
 ## ADR-LD-8 — Restyle in one tap, licence to keep
 
-> **Status: proposed.** Revenue lines 3 and 4.
+> **Status: ACCEPTED — 2026-11-08, confirmed by @akoita** (free, private,
+> preview-only restyle of up to 60 s; licence to keep, as recommended).
+> Revenue lines 3 and 4. Not yet built.
 
-- **Decision (proposed):**
+- **Decision (accepted):**
   1. Add a **Restyle** sheet on the now-playing screen and on track cards for
      tracks whose release allows the Restyle capability. It applies one of the
      existing Vibes (or a "Describe it" sentence) and plays the result
