@@ -1526,6 +1526,12 @@ from the JWT, never the request body.
   A1 slice supports `allowed` and `disabled`.
 - Protocol: License-NFT / AncestryTracker minting from published lineage (E3 —
   #1196 persists the lineage data only).
+- Proposed 2026-11 (not scheduled): per-release and per-capability consent,
+  an artist remix inbox, a source share with a visible split, originals-first
+  discovery, a track-level "remix this song" licence with a one-tap Restyle,
+  and a Play/Studio/Pro experience pass. See the
+  [licensed remix readiness roadmap](../roadmap/2026-11-licensed-remix-readiness.md)
+  and the [studio experience plan](../roadmap/2026-11-remix-studio-experience.md).
 
 ## Product Rules
 

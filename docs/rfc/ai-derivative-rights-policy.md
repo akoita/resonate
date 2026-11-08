@@ -260,8 +260,14 @@ highest-risk parts of AI covers.
 
 - Should private drafts require an upfront remix license or a cheaper
   draft-only right?
-- Should derivative opt-in default to off for all direct uploads?
+- Should derivative opt-in default to off for all direct uploads? Proposed
+  answer (2026-11): an explicit choice at upload with nothing pre-selected,
+  per release and per capability; see
+  [ADR-LD-2](../strategy/licensed-derivatives-decisions.md#adr-ld-2--consent-per-song-and-per-capability-chosen-explicitly).
 - How should derivative rights work for AI-generated source tracks?
 - Should a published remix mint a new StemNFT immediately or wait until the
   user chooses to list it?
 - What moderation threshold should apply before a remix becomes public?
+  Proposed (2026-11): publish-time moderation on every path plus optional
+  artist approval; see
+  [ADR-LD-5](../strategy/licensed-derivatives-decisions.md#adr-ld-5--artists-see-and-control-what-is-built-on-them).
