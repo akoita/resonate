@@ -318,6 +318,64 @@ Acceptance:
 
 - Operators can audit a published remix without manual database spelunking.
 
+## Workstream G: Licensed Remix Readiness (proposed 2026-11)
+
+Proposed by the [Licensed Derivatives Review](../strategy/licensed-derivatives-2026-11.md)
+and its decisions [ADR-LD-1…8](../strategy/licensed-derivatives-decisions.md)
+(status: proposed). The phased plan with candidate issues is the
+[licensed remix readiness roadmap](../roadmap/2026-11-licensed-remix-readiness.md).
+Nothing below is filed or scheduled until the owner accepts the decisions.
+
+### G0. Fix what is wrong (no new decision needed)
+
+- Replace the hardcoded 70/20/10 `PayoutSplitPreview` with the canonical split.
+- Private drafts must not block the source artist's release deletion
+  (`release_has_remixes`).
+- Cascade consent revocation, quarantine and withdrawal to published remixes.
+- Machine-readable marking on every output path before 2026-12-02; finish
+  #2574 and #2575; deploy half resonate-iac#333.
+
+### G1. Consent per release and per capability (ADR-LD-2)
+
+Supersedes the open parts of F1. Restyle, AI-assisted, vocal transformation,
+publish, export and monetize; explicit choice at upload; mint follows the
+release choice; one-time review for existing releases.
+
+### G2. Artist remix inbox, notifications and approval (ADR-LD-5)
+
+Supersedes the deferred manual-approval state. Notify on publish; list, feature,
+hold and take down; optional approval; counter-notice path.
+
+### G3. Source share and visible split (ADR-LD-1, ADR-LD-6)
+
+Source share on derivative sales (off-chain ledger first, E3 later); split on
+remix pages, checkout and publish; remix earnings in the dashboard (F2, #281).
+
+### G4. Originals first in discovery (ADR-LD-4)
+
+Popularity credit to the source, ranking guard, "Remixes" section on originals,
+search grouping, lineage view (#280).
+
+### G5. "Remix this song" licence and one-tap Restyle (ADR-LD-3, ADR-LD-8)
+
+Track-level licence at an artist-set price with no stem mint required; Restyle
+sheet on now-playing and cards on the full mix (#283); licence gate at save,
+share, publish and export.
+
+### G6. Disclosure in five categories (ADR-LD-7)
+
+Vocals, instrumentation, composition, post-production and lyrics; one badge on
+cards, player and release pages; "No AI used" for DSP-only work.
+
+## Workstream H: Studio Experience (proposed 2026-11)
+
+Proposed by the [Remix Studio experience plan](../roadmap/2026-11-remix-studio-experience.md):
+three depths of one project (Play, Studio, Pro). Headline items: a Play view
+with a mood pad, "Surprise me" and hold-to-hear-original; a grouped Create
+panel with a single live preview; a labelled, coloured arrangement with full
+undo history; phone-first layouts; and for Pro a master bus with loudness
+metering, clip editing, sidechain, a controller (MIDI) mode and DAW handoff.
+
 ## Suggested Issue Breakdown
 
 | Priority | Issue |

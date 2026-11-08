@@ -354,6 +354,7 @@ are operator decisions recorded here first. Decision record:
 
 1. **On-chain proof of licensing** — License NFTs (ERC-1155) serve as verifiable, immutable proof of rights. No more "I bought a license but lost the email."
 2. **Recursive remix royalties** — When a remix gets remixed, the original artist still earns via the ancestry chain. This is not possible on any competing platform.
+   *Status (2026-11-08): designed, not shipped. Today the source artist earns on the stem licence sale only; later sales of the remix pay the remixer. A source share on every derivative sale is proposed in [ADR-LD-1](../strategy/licensed-derivatives-decisions.md#adr-ld-1--the-original-earns-from-every-derivative) and is not canonical until accepted and reconciled here.*
 3. **AI-assisted negotiation** — The agent can negotiate license terms within the buyer's budget. No more back-and-forth emails with labels.
 4. **Stem-level granularity** — License just the vocals, just the drums, or any combination. Not possible on BeatStars (whole beat or nothing).
 
