@@ -1,6 +1,6 @@
 ---
 title: "Licensed Derivatives Review 2026-11"
-status: proposed
+status: accepted
 owner: "@akoita"
 created: "2026-11-08"
 related:

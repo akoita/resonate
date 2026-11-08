@@ -1,6 +1,6 @@
 ---
 title: "Licensed Derivatives Decisions (ADR-LD-1…8)"
-status: proposed
+status: accepted
 owner: "@akoita"
 created: "2026-11-08"
 related:
@@ -21,8 +21,9 @@ rules for Remix Studio, publishing, discovery and payouts.
 Decision status legend: **proposed** → accepted when the owner confirms it
 (on the decision issue or in the project thread). On 2026-11-08 the owner
 accepted the recommended answers to the four open questions, which accepts
-ADR-LD-1, ADR-LD-2, ADR-LD-5 and ADR-LD-8. ADR-LD-3, 4, 6 and 7 stay proposed
-until this document is merged. An accepted decision that changes a fee, a split or a price
+ADR-LD-1, ADR-LD-2, ADR-LD-5 and ADR-LD-8. The owner accepted ADR-LD-3, 4, 6
+and 7 by merging this document the same day (PR #2588). ADR-LD-3 introduces a
+price: its pricing must be reconciled into the RFC before code ships. An accepted decision that changes a fee, a split or a price
 (ADR-LD-1, ADR-LD-3) must then be reconciled into
 [`docs/rfc/business-model.md`](../rfc/business-model.md), the canonical source,
 before any code ships. Until then, nothing in this file changes a live number.
@@ -101,10 +102,10 @@ The others are vision-neutral trust and quality infrastructure.
 
 ## ADR-LD-3 — "Remix this song": one licence, one checkout, an artist-set price
 
-> **Status: proposed.** Revenue line 3. Introduces a price, so the RFC must be
+> **Status: ACCEPTED — 2026-11-08, by @akoita (merge of PR #2588).** Not yet built. Revenue line 3. Introduces a price, so the RFC must be
 > reconciled first.
 
-- **Decision (proposed):**
+- **Decision (accepted):**
   1. Add a **track-level remix licence** that covers every stem of the track the
      artist made remixable, at the tier bought (Personal, Remix or Commercial).
   2. **The artist sets the price per release.** The suggested default is the
@@ -123,9 +124,9 @@ The others are vision-neutral trust and quality infrastructure.
 
 ## ADR-LD-4 — Originals first in discovery
 
-> **Status: proposed.** Vision-neutral; extends ADR-TE-2 recommendation rules.
+> **Status: ACCEPTED — 2026-11-08, by @akoita (merge of PR #2588).** Not yet built. Vision-neutral; extends ADR-TE-2 recommendation rules.
 
-- **Decision (proposed):**
+- **Decision (accepted):**
   1. **Popularity credit.** A share of each derivative's qualified plays (50% by
      default) also counts toward the source track's popularity and chart
      signals. The derivative keeps its own count.
@@ -174,9 +175,9 @@ The others are vision-neutral trust and quality infrastructure.
 
 ## ADR-LD-6 — Money you can see
 
-> **Status: proposed.** Vision-neutral; implements ADR-BM-4 visibility.
+> **Status: ACCEPTED — 2026-11-08, by @akoita (merge of PR #2588).** Not yet built. Vision-neutral; implements ADR-BM-4 visibility.
 
-- **Decision (proposed):**
+- **Decision (accepted):**
   1. Every remix release page, remix licence checkout and the studio's publish
      step shows the split in plain numbers, for example "Of $4.00: original
      artist $1.70, remixer $1.70, Resonate $0.60". The numbers come from the
@@ -191,10 +192,10 @@ The others are vision-neutral trust and quality infrastructure.
 
 ## ADR-LD-7 — Say exactly what was done, and make it provable
 
-> **Status: proposed.** Vision-neutral; extends ADR-BM-5 and the watermarking
+> **Status: ACCEPTED — 2026-11-08, by @akoita (merge of PR #2588).** Not yet built. Vision-neutral; extends ADR-BM-5 and the watermarking
 > RFC.
 
-- **Decision (proposed):**
+- **Decision (accepted):**
   1. **Disclosure in five categories** on every derivative: vocals,
      instrumentation, composition, post-production and lyrics. Each is marked
      *none*, *assisted* or *generated*, aligned with the industry AI-disclosure
