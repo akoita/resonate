@@ -58,6 +58,32 @@ const storageProvider = {
 const generationQueue = { add: jest.fn().mockResolvedValue({ id: "queued" }) };
 const stemMixRenderer = { render: jest.fn() };
 
+
+/** #2602: runs `fn` as if a watermark key were configured. */
+async function withWatermarkKey<T>(fn: () => Promise<T>): Promise<T> {
+  const before = {
+    key: process.env.REMIX_WATERMARK_KEY,
+    id: process.env.REMIX_WATERMARK_KEY_ID,
+  };
+  process.env.REMIX_WATERMARK_KEY = "key 00112233445566778899aabbccddeeff";
+  process.env.REMIX_WATERMARK_KEY_ID = "test-key";
+  try {
+    return await fn();
+  } finally {
+    if (before.key === undefined) delete process.env.REMIX_WATERMARK_KEY;
+    else process.env.REMIX_WATERMARK_KEY = before.key;
+    if (before.id === undefined) delete process.env.REMIX_WATERMARK_KEY_ID;
+    else process.env.REMIX_WATERMARK_KEY_ID = before.id;
+  }
+}
+const EMBEDDED_MARK = {
+  status: "embedded",
+  scheme: "audiowmark",
+  schemeVersion: "0.6.5",
+  strength: 15,
+  keyId: "test-key",
+};
+
 function completedGenerationMetadata(
   stemIds: string[],
   overrides: Record<string, unknown> = {},
@@ -344,6 +370,66 @@ describe("Remix export (integration)", () => {
     });
   });
 
+  it("refuses to export an AI draft that is not marked when a key is configured (#2602)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      stemId: COMMERCIAL_STEM_ID,
+      generationMetadata: completedGenerationMetadata([COMMERCIAL_STEM_ID], {
+        mode: "variation",
+        grounding: "stem_plus_ai",
+        renderMetadata: {
+          schemaVersion: "remix-render/v1",
+          watermark: { status: "none", reason: "embed_failed" },
+        },
+      }),
+    });
+    storageProvider.download.mockClear();
+    publishSpy.mockClear();
+
+    for (const variant of ["draft", "dj_extended", "stems"] as const) {
+      const error = await withWatermarkKey(() =>
+        projectService.exportDraft(CREATOR_ID, project.id, variant).then(
+          () => null,
+          (caught: { getStatus(): number; getResponse(): unknown }) => caught,
+        ),
+      );
+      expect(error?.getStatus()).toBe(409);
+      expect(error?.getResponse()).toMatchObject({ code: "draft_unmarked" });
+    }
+    // Refused before any audio is read or an export is recorded.
+    expect(storageProvider.download).not.toHaveBeenCalled();
+    expect(
+      publishSpy.mock.calls.some(([event]) => event.eventName === "remix.exported"),
+    ).toBe(false);
+  });
+
+  it("exports a marked AI draft, and an unmarked one where no key is configured (#2602)", async () => {
+    const marked = await createProjectRow({
+      userId: CREATOR_ID,
+      stemId: COMMERCIAL_STEM_ID,
+      generationMetadata: completedGenerationMetadata([COMMERCIAL_STEM_ID], {
+        mode: "variation",
+        grounding: "stem_plus_ai",
+        renderMetadata: { schemaVersion: "remix-render/v1", watermark: EMBEDDED_MARK },
+      }),
+    });
+    const result = (await withWatermarkKey(() =>
+      projectService.exportDraft(CREATOR_ID, marked.id),
+    )) as RemixDraftExport;
+    expect(Buffer.from(result.data)).toEqual(DRAFT_AUDIO);
+
+    const unmarked = await createProjectRow({
+      userId: CREATOR_ID,
+      stemId: COMMERCIAL_STEM_ID,
+      generationMetadata: completedGenerationMetadata([COMMERCIAL_STEM_ID], {
+        mode: "variation",
+        grounding: "audio_conditioned",
+      }),
+    });
+    const unkeyed = (await projectService.exportDraft(CREATOR_ID, unmarked.id)) as RemixDraftExport;
+    expect(Buffer.from(unkeyed.data)).toEqual(DRAFT_AUDIO);
+  });
+
   it("DJ extended (#2540): refuses without cues before reading any audio", async () => {
     const project = await createProjectRow({
       userId: CREATOR_ID,
@@ -413,6 +499,12 @@ describe("Remix export (integration)", () => {
           .map(([event]) => event)
           .find((event) => event.eventName === "remix.exported");
         expect(exportedEvent).toMatchObject({ variant: "dj_extended" });
+        // #2602: the sidecar carries the AI disclosure (the zip is stored, so
+        // the JSON is readable in place).
+        const zipText = Buffer.from(result.data).toString("latin1");
+        expect(zipText).toContain('"ai": {');
+        expect(zipText).toContain('"aiGenerated": false');
+        expect(zipText).toContain('"marking": "not_generated"');
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

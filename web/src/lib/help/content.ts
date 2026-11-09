@@ -2486,6 +2486,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "The same few seconds keep repeating? A loop is on. Press the × next to \"Looping bar …\" in the transport, or press Esc.",
               "Want to start over completely? \"Reset to original\" at the top of the Session clears your effects, song shape, beat, AI parts, and stem changes. Your drafts are kept.",
               "The studio plays quieter than your final mix. That's normal: the final mix is made louder and more even when you render it.",
+              "A draft with AI sound \"could not be marked\", or Publish or Export says the draft is not marked yet? Audio made with AI has to carry Resonate's inaudible mark before it can leave the studio. Render or generate the draft again. A mix made only from the song's stems is never held back for this.",
             ],
           },
         ],

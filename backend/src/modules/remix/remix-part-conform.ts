@@ -33,6 +33,7 @@
  */
 
 import { execFile } from "child_process";
+import { aiGeneratedTagArgs } from "./remix-watermark";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -899,13 +900,24 @@ export function buildPartDecodeArgs(inputPath: string, outputPath: string): stri
   ];
 }
 
-/** Encode args: raw f32le 48 kHz stereo → 16-bit FLAC, bit-exact (no encoder tag). */
+/**
+ * #2602: every AI part take is generated audio, so its file says so in a
+ * machine-readable way (`AI_GENERATED_AUDIO_TAGS`). A take is not
+ * watermarked on its own: it is only auditioned in the studio and leaves the
+ * platform inside a render, which carries the remix mark, and a second mark
+ * under the same key would weaken that one.
+ */
+/**
+ * Encode args: raw f32le 48 kHz stereo → 16-bit FLAC, bit-exact (no encoder
+ * tag), with the fixed `AI_GENERATED_AUDIO_TAGS`.
+ */
 export function buildPartEncodeArgs(inputPath: string, outputPath: string): string[] {
   return [
     "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
     "-f", "f32le", "-ar", String(PART_SAMPLE_RATE), "-ac", String(PART_CHANNELS),
     "-i", inputPath,
     "-map_metadata", "-1",
+    ...aiGeneratedTagArgs(),
     "-fflags", "+bitexact", "-flags:a", "+bitexact",
     "-c:a", "flac", "-sample_fmt", "s16",
     outputPath,

@@ -1511,11 +1511,11 @@ from the JWT, never the request body.
   `RemixRenderWatermark` row: token, project, generation and render job ids,
   owner, source track(s), stems with their licence basis and purchase ids,
   policy version, scheme and key id. Free on every tier. A watermark failure
-  ships the render unwatermarked; it never fails a render. On account erasure
+  ships a render with no generated audio unwatermarked; a render that
+  contains generated audio fails instead (#2602, below). On account erasure
   the row is kept and the owner pseudonymised (owner decision, 2026-11-04).
-  Not yet marked: drafts from the `audio-conditioned` provider alone, which
-  bypass the mixer (#2602). Detection is #2575; the deploy half (binary in
-  the backend image, key secret) is resonate-iac#333.
+  Detection is #2575; the deploy half (binary in the backend image, key
+  secret) is resonate-iac#333.
 - Watermark disclosure (#2574, slice 4 of #2566): when the current draft's
   render metadata says `watermark.status: "embedded"`, the Drafts panel shows
   a note above Publish and Export: the draft carries an inaudible mark, every
@@ -1528,6 +1528,55 @@ from the JWT, never the request body.
   the mark record holds and that it is kept, pseudonymised, after erasure)
   and the Remix guide ("Drafts and versions", "Rights, publishing, and
   selling"). `npx vitest run src/components/remix/RemixDraftsPanel.test.tsx`.
+- Marking on every generated-audio output path (#2602). Generated audio must
+  not leave Resonate without a machine-readable mark. Where a watermark key
+  is configured:
+  - A render that contains generated audio (a generated layer or an AI part)
+    tries the embed twice, then **fails** with "could not be marked". A stem
+    mix with no generated audio still ships unmarked on failure
+    (`watermark: none, embed_failed`).
+  - Drafts the `audio-conditioned` model returns whole are marked before they
+    are stored (`StemAudioMixer.markGeneratedAudio`), recorded as
+    `output.watermark`, with the same token row.
+  - Export (audio, DJ extended, stems) and Publish refuse an AI draft that is
+    not marked: `409 draft_unmarked`, "render or generate it again". This
+    covers drafts made before a key was configured. A draft with no generated
+    audio is never refused.
+  - AI part takes carry `AI_GENERATED` and IPTC digital source type tags in
+    the FLAC, and a marked master of a render with generated audio carries the
+    same tags. Takes are not watermarked on their own: they are auditioned in
+    the studio and leave only inside a marked render, and a second mark under
+    the same key would weaken that one.
+  - The DJ sidecar and the stems manifest carry an `ai` block (generated or
+    not, grounding, how the audio is marked), so the disclosure does not rest
+    on the watermark alone.
+  - Publishing copies the draft bytes unchanged, so the published file keeps
+    the draft's mark (`remix-publish.integration.spec.ts`).
+
+  Without a key nothing is marked and nothing is refused. The inventory below
+  is `GENERATED_AUDIO_OUTPUT_PATHS` in
+  `backend/src/modules/remix/generated-audio-outputs.ts`;
+  `remix-generated-audio-marking.spec.ts` fails when a storage write or an
+  audio response in the remix or generation modules is not listed, or a row
+  is missing here.
+
+  | Path | What | Marking | How |
+  | --- | --- | --- | --- |
+  | `stem-mix-draft` | Mix stems draft (can hold AI parts) | `remix_mark_required` | Remix mark on the master. A render with an AI part fails if the mark cannot be embedded; a render with no generated audio ships unmarked on failure. |
+  | `stem-mix-stems` | Stems rendered with a draft (can hold AI part stems) | `remix_mark_required` | The draft's token in every stem file. A stem that is an AI part fails the render if it cannot be marked. |
+  | `layered-draft` | Stems plus a generated layer | `remix_mark_required` | Remix mark on the master; the render fails if the mark cannot be embedded. |
+  | `audio-conditioned-draft` | Draft returned whole by the audio-conditioned model | `remix_mark_required` | Marked before it is stored (`markGeneratedAudio`); the draft fails if the mark cannot be embedded. |
+  | `provider-draft` | Draft or layer returned whole by the Lyria provider | `provider_mark` | The provider embeds its own mark and the draft records `synthIdPresent`. Used as a layer, the finished mix is the layered draft above. |
+  | `ai-part-take` | AI part take (one instrument, 4 or 8 bars) | `file_tags` | The FLAC carries `AI_GENERATED` and the IPTC digital source type tags. The owner auditions it in the studio; it leaves only inside a render, which carries the remix mark. |
+  | `published-remix` | Published remix audio | `inherits_draft_mark` | A byte copy of the draft. Publishing an AI draft that is not marked is refused (`draft_unmarked`). |
+  | `draft-export` | Export audio, DJ extended export and stems export | `inherits_draft_mark` | The draft's own bytes, a re-encode of them, or its marked stems. Exporting an AI draft that is not marked is refused (`draft_unmarked`). The DJ sidecar and the stems manifest carry the AI disclosure. |
+  | `draft-playback` | Draft playback in the studio | `studio_playback` | Owner-only stream of a draft covered by the rows above; no download. |
+  | `standalone-generation` | Track generated outside the remix studio | `provider_mark` | The provider embeds its own mark; the track records `synthIdPresent` and its AI disclosure. |
+
+  Open points for the legal check (owner decision 3 of Sprint 56): whether
+  file tags are enough for an AI part take that is only auditioned in the
+  studio, and whether a provider's own mark is enough for a draft the
+  provider returns whole.
 
 ## Planned Surfaces
 

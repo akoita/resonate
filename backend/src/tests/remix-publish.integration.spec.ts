@@ -70,6 +70,32 @@ function newCatalog(): CatalogService {
   );
 }
 
+
+/** #2602: runs `fn` as if a watermark key were configured. */
+async function withWatermarkKey<T>(fn: () => Promise<T>): Promise<T> {
+  const before = {
+    key: process.env.REMIX_WATERMARK_KEY,
+    id: process.env.REMIX_WATERMARK_KEY_ID,
+  };
+  process.env.REMIX_WATERMARK_KEY = "key 00112233445566778899aabbccddeeff";
+  process.env.REMIX_WATERMARK_KEY_ID = "test-key";
+  try {
+    return await fn();
+  } finally {
+    if (before.key === undefined) delete process.env.REMIX_WATERMARK_KEY;
+    else process.env.REMIX_WATERMARK_KEY = before.key;
+    if (before.id === undefined) delete process.env.REMIX_WATERMARK_KEY_ID;
+    else process.env.REMIX_WATERMARK_KEY_ID = before.id;
+  }
+}
+const EMBEDDED_MARK = {
+  status: "embedded",
+  scheme: "audiowmark",
+  schemeVersion: "0.6.5",
+  strength: 15,
+  keyId: "test-key",
+};
+
 function completedGenerationMetadata(overrides: Record<string, unknown> = {}) {
   return {
     status: "completed",
@@ -376,6 +402,70 @@ describe("Remix publish (integration)", () => {
       creatorOwner: false,
       policyVersion: REMIX_POLICY_VERSION,
     });
+  });
+
+  it("refuses to publish an AI draft that is not marked when a key is configured (#2602)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "audio_conditioned",
+      }),
+    });
+    storageProvider.upload.mockClear();
+
+    const error = await withWatermarkKey(() =>
+      projectService.publishProject(CREATOR_ID, project.id).then(
+        () => null,
+        (caught: { getStatus(): number; getResponse(): unknown }) => caught,
+      ),
+    );
+
+    expect(error?.getStatus()).toBe(409);
+    expect(error?.getResponse()).toMatchObject({ code: "draft_unmarked" });
+    expect(storageProvider.upload).not.toHaveBeenCalled();
+    const row = await prisma.remixProject.findUniqueOrThrow({ where: { id: project.id } });
+    expect(row.status).not.toBe("published");
+    expect(row.publishedReleaseId).toBeNull();
+  });
+
+  it("publishes a marked AI draft byte for byte, so the published file keeps the mark (#2602)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "stem_plus_ai",
+        renderMetadata: { schemaVersion: "remix-render/v1", watermark: EMBEDDED_MARK },
+      }),
+    });
+    storageProvider.upload.mockClear();
+
+    const result = await withWatermarkKey(() =>
+      projectService.publishProject(CREATOR_ID, project.id),
+    );
+
+    expect(result.status).toBe("published");
+    // The catalogue object is the draft's own bytes: no re-encode, no filter,
+    // so whatever mark the draft carries is in the published file.
+    expect(storageProvider.upload).toHaveBeenCalledTimes(1);
+    const [published] = storageProvider.upload.mock.calls[0];
+    expect(Buffer.compare(Buffer.from(published), DRAFT_AUDIO)).toBe(0);
+  });
+
+  it("still publishes a stem-only draft whose mark failed (#2602)", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        renderMetadata: {
+          schemaVersion: "remix-render/v1",
+          watermark: { status: "none", reason: "embed_failed" },
+        },
+      }),
+    });
+    const result = await withWatermarkKey(() =>
+      projectService.publishProject(CREATOR_ID, project.id),
+    );
+    expect(result.status).toBe("published");
   });
 
   it("marks AI-generated provenance for feature-conditioned drafts", async () => {

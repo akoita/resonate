@@ -98,6 +98,9 @@ import {
   type RemixRenderWatermark,
   type RemixRenderWatermarkMetadata,
   RemixWatermarkEmbedder,
+  aiGeneratedTagArgs,
+  embedWatermarkWithRetry,
+  UNMARKED_GENERATED_AUDIO_MESSAGE,
 } from "./remix-watermark";
 
 const execFileAsync = promisify(execFile);
@@ -272,7 +275,24 @@ export interface StemAudioMixer {
     /** Watermarking (#2573); stem taps are a stem_mix-only feature. */
     options?: Pick<StemMixOptions, "watermark">,
   ): Promise<MixedAudioBuffers>;
+  /**
+   * #2602: marks generated audio that never goes through the mix graph (a
+   * draft a model returned whole). With a key the result is a marked WAV and
+   * its token; an embed that keeps failing throws, because generated audio
+   * must not ship unmarked. Without a key the audio is returned untouched
+   * with `watermark: none, no_key`.
+   */
+  markGeneratedAudio(audio: Buffer, mimeType: string, label: string): Promise<MarkedGeneratedAudio>;
 }
+
+/** The result of {@link StemAudioMixer.markGeneratedAudio}. */
+export type MarkedGeneratedAudio = {
+  buffer: Buffer;
+  mimeType: string;
+  metadata: RemixRenderWatermarkMetadata;
+  /** The embedded token, for the admin-only token row. Absent without a key. */
+  watermark?: RemixRenderWatermark;
+};
 
 export type StemMixFfmpegInput = {
   path: string;
@@ -489,7 +509,12 @@ function pushOutputArgs(
  * #2573: the final MP3 encode of a watermarked PCM master, with the same
  * settings as the single-pass render ({@link pushOutputArgs}).
  */
-export function buildMasterEncodeArgs(inputPath: string, outputPath: string): string[] {
+export function buildMasterEncodeArgs(
+  inputPath: string,
+  outputPath: string,
+  /** #2602: tag the file as AI-generated (a render with generated audio). */
+  aiGenerated = false,
+): string[] {
   const policy = REMIX_RENDER_AUDIO_POLICY;
   return [
     "-y",
@@ -499,6 +524,7 @@ export function buildMasterEncodeArgs(inputPath: string, outputPath: string): st
     "error",
     "-i",
     inputPath,
+    ...(aiGenerated ? aiGeneratedTagArgs() : []),
     "-codec:a",
     "libmp3lame",
     "-b:a",
@@ -534,6 +560,20 @@ export function buildStemTapEncodeArgs(inputPath: string, outputPath: string): s
     String(policy.channels),
     outputPath,
   ];
+}
+
+/** #2602: an input that is generated audio (an AI layer or an AI part). */
+function isGeneratedAudioInput(input: Pick<StemMixFfmpegInput, "aiLayer" | "part">): boolean {
+  return Boolean(input.aiLayer || input.part);
+}
+
+/** #2602: the retryable failure of a render whose generated audio stayed unmarked. */
+function unmarkedGeneratedAudioError(): RemixGenerationProviderError {
+  return new RemixGenerationProviderError(
+    "provider_unavailable",
+    UNMARKED_GENERATED_AUDIO_MESSAGE,
+    true,
+  );
 }
 
 /**
@@ -1843,6 +1883,8 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         watermarkMetadata = { status: "none", reason: "no_key" };
       }
       if (embedder && watermarkToken) {
+        // #2602: a render with a generated layer or an AI part contains
+        // generated audio, so it must not ship unmarked.
         const embedded = await this.encodeWatermarkedMaster(
           embedder,
           workDir,
@@ -1850,6 +1892,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           outputPath,
           watermarkToken,
           label,
+          ffmpegInputs.some(isGeneratedAudioInput),
         );
         watermarkMetadata = embedded
           ? {
@@ -1886,6 +1929,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
               watermark.token,
               index,
               label,
+              isGeneratedAudioInput(input),
             );
             if (ok) watermark.stemIndexes.push(index);
             else stemsFailed += 1;
@@ -1954,8 +1998,10 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
 
   /**
    * #2573: embeds the token in the PCM master and encodes the MP3 the policy
-   * ships. On any embed failure the unwatermarked PCM is encoded instead and
-   * the render goes on: a watermark problem never fails a render. An encode
+   * ships. The embed is tried {@link REMIX_WATERMARK_EMBED_ATTEMPTS} times.
+   * If it still fails, a render with no generated audio encodes the
+   * unwatermarked PCM and goes on; a render that contains generated audio
+   * fails (#2602), because generated audio must not ship unmarked. An encode
    * failure is a render failure, as it was before.
    */
   private async encodeWatermarkedMaster(
@@ -1965,14 +2011,25 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     outputPath: string,
     token: string,
     label: string,
+    containsGeneratedAudio: boolean,
   ): Promise<boolean> {
     const markedPath = join(workDir, "mix.wm.wav");
     let embedded = true;
     const started = Date.now();
     try {
-      await embedder.embed(mixPath, markedPath, token);
+      await embedWatermarkWithRetry(embedder, mixPath, markedPath, token, (error) =>
+        this.logger.warn(
+          `[watermark] ${label}: embed failed, retrying: ${watermarkErrorMessage(error)}`,
+        ),
+      );
     } catch (error) {
       embedded = false;
+      if (containsGeneratedAudio) {
+        this.logger.error(
+          `[watermark] ${label}: embed failed on a render with generated audio, failing the render: ${watermarkErrorMessage(error)}`,
+        );
+        throw unmarkedGeneratedAudioError();
+      }
       this.logger.warn(
         `[watermark] ${label}: embed failed, shipping the render unwatermarked: ${watermarkErrorMessage(error)}`,
       );
@@ -1980,7 +2037,11 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     try {
       await execFileAsync(
         "ffmpeg",
-        buildMasterEncodeArgs(embedded ? markedPath : mixPath, outputPath),
+        buildMasterEncodeArgs(
+          embedded ? markedPath : mixPath,
+          outputPath,
+          containsGeneratedAudio,
+        ),
         { timeout: FFMPEG_TIMEOUT_MS },
       );
     } catch (error) {
@@ -2002,7 +2063,8 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
 
   /**
    * #2573: embeds the token in one stem-tap FLAC, rewriting it in place as
-   * 24-bit FLAC. On failure the original file is left as it was.
+   * 24-bit FLAC. On failure the original file is left as it was, unless the
+   * tap is generated audio (#2602): then the render fails.
    */
   private async watermarkStemTap(
     embedder: RemixWatermarkEmbedder,
@@ -2011,6 +2073,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     token: string,
     index: number,
     label: string,
+    generatedAudio: boolean,
   ): Promise<boolean> {
     const markedPath = join(workDir, `stem-wm-${index}.wav`);
     const encodedPath = join(
@@ -2018,7 +2081,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       `stem-wm-${index}${REMIX_STEM_TAP_AUDIO_POLICY.extension}`,
     );
     try {
-      await embedder.embed(stemPath, markedPath, token);
+      await embedWatermarkWithRetry(embedder, stemPath, markedPath, token);
       await execFileAsync(
         "ffmpeg",
         buildStemTapEncodeArgs(markedPath, encodedPath),
@@ -2027,6 +2090,12 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       await rename(encodedPath, stemPath);
       return true;
     } catch (error) {
+      if (generatedAudio) {
+        this.logger.error(
+          `[watermark] ${label}: stem ${index} is generated audio and could not be marked, failing the render: ${watermarkErrorMessage(error)}`,
+        );
+        throw unmarkedGeneratedAudioError();
+      }
       this.logger.warn(
         `[watermark] ${label}: stem ${index} embed failed, shipping it unwatermarked: ${watermarkErrorMessage(error)}`,
       );
@@ -2034,6 +2103,64 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     } finally {
       await rm(markedPath, { force: true }).catch(() => undefined);
       await rm(encodedPath, { force: true }).catch(() => undefined);
+    }
+  }
+
+  async markGeneratedAudio(
+    audio: Buffer,
+    mimeType: string,
+    label: string,
+  ): Promise<MarkedGeneratedAudio> {
+    const embedder = this.watermarkEmbedder;
+    if (!embedder) {
+      return { buffer: audio, mimeType, metadata: { status: "none", reason: "no_key" } };
+    }
+    const token = newRemixWatermarkToken();
+    const workDir = await mkdtemp(join(tmpdir(), "remix-mark-"));
+    try {
+      const sourcePath = join(workDir, "source");
+      const pcmPath = join(workDir, "source.wav");
+      const markedPath = join(workDir, "marked.wav");
+      await writeFile(sourcePath, audio);
+      try {
+        // The embedder reads WAV or FLAC: decode whatever the model returned.
+        await execFileAsync(
+          "ffmpeg",
+          ["-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-i", sourcePath, "-codec:a", "pcm_f32le", pcmPath],
+          { timeout: FFMPEG_TIMEOUT_MS },
+        );
+        await embedWatermarkWithRetry(embedder, pcmPath, markedPath, token, (error) =>
+          this.logger.warn(
+            `[watermark] ${label}: embed failed, retrying: ${watermarkErrorMessage(error)}`,
+          ),
+        );
+      } catch (error) {
+        this.logger.error(
+          `[watermark] ${label}: generated audio could not be marked, failing the draft: ${watermarkErrorMessage(error)}`,
+        );
+        throw unmarkedGeneratedAudioError();
+      }
+      return {
+        buffer: await readFile(markedPath),
+        mimeType: "audio/wav",
+        metadata: {
+          status: "embedded",
+          scheme: REMIX_WATERMARK_SCHEME,
+          schemeVersion: REMIX_WATERMARK_SCHEME_VERSION,
+          strength: embedder.strength,
+          keyId: embedder.keyId,
+        },
+        watermark: {
+          token,
+          scheme: REMIX_WATERMARK_SCHEME,
+          schemeVersion: REMIX_WATERMARK_SCHEME_VERSION,
+          strength: embedder.strength,
+          keyId: embedder.keyId,
+          stemIndexes: [],
+        },
+      };
+    } finally {
+      await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 
