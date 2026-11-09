@@ -7,6 +7,7 @@ import { prisma } from '../../db/prisma';
 import { X402PaymentService } from './x402.payment.service';
 import { writeStructuredLog } from '../shared/structured_logging';
 import { SMART_ACCOUNT_PROOF_REFUSAL, isSmartAccountPaymentProof } from './x402.payer-binding';
+import { STEM_SOURCE_HOLD_REFUSAL } from '../catalog/remix-source-hold';
 
 /**
  * X402Middleware — NestJS adapter for the x402 Express payment middleware.
@@ -109,6 +110,12 @@ export class X402Middleware implements NestMiddleware {
       });
     }
 
+    // A published remix on a source hold (#2601) keeps honouring settled
+    // purchases above, but takes no new challenge or settlement.
+    if (stem.track?.release?.sourceHoldReason) {
+      return res.status(409).json(STEM_SOURCE_HOLD_REFUSAL);
+    }
+
     const listedSettlementCheck = await this.validateListedStemSettlementRequest(req, stemId);
     if (!listedSettlementCheck.ok) {
       return res.status(listedSettlementCheck.status).json({
@@ -208,6 +215,7 @@ export class X402Middleware implements NestMiddleware {
         uri: true,
         mimeType: true,
         isCurrent: true,
+        track: { select: { release: { select: { sourceHoldReason: true } } } },
       },
     });
   }

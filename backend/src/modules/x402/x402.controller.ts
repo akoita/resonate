@@ -54,6 +54,7 @@ import {
 } from './x402.payer-binding';
 import { X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS } from './x402.smart-account';
 import { knownStemFileExtension } from '../shared/stem-media';
+import { STEM_SOURCE_HOLD_REFUSAL } from '../catalog/remix-source-hold';
 
 /**
  * Body of `POST /api/stems/:stemId/x402/smart-account`. Only shapes are checked
@@ -1446,7 +1447,7 @@ export class X402Controller {
               orderBy: { type: 'asc' },
             },
             release: {
-              select: { id: true, title: true, primaryArtist: true },
+              select: { id: true, title: true, primaryArtist: true, sourceHoldReason: true },
             },
           },
         },
@@ -1456,6 +1457,9 @@ export class X402Controller {
 
     if (!stem) {
       return { error: 'Stem not found' };
+    }
+    if (stem.track?.release?.sourceHoldReason) {
+      throw new ConflictException(STEM_SOURCE_HOLD_REFUSAL);
     }
     if (stem.isCurrent === false) {
       throw new ConflictException({

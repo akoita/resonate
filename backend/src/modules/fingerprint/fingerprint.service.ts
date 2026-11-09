@@ -1,6 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
+import { EventBus } from "../shared/event_bus";
+import { reconcileAndAnnounceRemixSourceHolds } from "../catalog/remix-source-hold";
 
 @Injectable()
 export class FingerprintService {
@@ -8,6 +10,8 @@ export class FingerprintService {
 
   constructor(
     private readonly uploadRightsRoutingService: UploadRightsRoutingService,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
 
   /**
@@ -108,6 +112,8 @@ export class FingerprintService {
       data: { contentStatus: "quarantined" },
     });
     await this.uploadRightsRoutingService.syncTrackRightsFromContentStatus(trackId);
+    // Published remixes built on a held track are held with it (#2601).
+    await reconcileAndAnnounceRemixSourceHolds(this.eventBus, { trackIds: [trackId] });
 
     // Notify the original uploader(s) — TODO: implement notification system
     const originalArtists = [...new Set(duplicates.map((d) => d.track.release.artist.displayName))];
