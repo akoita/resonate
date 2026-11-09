@@ -8884,6 +8884,8 @@ export type SubscriptionConsentWording = {
   reviewStatus: string;
   heading: string;
   intro: string;
+  /** Automatic-renewal terms with `{price}` and `{interval}` to fill (#2597). Absent from older servers. */
+  renewal?: string;
   acknowledgement: string;
   cancellation: string;
   confirmation: string;

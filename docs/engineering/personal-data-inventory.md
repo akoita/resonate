@@ -364,8 +364,9 @@ exported, and **retained** on erasure with the purchase records it evidences
 (`StemPurchase`, `PunchlineCollectible`), because it is the proof used to answer
 a withdrawal or refund claim; the user id rotates with the cascade. An Artist
 Pro subscription (#2407) adds rows with surface `subscription`: the person's
-request for the subscription to start at once and their acknowledgement that
-withdrawing within 14 days refunds only the unused time, with its own wording
+request for the subscription to start at once, their agreement to its
+automatic renewal, and their acknowledgement that withdrawing within 14 days
+refunds the price less a proportionate amount, with its own wording
 version and the Checkout Session id as `purchaseRef`.
 
 AI DJ Session History (#2096) adds `Session.filters`, a bounded summary of a

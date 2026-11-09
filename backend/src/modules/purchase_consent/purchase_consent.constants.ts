@@ -121,16 +121,22 @@ export const PURCHASE_CONSENT_NOTICE_ACTOR = { userId: "system:purchase-consent"
  * Served by `GET /billing/subscription` so the web never carries its own copy.
  * A draft until legal review (RFC §8).
  */
-export const SUBSCRIPTION_CONSENT_TEXT_VERSION = "2026-10-25.subscription-draft-1";
+export const SUBSCRIPTION_CONSENT_TEXT_VERSION = "2026-11-09.subscription-draft-2";
 
 export const SUBSCRIPTION_CONSENT_WORDING = {
   version: SUBSCRIPTION_CONSENT_TEXT_VERSION,
   reviewStatus: CONSENT_REVIEW_STATUS,
   heading: "Your subscription starts now",
   intro:
-    "You can withdraw from a subscription within 14 days of subscribing. If you ask for Artist Pro to start straight away, you can still withdraw during those 14 days, but you pay for the time you used.",
+    "You can withdraw from a subscription within 14 days of subscribing. If you ask for Artist Pro to start straight away, you can still withdraw during those 14 days; you then pay only for the service you received before withdrawing.",
+  /**
+   * The automatic-renewal terms, shown next to the tick box (#2597). The web
+   * fills `{price}` (amount with its tax wording) and `{interval}` (month or
+   * year) from the price the person chose, because prices are configuration.
+   */
+  renewal: "Artist Pro renews automatically every {interval} at {price} until you cancel.",
   acknowledgement:
-    "I ask for my Artist Pro subscription to start now, before the 14-day withdrawal period ends. I understand that if I withdraw within those 14 days, I am refunded only for the unused time, less the value of any monthly generation allowance I have already used.",
+    "I agree that Artist Pro renews automatically as described above until I cancel. I ask for it to start now, before the 14-day withdrawal period ends, and I understand that if I withdraw within those 14 days I pay only for the service I received before withdrawing, in proportion to the price, and the rest is refunded.",
   cancellation:
     "You can cancel at any time from Manage billing. Artist Pro then stays on until the end of the period you paid for.",
   confirmation:

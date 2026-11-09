@@ -57,6 +57,22 @@ export function artistProIntervalPrice(
   return `${formatMoney(prices[interval][currency], currency)}/${interval}, ${taxLabel(currency)}`;
 }
 
+/**
+ * The server's automatic-renewal sentence with the chosen price filled in
+ * (#2597): "Artist Pro renews automatically every month at $14.99/month, plus
+ * any applicable tax, until you cancel." Null when the server sends none.
+ */
+export function artistProRenewalTerms(
+  template: string | undefined,
+  prices: BillingState["prices"],
+  interval: BillingInterval,
+  currency: BillingCurrency,
+): string | null {
+  if (!template) return null;
+  const price = `${formatMoney(prices[interval][currency], currency)} (${taxLabel(currency)})`;
+  return template.replaceAll("{interval}", interval).replaceAll("{price}", price);
+}
+
 const INTERVAL_LABEL: Record<BillingInterval, string> = { month: "Monthly", year: "Yearly" };
 
 export function formatBillingDate(iso: string | null | undefined): string | null {
@@ -138,6 +154,8 @@ export function PlanBillingView({
   const canManage = Boolean(billing?.available && billing.hasBillingAccount);
   const periodEnd = formatBillingDate(sub?.currentPeriodEnd);
   const prices = billing?.prices ?? DEFAULT_ARTIST_PRO_PRICES;
+  const renewalTerms =
+    billing && chosenInterval ? artistProRenewalTerms(billing.consent.renewal, prices, chosenInterval, currency) : null;
   const manageButton = canManage ? (
     <Button variant="ghost" onClick={onManage} disabled={busy}>
       {busy ? "Opening…" : kind === "past_due" || kind === "unpaid" ? "Update your card" : "Manage billing"}
@@ -255,6 +273,11 @@ export function PlanBillingView({
                 {artistProIntervalPrice(prices, chosenInterval, currency)}.
               </p>
               <p>{billing.consent.intro}</p>
+              {renewalTerms ? (
+                <p className="plan-billing-renewal">
+                  <strong>{renewalTerms}</strong>
+                </p>
+              ) : null}
               <label className="plan-billing-consent-check">
                 <input
                   type="checkbox"
