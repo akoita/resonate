@@ -7477,6 +7477,8 @@ export type RemixGenerationMetadata = {
     synthIdPresent?: boolean | null;
     seed?: number | null;
     sampleRate?: number | null;
+    /** The mark on a draft a model returned whole (#2602). Never the token. */
+    watermark?: RemixRenderMetadata["watermark"];
   } | null;
   requestedAt?: string;
   processingStartedAt?: string;
