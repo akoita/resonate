@@ -1511,7 +1511,8 @@ from the JWT, never the request body.
   `RemixRenderWatermark` row: token, project, generation and render job ids,
   owner, source track(s), stems with their licence basis and purchase ids,
   policy version, scheme and key id. Free on every tier. A watermark failure
-  ships the render unwatermarked; it never fails a render. On account erasure
+  ships a render with no generated audio unwatermarked; a render that
+  contains generated audio fails instead (#2602, below). On account erasure
   the row is kept and the owner pseudonymised (owner decision, 2026-11-04).
   Detection is #2575; the deploy half (binary in the backend image, key
   secret) is resonate-iac#333.
