@@ -784,7 +784,9 @@ function normalizedCitySlug(value: unknown) {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    // The line above leaves single dashes only, so no "+" is needed here. A
+    // "-+$" would backtrack polynomially on hostile input.
+    .replace(/^-|-$/g, "")
     .slice(0, 80);
   return normalized || undefined;
 }
