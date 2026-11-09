@@ -8,6 +8,7 @@ import {
   ContractDisputeAppealedEvent,
   GenerationCreditsGrantedEvent,
   GenerationCreditsRequestedEvent,
+  RemixDraftSourceRemovedEvent,
   X402RefundDueStaleEvent,
 } from "../../events/event_types";
 import { parseEnvList } from "../../config/env";
@@ -43,6 +44,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
     this.subscribeToCreditRequests();
     this.subscribeToCreditGrants();
     this.subscribeToRefundDueAlerts();
+    this.subscribeToRemovedRemixDrafts();
     this.logger.log(
       "Notification service initialized — listening for dispute + credit-request + credit-grant + refund-due events",
     );
@@ -217,6 +219,32 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
             type: "credits_granted",
             title: "Generation credits added",
             message: `You received ${formatUsdCents(event.amountCents)} of generation credits.`,
+          });
+        },
+      ),
+    );
+  }
+
+  private subscribeToRemovedRemixDrafts() {
+    // An artist deleted a release, and an unpublished remix draft built on it
+    // went with it (#2600, ADR-LD-5 §5) -> tell the draft's creator. Only ids
+    // that are wallet addresses have an inbox; others are skipped.
+    this.subscriptions.push(
+      this.eventBus.subscribe(
+        "remix.draft_source_removed",
+        async (event: RemixDraftSourceRemovedEvent) => {
+          const walletAddress = notifiableWalletForUserId(event.creatorId);
+          if (!walletAddress) {
+            this.logger.log(
+              `Removed remix draft ${event.remixProjectId} not notified - user id is not a wallet address`,
+            );
+            return;
+          }
+          await this.createNotification({
+            walletAddress,
+            type: "remix_draft_removed",
+            title: "A remix draft was removed",
+            message: `The artist deleted "${event.sourceTrackTitle}", so your draft "${event.projectTitle}" was removed with it. Nothing you published or bought is affected.`,
           });
         },
       ),
