@@ -11,6 +11,8 @@ import {
   formatCompletedAt,
   gatedClickHandler,
   RemixDraftsPanel,
+  WATERMARK_DISCLOSURE,
+  WATERMARK_DISCLOSURE_HREF,
   type RemixCurrentDraft,
   type RemixDraftsPanelProps,
   type RemixDraftVersion,
@@ -257,6 +259,43 @@ describe("RemixDraftsPanel — publish and export", () => {
     expect(html).not.toContain("Publish on Resonate");
     expect(html).not.toContain("Export audio");
     expect(html).toContain("remix-draft-playback-btn");
+  });
+});
+
+describe("RemixDraftsPanel — watermark disclosure (#2574)", () => {
+  it("tells the creator before export that a marked draft carries the mark", () => {
+    const html = render({ current: draft({ watermarked: true }) });
+    expect(html).toContain("remix-watermark-disclosure");
+    expect(html).toContain(WATERMARK_DISCLOSURE);
+    expect(html).toContain(`href="${WATERMARK_DISCLOSURE_HREF}"`);
+    // Shown with the actions it is about, before them being used.
+    expect(html.indexOf("Export audio")).toBeLessThan(html.indexOf("remix-watermark-disclosure"));
+    expect(html).toMatch(/remix-draft-actions[\s\S]*remix-watermark-disclosure/);
+  });
+
+  it("says what the mark identifies and what it does not", () => {
+    expect(WATERMARK_DISCLOSURE).toContain("identifies this remix project");
+    expect(WATERMARK_DISCLOSURE).toContain("not you");
+    expect(WATERMARK_DISCLOSURE).toContain("no name, wallet or email");
+  });
+
+  it("claims no mark on a draft that has none", () => {
+    expect(render()).not.toContain("remix-watermark-disclosure");
+    expect(render({ current: draft({ watermarked: false }) })).not.toContain("inaudible");
+  });
+
+  it("stays visible when export is locked, since publish keeps the mark too", () => {
+    const html = render({
+      current: draft({ watermarked: true }),
+      exportAction: {
+        enabled: false,
+        reason: "Needs a commercial license.",
+        busy: false,
+        onClick: noop,
+        onLockedClick: noop,
+      },
+    });
+    expect(html).toContain("remix-watermark-disclosure");
   });
 });
 

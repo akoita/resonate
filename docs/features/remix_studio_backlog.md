@@ -328,13 +328,15 @@ Nothing below is filed or scheduled until the owner accepts the decisions.
 
 ### G0. Fix what is wrong (no new decision needed)
 
-- Replace the hardcoded 70/20/10 `PayoutSplitPreview` with the canonical split.
-- Private drafts must not block the source artist's release deletion
-  (`release_has_remixes`).
-- Cascade consent revocation, quarantine and withdrawal to published remixes.
+- ✅ Replace the hardcoded 70/20/10 `PayoutSplitPreview` with the canonical
+  split (#2599).
+- ✅ Private drafts must not block the source artist's release deletion
+  (`release_has_remixes`, #2600).
+- ✅ Cascade consent revocation, quarantine and withdrawal to published
+  remixes (#2601; source holds, see `release_withdrawal.md`).
 - ✅ Machine-readable marking on every output path (#2602; inventory in
-  `remix_studio.md`). Still open: #2575 detection and the deploy half,
-  resonate-iac#333, before 2026-12-02.
+  `remix_studio.md`) and the disclosure to creators (#2574). Still open:
+  #2575 detection and the deploy half, resonate-iac#333, before 2026-12-02.
 
 ### G1. Consent per release and per capability (ADR-LD-2)
 

@@ -1515,6 +1515,18 @@ from the JWT, never the request body.
   the row is kept and the owner pseudonymised (owner decision, 2026-11-04).
   Detection is #2575; the deploy half (binary in the backend image, key
   secret) is resonate-iac#333.
+- Watermark disclosure (#2574, slice 4 of #2566): when the current draft's
+  render metadata says `watermark.status: "embedded"`, the Drafts panel shows
+  a note above Publish and Export: the draft carries an inaudible mark, every
+  export and the published track keep it, and it identifies the project and
+  its licence, not the person (`WATERMARK_DISCLOSURE` in
+  `RemixDraftsPanel.tsx`, with a link to the Remix guide). An unmarked draft
+  shows nothing, so the studio never claims a mark that is not there. The
+  same statement is in the licence templates (Render Mark Clause,
+  `docs/rfc/license-legal-templates.md`), the privacy policy template (what
+  the mark record holds and that it is kept, pseudonymised, after erasure)
+  and the Remix guide ("Drafts and versions", "Rights, publishing, and
+  selling"). `npx vitest run src/components/remix/RemixDraftsPanel.test.tsx`.
 - Marking on every generated-audio output path (#2602). Generated audio must
   not leave Resonate without a machine-readable mark. Where a watermark key
   is configured:

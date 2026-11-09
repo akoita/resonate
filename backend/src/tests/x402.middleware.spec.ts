@@ -428,6 +428,71 @@ describe('X402Middleware', () => {
       expect(res.status).toHaveBeenCalledWith(403);
     });
 
+    describe('a published remix on a source hold (#2601)', () => {
+      const heldStem = {
+        id: 'stem_1',
+        uri: 'https://example.com/stem.mp3',
+        mimeType: 'audio/mpeg',
+        isCurrent: true,
+        track: { release: { sourceHoldReason: 'source_consent_revoked' } },
+      };
+      const mocks = () =>
+        (jest.requireMock('../db/prisma') as {
+          prisma: { stem: { findUnique: jest.Mock }; x402Settlement: { findUnique: jest.Mock } };
+        }).prisma;
+
+      it('issues no new payment challenge', async () => {
+        mocks().stem.findUnique.mockResolvedValue(heldStem);
+        mocks().x402Settlement.findUnique.mockResolvedValue(null);
+        const middleware = createMiddleware(createMockConfig());
+        const req = createMockReq('/api/stems/stem_1/x402');
+        const { res } = createMockRes();
+        const next = jest.fn();
+
+        await middleware.use(req as Request, res as Response, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'stem_source_hold' }));
+      });
+
+      it('settles no new payment', async () => {
+        mocks().stem.findUnique.mockResolvedValue(heldStem);
+        mocks().x402Settlement.findUnique.mockResolvedValue(null);
+        const config = createMockConfig();
+        const paymentService = new X402PaymentService(config);
+        const verifyAndSettle = jest.spyOn(paymentService, 'verifyAndSettle');
+        const middleware = createMiddleware(config, paymentService);
+        const req = createMockReq('/api/stems/stem_1/x402', { 'x-payment': 'new-payment' });
+        const { res } = createMockRes();
+        const next = jest.fn();
+
+        await middleware.use(req as Request, res as Response, next);
+
+        expect(verifyAndSettle).not.toHaveBeenCalled();
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(409);
+      });
+
+      it('still serves a purchase that was already settled', async () => {
+        mocks().stem.findUnique.mockResolvedValue(heldStem);
+        mocks().x402Settlement.findUnique.mockResolvedValue({
+          id: 'settlement_1',
+          stemId: 'stem_1',
+          paymentRail: 'x402',
+        });
+        const middleware = createMiddleware(createMockConfig());
+        const req = createMockReq('/api/stems/stem_1/x402', { 'x-payment': 'settled-proof' });
+        const { res } = createMockRes();
+        const next = jest.fn();
+
+        await middleware.use(req as Request, res as Response, next);
+
+        expect(next).toHaveBeenCalled();
+        expect(res.status).not.toHaveBeenCalledWith(409);
+      });
+    });
+
     it('should pass through non-x402 routes', async () => {
       const config = createMockConfig();
       const middleware = createMiddleware(config);

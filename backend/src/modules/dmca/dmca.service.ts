@@ -10,6 +10,8 @@ import { prisma } from "../../db/prisma";
 import { hasReleaseManagementAccess } from "../management/management-access";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 import { NoticeService } from "../notifications/notice.service";
+import { EventBus } from "../shared/event_bus";
+import { reconcileAndAnnounceRemixSourceHolds } from "../catalog/remix-source-hold";
 
 /** Authenticated caller, as set on `req.user` by the JWT strategy. */
 export interface DmcaActor {
@@ -42,6 +44,8 @@ export class DmcaService {
     private readonly uploadRightsRoutingService: UploadRightsRoutingService,
     @Optional()
     private readonly noticeService?: NoticeService,
+    @Optional()
+    private readonly eventBus?: EventBus,
   ) {}
 
   /**
@@ -194,6 +198,8 @@ export class DmcaService {
         data: { contentStatus: "dmca_removed" },
       });
       await this.uploadRightsRoutingService.syncTrackRightsFromContentStatus(report.trackId);
+      // Published remixes built on a removed track leave discovery too (#2601).
+      await reconcileAndAnnounceRemixSourceHolds(this.eventBus, { trackIds: [report.trackId] });
 
       // Delist all derived stems by clearing their URIs
       // (keeping records for audit trail but making them inaccessible)

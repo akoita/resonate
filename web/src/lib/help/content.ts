@@ -2051,6 +2051,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Export every part from the same start point as the published track and at the same sample rate, without trimming silence.",
               "Resonate checks each part on its own: its length against the published track, that it is not silent or louder than the whole track, and that its loudness over time follows the track's. When you upload every part the track is sold with, they must also add up to the published track. It tells you in plain words which part to fix, for example a part with the wrong length or one that sits a fraction of a second late. Nothing is saved until every part you sent passes.",
               "Price your Official and Separated (AI) stems separately in the stem prices below. Resonate sets no minimum price.",
+              "Under the prices, What you keep from each sale shows your share and the platform fee for each licence (per play, Remix, Commercial) at the prices you set. You always keep at least 85% of a sale of your own stem.",
             ],
           },
           {
@@ -2328,7 +2329,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "audio", "listen", "example", "before and after", "short edit", "echo", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade", "share", "share remix"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "audio", "listen", "example", "before and after", "short edit", "echo", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade", "share", "share remix", "watermark", "mark", "inaudible mark", "export"],
     levelIntros: {
       beginner: {
         title: "Your first remix in 3 minutes",
@@ -2745,10 +2746,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/remix-studio-drafts.png`,
-              alt: "The Drafts panel: the current Stem mix render with a Your stems only chip, its date, a waveform, Play, Publish on Resonate and Export audio buttons, and a previous version below with Play and a delete button.",
+              alt: "The Drafts panel: the current Stem mix render with a Your stems only chip, its date, a waveform, Play, Publish on Resonate and Export audio buttons, a note that the draft carries an inaudible Resonate mark, and a previous version below with Play and a delete button.",
               caption: "Your latest draft on top, earlier versions below.",
-              width: 703,
-              height: 386,
+              width: 709,
+              height: 442,
               source: LOCAL,
             },
           },
@@ -2757,7 +2758,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "\"Render mix\" (or \"Re-render mix\") makes a new draft of what you hear. Earlier drafts move to \"Previous versions\", where you can play them to compare.",
               "Delete a version you don't want with its bin button. It asks first, because it can't be undone. Your current draft can't be deleted; render again instead.",
+              "A draft you haven't published depends on its source track. If the artist deletes that release, the draft is removed with it and you get a notification. Remixes you published and stems you bought are not affected.",
               "\"How this draft was made\" explains where the sound came from.",
+              "A draft can carry an inaudible Resonate mark. When it does, a note above Publish and Export says so. You can't hear the mark and it doesn't change the sound.",
             ],
           },
           {
@@ -2784,9 +2787,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Remix license: lets you make private drafts and publish your remix on Resonate.",
               "Commercial license: also lets you download your remix with \"Export audio\" and use it elsewhere, and sell it. The Export button tells you when a commercial license is what's missing.",
               "Publishing: \"Publish on Resonate\" asks you to confirm, then makes your remix a public release that credits the original song and artist. Resonate checks your rights again at that moment. After publishing, the studio is locked so the release stays as published.",
+              "A published remix depends on its original. If the original artist switches off remixing or withdraws the release, or the original track is under review or taken down, your remix is put on hold: it leaves search and streaming and can't be bought, and people who already bought it keep it. You get a notification, your catalog shows On hold with the reason, and the remix comes back by itself when the original is available again.",
               "Selling: on the \"Published on Resonate\" panel, \"List this remix for sale\" takes you to your release page to protect it and list it for sale. You keep the artist's share, like any other sale. It needs the commercial license on every stem you used (or you own the original artist).",
               "Sharing: the \"Published on Resonate\" panel also offers Share your remix (X, Facebook, Reddit, your device's share sheet, or Copy link). The post names your remix and the song and artist it remixes, and links your release page. Nothing is posted unless you choose to share.",
             ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "The inaudible mark",
+            text: "A marked draft keeps its mark in everything made from it: the exported audio, exported stems, a DJ export, and the track you publish. The mark is a random code that identifies your remix project and the license it was made under. It holds no name, wallet or email. If a marked file turns up somewhere it shouldn't, Resonate can read the mark to tell which remix it came from. That shows where the audio came from, not who shared it. The record behind the mark is kept if you delete your account, without your identity.",
           },
           {
             kind: "callout",
@@ -3045,10 +3055,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/remix-studio-stems.png`,
-              alt: "The Drafts card with Publish on Resonate, Export audio and Export stems, and the note that export needs a commercial license on the source stems.",
+              alt: "The Drafts card with Publish on Resonate, Export audio and Export stems, the note that the draft carries an inaudible Resonate mark, and the note that export needs a commercial license on the source stems.",
               caption: "Export stems sits next to Export audio on a draft rendered with stems.",
               width: 709,
-              height: 426,
+              height: 482,
               source: LOCAL,
             },
           },
@@ -3731,7 +3741,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "This is a pause, not a deletion",
-            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, delete it from its release page instead. Deleting is refused while other people depend on the release — remixes built on it, Punchline drops, or paid downloads — and the message tells you which; withdraw it in that case.",
+            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, delete it from its release page instead. Deleting is refused while other people depend on the release — published remixes built on it, Punchline drops, or paid downloads — and the message tells you which; withdraw it in that case. Remix drafts that were never published don't stop you: they are removed with the release, and their creators are told.",
           },
         ],
       },

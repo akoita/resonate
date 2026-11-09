@@ -1,6 +1,6 @@
 "use client";
 
-import { restoreRelease, withdrawRelease, type Release } from "../../../lib/api";
+import { ApiRequestError, restoreRelease, withdrawRelease, type Release } from "../../../lib/api";
 
 /**
  * #1793 — an artist taking a release out of streaming, and putting it back.
@@ -44,6 +44,36 @@ export function isWithdrawnRelease(release: Pick<Release, "status">) {
   return (release.status ?? "").toLowerCase() === "withdrawn";
 }
 
+/**
+ * #2601: a published remix the platform took out of streaming because of its
+ * original. Not the owner's doing, so the copy says what happened to the
+ * original and what comes next, and offers no restore.
+ */
+const SOURCE_HOLD_COPY: Record<string, { cause: string; outlook: string }> = {
+  source_consent_revoked: {
+    cause: "The original artist switched off remixing.",
+    outlook: "It comes back by itself if they switch it on again.",
+  },
+  source_withdrawn: {
+    cause: "The original release was withdrawn from streaming.",
+    outlook: "It comes back by itself if the release is restored.",
+  },
+  source_under_review: {
+    cause: "The original track is under review.",
+    outlook: "It comes back by itself if the review clears the track.",
+  },
+  source_removed: {
+    cause: "The original track was taken down.",
+    outlook: "It can't be restored.",
+  },
+};
+
+/** The hold's plain-language cause and outlook, or null when there is no hold. */
+export function sourceHoldCopy(release: Pick<Release, "status" | "sourceHoldReason">) {
+  if (!isWithdrawnRelease(release) || !release.sourceHoldReason) return null;
+  return SOURCE_HOLD_COPY[release.sourceHoldReason] ?? SOURCE_HOLD_COPY.source_withdrawn;
+}
+
 /** A fixed, timezone-stable date for the catalogue row. */
 export function formatWithdrawalDate(value?: string | null) {
   if (!value) return null;
@@ -55,6 +85,16 @@ export function formatWithdrawalDate(value?: string | null) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(time));
+}
+
+/** The server's own words when a restore is refused because of the original. */
+function sourceHoldRefusalMessage(error: unknown): string | null {
+  if (!(error instanceof ApiRequestError) || error.status !== 409) return null;
+  const details = error.details as { code?: unknown; message?: unknown } | undefined;
+  if (details?.code !== "release_source_hold") return null;
+  return typeof details.message === "string" && details.message.trim()
+    ? details.message
+    : "The original this remix is built on isn't available for remixing right now, so nothing changed.";
 }
 
 export type ReleaseAvailabilityHandlers = {
@@ -144,6 +184,7 @@ export function createReleaseAvailabilityHandlers(deps: {
           status: state?.status ?? "published",
           withdrawnAt: state?.withdrawnAt ?? null,
           withdrawalReason: state?.withdrawalReason ?? null,
+          sourceHoldReason: null,
         });
         addToast({
           type: "success",
@@ -151,7 +192,14 @@ export function createReleaseAvailabilityHandlers(deps: {
           message: `“${release.title}” can be streamed again.`,
         });
         return true;
-      } catch {
+      } catch (error) {
+        // The server refuses while the original still blocks the remix (#2601)
+        // and says why in plain words; show that instead of a generic failure.
+        const refusal = sourceHoldRefusalMessage(error);
+        if (refusal) {
+          addToast({ type: "info", title: "Can't restore it yet", message: refusal });
+          return false;
+        }
         addToast({
           type: "error",
           title: "Couldn't restore it",
@@ -173,6 +221,25 @@ export function ReleaseWithdrawnMarker({ release }: { release: Release }) {
   if (!isWithdrawnRelease(release)) return null;
   const withdrawnOn = formatWithdrawalDate(release.withdrawnAt);
   const note = release.withdrawalReason?.trim();
+  const hold = sourceHoldCopy(release);
+
+  if (hold) {
+    return (
+      <div className="release-withdrawn-marker" style={{ display: "grid", gap: "2px" }}>
+        <span
+          className="status-capsule-badge inactive"
+          style={{ fontSize: "10px", padding: "2px 8px", justifySelf: "start" }}
+        >
+          On hold
+        </span>
+        <span style={{ fontSize: "11px", opacity: 0.6 }}>
+          {withdrawnOn ? `Hidden since ${withdrawnOn}. ` : ""}
+          {hold.cause} {hold.outlook}
+        </span>
+        <span style={{ fontSize: "11px", opacity: 0.6 }}>People who already bought it keep it.</span>
+      </div>
+    );
+  }
 
   return (
     <div className="release-withdrawn-marker" style={{ display: "grid", gap: "2px" }}>
@@ -208,6 +275,8 @@ export function ReleaseAvailabilityActions({
   onRestore: (release: Release) => void;
 }) {
   const withdrawn = isWithdrawnRelease(release);
+  // A source hold is not the owner's to lift (#2601): the marker explains it.
+  if (sourceHoldCopy(release)) return null;
   const label = withdrawn
     ? busy
       ? "Restoring…"
