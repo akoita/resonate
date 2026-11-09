@@ -44,13 +44,53 @@ FROM build AS prod-deps
 
 RUN npm prune --omit=dev
 
-# ---- Stage 4: Production Runtime ----
+# ---- Stage 4: audiowmark (remix render mark, #2573) ----
+# Built from the pinned upstream release and checked against its digest. It is
+# a separate GPL-3.0-or-later program the backend runs like ffmpeg; see NOTICE
+# and docs/rfc/remix-watermarking.md ("Licence").
+FROM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS audiowmark
+
+ARG AUDIOWMARK_VERSION=0.6.5
+ARG AUDIOWMARK_SHA256=12dd0232e47f29521c91d9d642183b3ca4145be61d353c4dc6d1c6cd7c388a4b
+
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+      ca-certificates curl zstd build-essential pkg-config \
+      libfftw3-dev libsndfile1-dev libgcrypt20-dev libzita-resampler-dev libmpg123-dev \
+      libavcodec-dev libavformat-dev libavutil-dev libswresample-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN curl -fsSL -o audiowmark.tar.zst \
+      "https://github.com/swesterfeld/audiowmark/releases/download/${AUDIOWMARK_VERSION}/audiowmark-${AUDIOWMARK_VERSION}.tar.zst" \
+    && echo "${AUDIOWMARK_SHA256}  audiowmark.tar.zst" | sha256sum -c - \
+    && tar --zstd -xf audiowmark.tar.zst --strip-components=1 \
+    && ./configure --prefix=/opt/audiowmark \
+    && make -j"$(nproc)" \
+    && make install \
+    && strip /opt/audiowmark/bin/audiowmark \
+    && mkdir -p /opt/audiowmark/share/doc/audiowmark \
+    && cp COPYING /opt/audiowmark/share/doc/audiowmark/COPYING \
+    && printf 'audiowmark %s, GPL-3.0-or-later.\nSource: https://github.com/swesterfeld/audiowmark/releases/tag/%s\n' \
+         "${AUDIOWMARK_VERSION}" "${AUDIOWMARK_VERSION}" \
+         > /opt/audiowmark/share/doc/audiowmark/SOURCE
+
+# ---- Stage 5: Production Runtime ----
 FROM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec
 
 WORKDIR /app
 
-# openssl for Prisma; ffmpeg for stem_mix draft rendering (#1189)
-RUN apt-get update -y && apt-get install -y openssl ffmpeg && rm -rf /var/lib/apt/lists/*
+# openssl for Prisma; ffmpeg for stem_mix draft rendering (#1189); the shared
+# libraries audiowmark needs beyond what ffmpeg already brings.
+RUN apt-get update -y && apt-get install -y openssl ffmpeg \
+      libfftw3-single3 libsndfile1 libgcrypt20 libzita-resampler1 libmpg123-0t64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# The remix render mark (#2573). The backend finds it on PATH
+# (REMIX_WATERMARK_BIN defaults to `audiowmark`). The build fails here if the
+# binary cannot start, so an image never ships with a mark that cannot run.
+COPY --from=audiowmark /opt/audiowmark/bin/audiowmark /usr/local/bin/audiowmark
+COPY --from=audiowmark /opt/audiowmark/share/doc/audiowmark /usr/share/doc/audiowmark
+RUN audiowmark --version
 
 # Copy production dependencies, Prisma schema, and generated client.
 COPY --from=prod-deps /app/node_modules ./node_modules
