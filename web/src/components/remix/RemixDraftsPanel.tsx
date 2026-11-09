@@ -27,7 +27,23 @@ export type RemixCurrentDraft = {
   peaks: number[] | null;
   playing: boolean;
   loading: boolean;
+  /**
+   * True when this render carries the inaudible Resonate mark (#2573,
+   * `renderMetadata.watermark.status === "embedded"`). Drives the disclosure
+   * shown before every export (#2574).
+   */
+  watermarked?: boolean;
 };
+
+/**
+ * Shown above Publish/Export whenever the current draft is marked (#2574).
+ * It must stay true to the code: the mark is a random token that points at
+ * the render record of this project, and holds no name, wallet or email.
+ */
+export const WATERMARK_DISCLOSURE =
+  "This draft carries an inaudible Resonate mark. Every export and the published track keep it. The mark identifies this remix project and the license it was made under, not you: it holds no name, wallet or email.";
+export const WATERMARK_DISCLOSURE_LINK_LABEL = "How the mark works";
+export const WATERMARK_DISCLOSURE_HREF = "/help/remix-studio";
 
 export type RemixDraftVersion = {
   /** Playback key only — never rendered. */
@@ -414,6 +430,17 @@ export function RemixDraftsPanel(props: RemixDraftsPanelProps) {
                     </button>
                   )}
                 </div>
+                {current.watermarked && (
+                  <p
+                    className="mt-2 text-xs text-zinc-500 remix-watermark-disclosure"
+                    role="note"
+                  >
+                    {WATERMARK_DISCLOSURE}{" "}
+                    <a className="underline" href={WATERMARK_DISCLOSURE_HREF}>
+                      {WATERMARK_DISCLOSURE_LINK_LABEL}
+                    </a>
+                  </p>
+                )}
                 {stemsExport && !stemsExport.enabled && stemsExport.reason && (
                   <p className="mt-2 text-xs text-zinc-500 remix-stems-export-reason">
                     {stemsExport.reason}
