@@ -42,7 +42,6 @@ const ALLOWED_PAINT_ANIMATIONS = new Set<string>([
   "avatarPulse",
   "bg-shine",
   "commLivePulse",
-  "donut-pulse",
   "immersive-bloom",
   "mixer-btn-active-glow",
   "mixer-btn-glow",
