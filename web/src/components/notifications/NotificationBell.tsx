@@ -30,6 +30,7 @@ const typeIcon = (type: string) => {
     case "credits_granted": return "\u2728";
     case "remix_source_hold": return "\u23f8";
     case "remix_source_hold_lifted": return "\u25b6";
+    case "remix_draft_removed": return "\ud83c\udf9b";
     case "crate_watch_match": return "\ud83d\udce6";
     default: return "\ud83d\udd14";
   }
@@ -67,6 +68,11 @@ export function getNotificationHref(notification: DisputeNotification, role: str
 
   if (notification.type === "remix_source_hold" || notification.type === "remix_source_hold_lifted") {
     return notification.releaseId ? `/release/${notification.releaseId}` : "/artist/catalog";
+  }
+
+  if (notification.type === "remix_draft_removed") {
+    // The draft and its source are gone; the library is where remixing starts.
+    return "/library";
   }
 
   if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {
@@ -116,6 +122,10 @@ export function getNotificationActionHint(notification: DisputeNotification, rol
 
   if (notification.type === "remix_source_hold" || notification.type === "remix_source_hold_lifted") {
     return "Open your remix \u2192";
+  }
+
+  if (notification.type === "remix_draft_removed") {
+    return "Open your library \u2192";
   }
 
   if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {

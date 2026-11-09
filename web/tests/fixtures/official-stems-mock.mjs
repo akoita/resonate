@@ -90,6 +90,18 @@ export async function mockOfficialStemsRelease(page) {
   // The prices panel below the official stems panel: no saved prices, no templates.
   await page.route("**/api/stem-pricing/**", (route) => route.fulfill({ json: {} }));
   await page.route("**/api/stem-pricing/templates", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/stem-pricing/split", (route) =>
+    route.fulfill({
+      json: {
+        minArtistBps: 8500,
+        tiers: {
+          personal: { platformFeeBps: 1500, artistBps: 8500 },
+          remix: { platformFeeBps: 1000, artistBps: 9000 },
+          commercial: { platformFeeBps: 1000, artistBps: 9000 },
+        },
+      },
+    }),
+  );
   await page.route("**/analytics/product-events", (route) => route.fulfill({ status: 202, json: { recorded: true } }));
 }
 

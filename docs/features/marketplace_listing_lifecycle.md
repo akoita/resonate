@@ -93,6 +93,13 @@ buyer and machine-commerce surfaces strict about availability.
   carries no license type. Remix-tier purchases are what satisfy Remix Studio
   eligibility. Relist keeps the original listing's tier (tier change on relist
   is a deferred follow-up).
+- The stem pricing panel shows the artist what they keep per licence tier
+  (#2599): `GET /api/stem-pricing/split` returns the platform fee and the
+  artist share for personal, remix and commercial sales from the configured
+  take-rates (`X402_*_FEE_BPS`, ADR-BM-2), and refuses a take-rate that would
+  leave the artist under 85% (ADR-BM-4). The panel shows no numbers when the
+  split can't be loaded. A source stem sale has no remixer share; the source
+  share on derivative sales (ADR-LD-1) is not built.
 - Sellers can offer one stem under several license tiers at once (#2041),
   each with its own price per edition and edition count, in one confirmation
   (one batched smart-account UserOperation; no contract change). The stem-page

@@ -9,6 +9,7 @@ import {
   GenerationCreditsGrantedEvent,
   GenerationCreditsRequestedEvent,
   RemixSourceHoldChangedEvent,
+  RemixDraftSourceRemovedEvent,
   X402RefundDueStaleEvent,
 } from "../../events/event_types";
 import { parseEnvList } from "../../config/env";
@@ -58,6 +59,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
     this.subscribeToCreditGrants();
     this.subscribeToRefundDueAlerts();
     this.subscribeToRemixSourceHolds();
+    this.subscribeToRemovedRemixDrafts();
     this.logger.log(
       "Notification service initialized — listening for dispute + credit-request + credit-grant + refund-due events",
     );
@@ -274,6 +276,32 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
             title: "Your remix is on hold",
             message: `${REMIX_SOURCE_HOLD_CAUSES[event.reason] ?? REMIX_SOURCE_HOLD_CAUSES.source_withdrawn}, so ${name} is hidden for now. ${REMIX_SOURCE_HOLD_OUTLOOK[event.reason] ?? ""}People who already bought it keep it.`,
             releaseId: event.releaseId,
+          });
+        },
+      ),
+    );
+  }
+
+  private subscribeToRemovedRemixDrafts() {
+    // An artist deleted a release, and an unpublished remix draft built on it
+    // went with it (#2600, ADR-LD-5 §5) -> tell the draft's creator. Only ids
+    // that are wallet addresses have an inbox; others are skipped.
+    this.subscriptions.push(
+      this.eventBus.subscribe(
+        "remix.draft_source_removed",
+        async (event: RemixDraftSourceRemovedEvent) => {
+          const walletAddress = notifiableWalletForUserId(event.creatorId);
+          if (!walletAddress) {
+            this.logger.log(
+              `Removed remix draft ${event.remixProjectId} not notified - user id is not a wallet address`,
+            );
+            return;
+          }
+          await this.createNotification({
+            walletAddress,
+            type: "remix_draft_removed",
+            title: "A remix draft was removed",
+            message: `The artist deleted "${event.sourceTrackTitle}", so your draft "${event.projectTitle}" was removed with it. Nothing you published or bought is affected.`,
           });
         },
       ),

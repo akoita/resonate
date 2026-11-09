@@ -2046,7 +2046,7 @@ describe('CatalogService (integration)', () => {
     await expect(catalog.deleteRelease(created.id, `${TEST_PREFIX}user`)).resolves.toEqual({ success: true });
   });
 
-  it('refuses to delete a release that other remix projects are built on', async () => {
+  it('refuses to delete a release that a published remix is built on (#2600)', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Remix Source Delete Target',
@@ -2061,6 +2061,7 @@ describe('CatalogService (integration)', () => {
         creatorUserId: `${TEST_PREFIX}user`,
         sourceTrackId: trackId,
         title: 'Someone Else Remix',
+        status: 'published',
         policyVersion: 'test',
         stems: { create: { stemId: stem.id } },
       },
@@ -2074,12 +2075,13 @@ describe('CatalogService (integration)', () => {
     expect(await prisma.release.findUnique({ where: { id: created.id } })).not.toBeNull();
     expect(await prisma.track.findUnique({ where: { id: trackId } })).not.toBeNull();
     expect(await prisma.stem.findUnique({ where: { id: stem.id } })).not.toBeNull();
+    expect(await prisma.remixProject.findUnique({ where: { id: project.id } })).not.toBeNull();
 
     await prisma.remixProject.delete({ where: { id: project.id } });
     await expect(catalog.deleteRelease(created.id, `${TEST_PREFIX}user`)).resolves.toEqual({ success: true });
   });
 
-  it('refuses to delete a release whose stems are mixed into another remix project', async () => {
+  it('refuses to delete a release whose stems are mixed into a published remix of another track (#2600)', async () => {
     const source = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Other Remix Source',
@@ -2097,7 +2099,9 @@ describe('CatalogService (integration)', () => {
       data: {
         creatorUserId: `${TEST_PREFIX}user`,
         sourceTrackId: source.tracks[0].id,
+        secondarySourceTrackId: created.tracks[0].id,
         title: 'Borrowing Remix',
+        status: 'published',
         policyVersion: 'test',
         stems: { create: { stemId: stem.id } },
       },
@@ -2110,6 +2114,157 @@ describe('CatalogService (integration)', () => {
 
     await prisma.remixProject.delete({ where: { id: project.id } });
     await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+    await catalog.deleteRelease(source.id, `${TEST_PREFIX}user`);
+  });
+
+  it("deletes a release that only private drafts are built on, removes the drafts and tells their creators (#2600)", async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Draft Source Delete Target',
+      tracks: [{ title: 'Drafted Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const trackId = created.tracks[0].id;
+    const stem = await prisma.stem.create({
+      data: { trackId, type: 'drums', uri: '/drafted.mp3' },
+    });
+    const draft = await prisma.remixProject.create({
+      data: {
+        creatorUserId: `${TEST_PREFIX}user`,
+        sourceTrackId: trackId,
+        title: 'A Fan Draft',
+        policyVersion: 'test',
+        generationMetadata: {
+          status: 'completed',
+          output: { outputUri: 'local://draft-current.mp3', mimeType: 'audio/mpeg' },
+          previousDrafts: [
+            {
+              jobId: 'job-old',
+              output: { outputUri: 'local://draft-old.mp3', mimeType: 'audio/mpeg' },
+              stemUris: ['local://draft-old-stem-0.flac'],
+            },
+          ],
+        },
+        stems: { create: { stemId: stem.id } },
+      },
+    });
+    const archived = await prisma.remixProject.create({
+      data: {
+        creatorUserId: `${TEST_PREFIX}user`,
+        sourceTrackId: trackId,
+        title: 'An Archived Draft',
+        status: 'archived',
+        policyVersion: 'test',
+      },
+    });
+    const take = await prisma.remixPartTake.create({
+      data: {
+        projectId: draft.id,
+        userId: `${TEST_PREFIX}user`,
+        batchId: 'batch-1',
+        role: 'bass',
+        bars: 4,
+        seed: 1,
+        promptVersion: 'test',
+        status: 'completed',
+        provider: 'stub',
+        grounding: 'prompt_only',
+        costCents: 0,
+        storageUri: 'local://take.flac',
+      },
+    });
+
+    const removedEvents: any[] = [];
+    const subscription = eventBus.subscribe('remix.draft_source_removed', (event: any) => {
+      removedEvents.push(event);
+    });
+    const deleteSpy = jest
+      .spyOn((catalog as any).storageProvider, 'delete')
+      .mockResolvedValue(undefined);
+
+    try {
+      await expect(catalog.deleteRelease(created.id, `${TEST_PREFIX}user`)).resolves.toEqual({ success: true });
+
+      expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
+      expect(await prisma.remixProject.findUnique({ where: { id: draft.id } })).toBeNull();
+      expect(await prisma.remixProject.findUnique({ where: { id: archived.id } })).toBeNull();
+      expect(await prisma.remixProjectStem.count({ where: { remixProjectId: draft.id } })).toBe(0);
+      expect(await prisma.remixPartTake.findUnique({ where: { id: take.id } })).toBeNull();
+
+      expect(deleteSpy.mock.calls.map(([uri]) => uri).sort()).toEqual([
+        'local://draft-current.mp3',
+        'local://draft-old-stem-0.flac',
+        'local://draft-old.mp3',
+        'local://take.flac',
+      ]);
+      expect(removedEvents).toHaveLength(2);
+      expect(removedEvents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            remixProjectId: draft.id,
+            creatorId: `${TEST_PREFIX}user`,
+            sourceTrackId: trackId,
+            projectTitle: 'A Fan Draft',
+            sourceTrackTitle: 'Drafted Track',
+          }),
+          expect.objectContaining({ remixProjectId: archived.id, projectTitle: 'An Archived Draft' }),
+        ]),
+      );
+    } finally {
+      deleteSpy.mockRestore();
+      subscription.unsubscribe();
+    }
+  });
+
+  it('keeps a draft of another track when the release it borrowed from is deleted (#2600)', async () => {
+    const source = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Mashup Leading Source',
+      tracks: [{ title: 'Leading Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Mashup Second Source Delete Target',
+      tracks: [{ title: 'Second Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const ownStem = await prisma.stem.create({
+      data: { trackId: source.tracks[0].id, type: 'drums', uri: '/leading.mp3' },
+    });
+    const borrowedStem = await prisma.stem.create({
+      data: { trackId: created.tracks[0].id, type: 'bass', uri: '/second.mp3' },
+    });
+    const project = await prisma.remixProject.create({
+      data: {
+        creatorUserId: `${TEST_PREFIX}user`,
+        sourceTrackId: source.tracks[0].id,
+        secondarySourceTrackId: created.tracks[0].id,
+        mashup: { schemaVersion: 'remix-mashup/v1', secondary: { tempoRatio: 1, semitones: 0, offsetBars: 0 } },
+        title: 'A Mashup Draft',
+        policyVersion: 'test',
+        stems: { create: [{ stemId: ownStem.id }, { stemId: borrowedStem.id }] },
+      },
+    });
+
+    const removedEvents: any[] = [];
+    const subscription = eventBus.subscribe('remix.draft_source_removed', (event: any) => {
+      removedEvents.push(event);
+    });
+    try {
+      await expect(catalog.deleteRelease(created.id, `${TEST_PREFIX}user`)).resolves.toEqual({ success: true });
+    } finally {
+      subscription.unsubscribe();
+    }
+
+    const kept = await prisma.remixProject.findUnique({
+      where: { id: project.id },
+      include: { stems: true },
+    });
+    expect(kept).not.toBeNull();
+    expect(kept?.secondarySourceTrackId).toBeNull();
+    expect(kept?.mashup).toBeNull();
+    expect(kept?.stems.map((row) => row.stemId)).toEqual([ownStem.id]);
+    expect(removedEvents).toHaveLength(0);
+
+    await prisma.remixProject.delete({ where: { id: project.id } });
     await catalog.deleteRelease(source.id, `${TEST_PREFIX}user`);
   });
 

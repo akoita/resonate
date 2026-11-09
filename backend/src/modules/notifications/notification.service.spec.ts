@@ -468,8 +468,8 @@ describe("NotificationService", () => {
 
       // 3 dispute subscriptions + 1 credit-request subscription (#1334)
       // + 1 credit-grant subscription (#1885) + 1 refund_due-stale (#1506)
-      // + 1 remix source hold (#2601)
-      expect(mockEventBus.subscribe).toHaveBeenCalledTimes(7);
+      // + 1 remix source hold (#2601) + 1 removed remix draft (#2600)
+      expect(mockEventBus.subscribe).toHaveBeenCalledTimes(8);
     });
   });
 
@@ -540,6 +540,46 @@ describe("NotificationService", () => {
       service.onModuleInit();
 
       await getSubscribedHandler("remix.source_hold_changed")({ ...event, creatorId: "user-uuid" });
+
+      expect(__mockNotification.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("removed remix drafts (#2600)", () => {
+    const wallet = "0x" + "Ab".repeat(20);
+    const event = {
+      eventName: "remix.draft_source_removed",
+      eventVersion: 1,
+      occurredAt: "2026-11-09T10:00:00.000Z",
+      remixProjectId: "project-1",
+      creatorId: wallet,
+      sourceTrackId: "track-1",
+      projectTitle: "Night Drive (slowed)",
+      sourceTrackTitle: "Night Drive",
+    };
+
+    it("tells the draft's creator which draft went and why", async () => {
+      __mockPreference.findUnique.mockResolvedValue(null);
+      __mockNotification.create.mockResolvedValue({ id: "notif-draft" });
+      const service = createService();
+      service.onModuleInit();
+
+      await getSubscribedHandler("remix.draft_source_removed")(event);
+
+      expect(__mockNotification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          walletAddress: wallet.toLowerCase(),
+          type: "remix_draft_removed",
+          message: expect.stringContaining('your draft "Night Drive (slowed)" was removed'),
+        }),
+      });
+    });
+
+    it("skips a creator whose id is not a wallet address", async () => {
+      const service = createService();
+      service.onModuleInit();
+
+      await getSubscribedHandler("remix.draft_source_removed")({ ...event, creatorId: "user-uuid" });
 
       expect(__mockNotification.create).not.toHaveBeenCalled();
     });
