@@ -1514,8 +1514,10 @@ from the JWT, never the request body.
   ships a render with no generated audio unwatermarked; a render that
   contains generated audio fails instead (#2602, below). On account erasure
   the row is kept and the owner pseudonymised (owner decision, 2026-11-04).
-  Detection is #2575; the deploy half (binary in the backend image, key
-  secret) is resonate-iac#333.
+  Detection is #2575. The backend image carries the audiowmark binary, built
+  from the pinned release and checked by the `Backend Image Smoke` workflow
+  whenever `backend/Dockerfile` changes; the key secret and its wiring are
+  the deploy half, resonate-iac#333.
 - Watermark disclosure (#2574, slice 4 of #2566): when the current draft's
   render metadata says `watermark.status: "embedded"`, the Drafts panel shows
   a note above Publish and Export: the draft carries an inaudible mark, every

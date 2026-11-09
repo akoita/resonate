@@ -1,0 +1,54 @@
+name: Backend Image Smoke
+
+# The backend image is otherwise built only at release time. This builds it
+# when its Dockerfile changes and proves the remix render mark program
+# (audiowmark, #2573) starts and round-trips a token inside the image, so a
+# broken image is caught on the pull request, not during a release.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/Dockerfile
+      - backend/.dockerignore
+      - .github/workflows/backend-image-smoke.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-image-smoke:
+    name: Backend Image Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build backend image
+        run: docker build --tag backend-smoke:${{ github.run_id }} backend
+
+      - name: Round-trip a mark inside the image
+        env:
+          IMAGE: backend-smoke:${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh "${IMAGE}" -euc '
+            cd /tmp
+            token=0123456789abcdef0123456789abcdef
+            # A throwaway key for this check only; real keys come from a secret manager.
+            printf "key %s\n" 00112233445566778899aabbccddeeff > smoke.key
+            ffmpeg -hide_banner -loglevel error -f lavfi \
+              -i "anoisesrc=d=40:c=pink:r=48000:a=0.4" -ac 2 in.wav
+            audiowmark add --key smoke.key --strength 15 in.wav marked.wav "${token}"
+            ffmpeg -hide_banner -loglevel error -i marked.wav -b:a 320k marked.mp3
+            audiowmark get --key smoke.key marked.mp3 | tee detected.txt
+            grep -q "${token}" detected.txt
+            test -f /usr/share/doc/audiowmark/COPYING
+            test -f /usr/share/doc/audiowmark/SOURCE
+          '
