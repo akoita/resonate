@@ -19,6 +19,19 @@ describe("notification routing", () => {
     expect(getNotificationActionHint(notification("credits_granted"), "user")).toBe("Start creating →");
   });
 
+  it("sends a remix source hold, and its end, to the remix release (#2601)", () => {
+    expect(getNotificationHref(notification("remix_source_hold", { releaseId: "r-1" }), "user")).toBe("/release/r-1");
+    expect(getNotificationHref(notification("remix_source_hold_lifted", { releaseId: "r-1" }), "user"))
+      .toBe("/release/r-1");
+    expect(getNotificationHref(notification("remix_source_hold"), "user")).toBe("/artist/catalog");
+    expect(getNotificationActionHint(notification("remix_source_hold"), "user")).toBe("Open your remix →");
+  });
+
+  it("sends a removed remix draft notice to the library (#2600)", () => {
+    expect(getNotificationHref(notification("remix_draft_removed"), "user")).toBe("/library");
+    expect(getNotificationActionHint(notification("remix_draft_removed"), "user")).toBe("Open your library →");
+  });
+
   it("sends a crate watch match to its crate, or to the crate list without one (#1967)", () => {
     expect(getNotificationHref(notification("crate_watch_match", { crateId: "c 1" }), "user"))
       .toBe("/crates/c%201");

@@ -49,6 +49,33 @@ import {
   type AiDisclosureInput,
 } from "./ai-disclosure.policy";
 import { DEFAULT_SEPARATION_MODEL } from "../shared/stem-source";
+import type { ArtistRemixConsentUpdatedEvent } from "../../events/event_types";
+import {
+  currentSourceHoldReason,
+  reconcileAndAnnounceRemixSourceHolds,
+  type RemixSourceHoldReason,
+  type RemixSourceHoldScope,
+} from "./remix-source-hold";
+
+const SOURCE_HOLD_RESTORE_MESSAGES: Record<RemixSourceHoldReason, string> = {
+  source_removed: "The original track was taken down, so this remix can't be restored.",
+  source_under_review: "The original track is under review, so this remix can't be restored yet.",
+  source_consent_revoked: "The original artist has switched off remixing, so this remix can't be restored for now.",
+  source_withdrawn: "The original release is withdrawn from streaming, so this remix can't be restored for now.",
+};
+import { remixDraftStorageUris } from "../remix/remix-draft-storage";
+import type { RemixDraftSourceRemovedEvent } from "../../events/event_types";
+
+/** An unpublished remix project removed with its source release (#2600). */
+type RemovedRemixDraft = Pick<
+  RemixDraftSourceRemovedEvent,
+  "remixProjectId" | "creatorId" | "sourceTrackId" | "projectTitle" | "sourceTrackTitle"
+>;
+
+const RELEASE_HAS_PUBLISHED_REMIXES = {
+  code: "release_has_remixes",
+  message: "Published remixes are built on this release, so it can't be deleted.",
+} as const;
 import { lossyPreviewFor } from "../shared/stem-preview";
 
 const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
@@ -183,6 +210,7 @@ const RELEASE_WITHDRAWAL_SELECT = {
   statusBeforeWithdrawal: true,
   withdrawnAt: true,
   withdrawalReason: true,
+  sourceHoldReason: true,
 } as const;
 
 /** Response of the withdraw/restore routes. */
@@ -194,6 +222,11 @@ export type ReleaseWithdrawalState = {
   statusBeforeWithdrawal: string | null;
   withdrawnAt: Date | null;
   withdrawalReason: string | null;
+  /**
+   * Set when the platform holds a published remix because its source stopped
+   * being remixable (#2601). The owner cannot restore it while it is set.
+   */
+  sourceHoldReason: string | null;
   /** True when the release was already in the requested state (no-op call). */
   alreadyInState: boolean;
 };
@@ -206,6 +239,7 @@ function toWithdrawalState(
     statusBeforeWithdrawal: string | null;
     withdrawnAt: Date | null;
     withdrawalReason: string | null;
+    sourceHoldReason: string | null;
   },
   options: { alreadyInState: boolean },
 ): ReleaseWithdrawalState {
@@ -216,6 +250,7 @@ function toWithdrawalState(
     statusBeforeWithdrawal: release.statusBeforeWithdrawal,
     withdrawnAt: release.withdrawnAt,
     withdrawalReason: release.withdrawalReason,
+    sourceHoldReason: release.sourceHoldReason,
     alreadyInState: options.alreadyInState,
   };
 }
@@ -920,6 +955,18 @@ export class CatalogService implements OnModuleInit {
   }
 
   onModuleInit() {
+    // Remix consent switched off or back on: published remixes follow (#2601).
+    this.eventBus.subscribe("artist.remix_consent_updated", async (event: ArtistRemixConsentUpdatedEvent) => {
+      try {
+        await this.reconcileRemixSourceHolds({ artistIds: [event.artistId] });
+      } catch (error) {
+        console.error(
+          `[Catalog] Remix source hold reconcile failed for artist ${event.artistId} (error=${error instanceof Error ? error.name : "unknown"})`,
+        );
+      }
+    });
+    // A hold placed by another module (takedown, quarantine) changes what is public.
+    this.eventBus.subscribe("remix.source_hold_changed", () => this.clearCache());
     this.eventBus.subscribe("stems.uploaded", async (event: StemsUploadedEvent) => {
       console.log(`[Catalog] Received stems.uploaded for release ${event.releaseId} (artist: ${event.artistId})`);
       this.clearCache();
@@ -2103,6 +2150,7 @@ export class CatalogService implements OnModuleInit {
         // withdrawal rather than an opaque status string.
         withdrawnAt: true,
         withdrawalReason: true,
+        sourceHoldReason: true,
         processingError: true,
         type: true,
         primaryArtist: true,
@@ -2187,6 +2235,7 @@ export class CatalogService implements OnModuleInit {
             status: true,
             withdrawnAt: true,
             withdrawalReason: true,
+            sourceHoldReason: true,
             processingError: true,
             type: true,
             primaryArtist: true,
@@ -2427,6 +2476,7 @@ export class CatalogService implements OnModuleInit {
         // withdrawal rather than an opaque status string.
         withdrawnAt: true,
         withdrawalReason: true,
+        sourceHoldReason: true,
         processingError: true,
         type: true,
         primaryArtist: true,
@@ -2771,6 +2821,8 @@ export class CatalogService implements OnModuleInit {
       return toWithdrawalState(updated, { alreadyInState: false });
     });
     this.clearCache();
+    // Published remixes built on this release leave discovery with it (#2601).
+    await this.reconcileRemixSourceHolds({ releaseIds: [releaseId] });
     return result;
   }
 
@@ -2793,6 +2845,16 @@ export class CatalogService implements OnModuleInit {
       if (release.status !== RELEASE_STATUS_WITHDRAWN) {
         throw new BadRequestException("Only a withdrawn release can be restored to streaming.");
       }
+      // A published remix cannot come back while one of its sources still
+      // blocks it (#2601), whether the platform or the owner withdrew it.
+      const sourceHold = await currentSourceHoldReason(tx, releaseId);
+      if (sourceHold) {
+        throw new ConflictException({
+          code: "release_source_hold",
+          reason: sourceHold,
+          message: SOURCE_HOLD_RESTORE_MESSAGES[sourceHold],
+        });
+      }
       // A row withdrawn before this field existed has no recorded origin;
       // "ready" is the conservative fallback, not a forced publication.
       const restoredTo = (WITHDRAWABLE_RELEASE_STATUSES as readonly string[]).includes(
@@ -2805,13 +2867,26 @@ export class CatalogService implements OnModuleInit {
           statusBeforeWithdrawal: null,
           withdrawnAt: null,
           withdrawalReason: null,
+          sourceHoldReason: null,
         },
         select: RELEASE_WITHDRAWAL_SELECT,
       });
       return toWithdrawalState(updated, { alreadyInState: false });
     });
     this.clearCache();
+    // Remixes the platform held because of this withdrawal come back (#2601).
+    await this.reconcileRemixSourceHolds({ releaseIds: [releaseId] });
     return result;
+  }
+
+  /**
+   * Hold or restore the published remixes of sources whose state changed
+   * (#2601). Announces each change and drops the catalogue caches.
+   */
+  async reconcileRemixSourceHolds(scope: RemixSourceHoldScope) {
+    const changes = await reconcileAndAnnounceRemixSourceHolds(this.eventBus, scope);
+    if (changes.length > 0) this.clearCache();
+    return changes;
   }
 
   /** Serialize catalog edits with management transfers before rechecking authority. */
@@ -2857,9 +2932,14 @@ export class CatalogService implements OnModuleInit {
     });
     const rightsUpgradeRequestIds = rightsUpgradeRequests.map((request) => request.id);
 
+    let detachedRemixes: { removed: RemovedRemixDraft[]; storageUris: string[] } = {
+      removed: [],
+      storageUris: [],
+    };
     try {
       await prisma.$transaction(async (tx) => {
         await this.lockManagedRelease(tx, releaseId, userId, "catalog_owner");
+        detachedRemixes = await this.detachUnpublishedRemixProjects(tx, trackIds, stemIds);
         // Rights-route review history is derived from this release (its
         // rightsUpgradeRequestId is a plain column, not a foreign key).
         await tx.rightsRouteReassessment.deleteMany({ where: { releaseId } });
@@ -2956,9 +3036,139 @@ export class CatalogService implements OnModuleInit {
       throw error;
     }
 
+    // The drafts are gone with the commit; their audio is best-effort.
+    for (const uri of detachedRemixes.storageUris) {
+      await this.storageProvider.delete(uri).catch((error: unknown) => {
+        // Ids only: the URI and the provider error body stay out of logs.
+        console.warn(
+          `[Catalog] Draft audio delete failed after release ${releaseId} was deleted (error=${error instanceof Error ? error.name : "unknown"})`,
+        );
+      });
+    }
+    for (const draft of detachedRemixes.removed) {
+      this.eventBus.publish({
+        eventName: "remix.draft_source_removed",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        ...draft,
+      });
+    }
+
     this.clearCache();
     console.log(`[Catalog] Deleted release ${releaseId} with ${trackIds.length} tracks and ${stemIds.length} stems`);
     return { success: true };
+  }
+
+  /** Remix projects that use these tracks or stems in any way. */
+  private remixDependentsWhere(trackIds: string[], stemIds: string[]): Prisma.RemixProjectWhereInput {
+    return {
+      OR: [
+        { sourceTrackId: { in: trackIds } },
+        { secondarySourceTrackId: { in: trackIds } },
+        ...(stemIds.length > 0 ? [{ stems: { some: { stemId: { in: stemIds } } } }] : []),
+      ],
+    };
+  }
+
+  /** The dependents that are public: published, or holding a published release. */
+  private publishedRemixDependentsWhere(trackIds: string[], stemIds: string[]): Prisma.RemixProjectWhereInput {
+    return {
+      AND: [
+        this.remixDependentsWhere(trackIds, stemIds),
+        { OR: [{ status: "published" }, { publishedReleaseId: { not: null } }] },
+      ],
+    };
+  }
+
+  /**
+   * Detach unpublished remix projects from a release that is being deleted
+   * (#2600, ADR-LD-5 §5). Runs inside the delete transaction, before the
+   * stems and tracks go.
+   *
+   * - A project whose leading source is one of these tracks is removed with
+   *   its stem rows and part takes (cascade). Its stored audio is returned so
+   *   the caller can delete it after the commit.
+   * - A project that only borrowed stems, or used a track as its second
+   *   source (mashup), is kept: it loses those stems and the second source.
+   *
+   * A project published since the pre-check makes the whole delete fail with
+   * the same conflict, because the rows are locked and re-read here.
+   */
+  private async detachUnpublishedRemixProjects(
+    tx: Prisma.TransactionClient,
+    trackIds: string[],
+    stemIds: string[],
+  ): Promise<{ removed: RemovedRemixDraft[]; storageUris: string[] }> {
+    if (trackIds.length === 0) return { removed: [], storageUris: [] };
+
+    const dependents = await tx.remixProject.findMany({
+      where: this.remixDependentsWhere(trackIds, stemIds),
+      select: { id: true },
+    });
+    if (dependents.length === 0) return { removed: [], storageUris: [] };
+    const dependentIds = dependents.map((project) => project.id);
+
+    // Serialize with publish, autosave and generation claims on each project.
+    await tx.$queryRaw`SELECT "id" FROM "RemixProject" WHERE "id" IN (${Prisma.join(dependentIds)}) FOR UPDATE`;
+    const projects = await tx.remixProject.findMany({
+      where: { id: { in: dependentIds } },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        creatorUserId: true,
+        sourceTrackId: true,
+        secondarySourceTrackId: true,
+        publishedReleaseId: true,
+        generationMetadata: true,
+        sourceTrack: { select: { title: true } },
+        partTakes: { select: { storageUri: true } },
+      },
+    });
+    if (projects.some((project) => project.status === "published" || project.publishedReleaseId)) {
+      throw new ConflictException(RELEASE_HAS_PUBLISHED_REMIXES);
+    }
+
+    const removedTrackIds = new Set(trackIds);
+    const removed: RemovedRemixDraft[] = [];
+    const storageUris: string[] = [];
+    const keptIds: string[] = [];
+    for (const project of projects) {
+      if (!removedTrackIds.has(project.sourceTrackId)) {
+        keptIds.push(project.id);
+        continue;
+      }
+      removed.push({
+        remixProjectId: project.id,
+        creatorId: project.creatorUserId,
+        sourceTrackId: project.sourceTrackId,
+        projectTitle: project.title,
+        sourceTrackTitle: project.sourceTrack.title,
+      });
+      storageUris.push(...remixDraftStorageUris(project.generationMetadata));
+      for (const take of project.partTakes) {
+        if (take.storageUri) storageUris.push(take.storageUri);
+      }
+    }
+
+    if (keptIds.length > 0) {
+      if (stemIds.length > 0) {
+        await tx.remixProjectStem.deleteMany({
+          where: { remixProjectId: { in: keptIds }, stemId: { in: stemIds } },
+        });
+      }
+      // The second source is going: the project becomes single-source again.
+      await tx.remixProject.updateMany({
+        where: { id: { in: keptIds }, secondarySourceTrackId: { in: trackIds } },
+        data: { secondarySourceTrackId: null, mashup: Prisma.DbNull },
+      });
+    }
+    if (removed.length > 0) {
+      await tx.remixProject.deleteMany({
+        where: { id: { in: removed.map((project) => project.remixProjectId) } },
+      });
+    }
+    return { removed, storageUris };
   }
 
   /**
@@ -2981,20 +3191,14 @@ export class CatalogService implements OnModuleInit {
       });
     }
 
+    // Only a published derivative blocks deletion (ADR-LD-5 §5, #2600). A
+    // draft only its creator can see never does: it goes with the release.
     const remix = await prisma.remixProject.findFirst({
-      where: {
-        OR: [
-          { sourceTrackId: { in: trackIds } },
-          ...(stemIds.length > 0 ? [{ stems: { some: { stemId: { in: stemIds } } } }] : []),
-        ],
-      },
+      where: this.publishedRemixDependentsWhere(trackIds, stemIds),
       select: { id: true },
     });
     if (remix) {
-      throw new ConflictException({
-        code: "release_has_remixes",
-        message: "Other remix projects are built on this release, so it can't be deleted.",
-      });
+      throw new ConflictException(RELEASE_HAS_PUBLISHED_REMIXES);
     }
 
     // x402 settlements are the payment ledger for sold stem downloads.

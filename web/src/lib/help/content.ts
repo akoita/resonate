@@ -2051,6 +2051,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Export every part from the same start point as the published track and at the same sample rate, without trimming silence.",
               "Resonate checks each part on its own: its length against the published track, that it is not silent or louder than the whole track, and that its loudness over time follows the track's. When you upload every part the track is sold with, they must also add up to the published track. It tells you in plain words which part to fix, for example a part with the wrong length or one that sits a fraction of a second late. Nothing is saved until every part you sent passes.",
               "Price your Official and Separated (AI) stems separately in the stem prices below. Resonate sets no minimum price.",
+              "Under the prices, What you keep from each sale shows your share and the platform fee for each licence (per play, Remix, Commercial) at the prices you set. You always keep at least 85% of a sale of your own stem.",
             ],
           },
           {
@@ -2756,6 +2757,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "\"Render mix\" (or \"Re-render mix\") makes a new draft of what you hear. Earlier drafts move to \"Previous versions\", where you can play them to compare.",
               "Delete a version you don't want with its bin button. It asks first, because it can't be undone. Your current draft can't be deleted; render again instead.",
+              "A draft you haven't published depends on its source track. If the artist deletes that release, the draft is removed with it and you get a notification. Remixes you published and stems you bought are not affected.",
               "\"How this draft was made\" explains where the sound came from.",
               "A draft can carry an inaudible Resonate mark. When it does, a note above Publish and Export says so. You can't hear the mark and it doesn't change the sound.",
             ],
@@ -2784,6 +2786,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Remix license: lets you make private drafts and publish your remix on Resonate.",
               "Commercial license: also lets you download your remix with \"Export audio\" and use it elsewhere, and sell it. The Export button tells you when a commercial license is what's missing.",
               "Publishing: \"Publish on Resonate\" asks you to confirm, then makes your remix a public release that credits the original song and artist. Resonate checks your rights again at that moment. After publishing, the studio is locked so the release stays as published.",
+              "A published remix depends on its original. If the original artist switches off remixing or withdraws the release, or the original track is under review or taken down, your remix is put on hold: it leaves search and streaming and can't be bought, and people who already bought it keep it. You get a notification, your catalog shows On hold with the reason, and the remix comes back by itself when the original is available again.",
               "Selling: on the \"Published on Resonate\" panel, \"List this remix for sale\" takes you to your release page to protect it and list it for sale. You keep the artist's share, like any other sale. It needs the commercial license on every stem you used (or you own the original artist).",
               "Sharing: the \"Published on Resonate\" panel also offers Share your remix (X, Facebook, Reddit, your device's share sheet, or Copy link). The post names your remix and the song and artist it remixes, and links your release page. Nothing is posted unless you choose to share.",
             ],
@@ -3737,7 +3740,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "This is a pause, not a deletion",
-            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, delete it from its release page instead. Deleting is refused while other people depend on the release — remixes built on it, Punchline drops, or paid downloads — and the message tells you which; withdraw it in that case.",
+            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, delete it from its release page instead. Deleting is refused while other people depend on the release — published remixes built on it, Punchline drops, or paid downloads — and the message tells you which; withdraw it in that case. Remix drafts that were never published don't stop you: they are removed with the release, and their creators are told.",
           },
         ],
       },

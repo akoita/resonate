@@ -61,13 +61,71 @@ people's work or an off-chain sale depends on the release:
 
 | Code | Blocker |
 | --- | --- |
-| `release_has_remixes` | a remix project uses one of its tracks or stems as source |
+| `release_has_remixes` | a **published** remix uses one of its tracks or stems (#2600) |
 | `release_has_punchline_drops` | a Punchline drop exists on one of its tracks |
 | `release_has_sales` | an x402 settlement (the only record of that sale) references one of its stems |
 | `release_has_dependents` | any other foreign key raised during the delete |
 
 The release page shows the `409` message; withdrawal remains the reversible
 alternative.
+
+Unpublished remix projects never block deletion (ADR-LD-5 §5, #2600). In the
+same transaction, a draft or archived project whose leading source is one of
+the release's tracks is removed with its stem rows and AI part takes, and its
+stored draft audio is deleted after the commit. Each creator gets an in-app
+notice naming the draft and the track (`remix.draft_source_removed`). A
+project that only borrowed stems from the release, or used it as a mashup's
+second track, is kept: it loses those stems and becomes single-source again.
+Watermark token rows are kept as evidence. A generation running for a removed
+draft fails and is refunded by the worker's existing failure path.
+
+## Source holds on published remixes (#2601)
+
+A published remix depends on its original. ADR-LD-5 §4: when the original
+stops being remixable, its published derivatives leave discovery and stop
+selling, and licences already sold stay honoured. The hold **is** a
+withdrawal, made by the platform instead of the owner, so everything above
+applies unchanged: libraries and playlists keep their entries, buyers keep
+their downloads.
+
+| Trigger | Where | `Release.sourceHoldReason` |
+| --- | --- | --- |
+| The source artist switches remix consent off | `artist.remix_consent_updated`, handled in `CatalogService` | `source_consent_revoked` |
+| The source release is withdrawn | `CatalogService.withdrawRelease` | `source_withdrawn` |
+| The source track is quarantined | `FingerprintService.registerFingerprint` | `source_under_review` |
+| The source track is taken down | `DmcaService`, on an upheld report | `source_removed` |
+
+`modules/catalog/remix-source-hold.ts` holds the rule. `reconcileRemixSourceHolds`
+takes the sources that changed, finds their published derivatives through
+`RemixProject.publishedReleaseId` (leading source and a mashup's second
+source), and brings each one in line:
+
+- A derivative with a blocking source and a `ready` or `published` status
+  becomes `withdrawn` with `sourceHoldReason` set. When several reasons apply,
+  the strongest is kept: removed, under review, consent, withdrawn.
+- A derivative the platform held, whose sources are all clear again, returns
+  to `statusBeforeWithdrawal`. Switching consent back on or restoring the
+  source release does this.
+- A derivative its **owner** withdrew (`sourceHoldReason` null) is never
+  restored by the platform, and the owner cannot restore it while a source
+  still blocks it: `POST …/restore` answers `409 release_source_hold` with the
+  reason.
+- The walk follows the chain. A remix that is held is itself a withdrawn
+  source, so remixes of it are held next, and restored in the same order.
+
+Each release changes through one conditional update, so two triggers at once
+cannot hold or restore it twice. Every change publishes
+`remix.source_hold_changed` (identifiers only). The notification service
+tells the remixer what happened to the original, what comes next, and that
+buyers keep their purchases; the catalogue caches are dropped.
+
+New sales: a held remix is out of the catalogue and storefront reads, which
+already exclude withdrawn releases. The
+x402 quote (`GET /api/stems/:stemId/x402/info`) answers `409 stem_source_hold`,
+and the x402 route issues no new challenge and settles no new payment for its
+stems. A payment that was already settled still downloads.
+
+The owner's catalogue shows "On hold" with the cause and no restore button.
 
 ## What actually had to be built
 
@@ -153,6 +211,17 @@ cd web && npx vitest run src/components/library/trackAvailability.test.tsx \
 - **No field collects the artist's note.** The API accepts a `reason`, the
   catalogue displays it, and the listener-facing copy quotes it — but the
   confirmation dialog takes a string only, so nothing gathers one yet.
+- **Source holds do not yet follow account erasure.** Erasing an artist's
+  account withdraws their releases inside the erasure transaction, which does
+  not run the source-hold reconcile. Their published derivatives are held the
+  next time any trigger touches those sources. Tracked in #2606.
+- **A held remix can still be bought where the payment comes first.** The
+  buyer-bound smart-account route redeems a transfer that is already on
+  chain, and an on-chain marketplace listing is settled by the contract.
+  Neither is refused for a source hold, the same limit as for withdrawals
+  below. Tracked in #2606.
+- **Nothing clears a quarantine in code**, so `source_under_review` only
+  lifts when an operator resets the track's content status and a trigger runs.
 - **A withdrawn release stays remixable.** Remix eligibility reads
   `Artist.remixConsent` and rights routes, never release status. Defensible
   (remix consent is a separate, explicit grant) but worth an explicit decision

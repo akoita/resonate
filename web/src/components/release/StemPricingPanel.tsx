@@ -442,7 +442,13 @@ export function StemPricingPanel({ releaseId, tracks }: StemPricingPanelProps) {
       </div>
 
       {/* Payout Split Preview */}
-      <PayoutSplitPreview priceUsd={previewPricing.basePlayPriceUsd} />
+      <PayoutSplitPreview
+        prices={{
+          personal: previewPricing.basePlayPriceUsd,
+          remix: previewPricing.remixLicenseUsd,
+          commercial: previewPricing.commercialLicenseUsd,
+        }}
+      />
 
       {/* Save */}
       <div className="pricing-save-bar">

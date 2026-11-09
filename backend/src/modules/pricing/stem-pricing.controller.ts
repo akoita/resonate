@@ -11,6 +11,8 @@ import {
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { StemPricingService } from "./stem-pricing.service";
+import { X402Config } from "../x402/x402.config";
+import { buildStemSaleSplit } from "./stem-sale-split";
 import {
   BatchStemPricingBodyDto,
   BatchUpsertStemPricingBodyDto,
@@ -19,7 +21,21 @@ import {
 
 @Controller("api/stem-pricing")
 export class StemPricingController {
-  constructor(private readonly pricingService: StemPricingService) {}
+  constructor(
+    private readonly pricingService: StemPricingService,
+    private readonly x402Config: X402Config,
+  ) {}
+
+  /**
+   * GET /api/stem-pricing/split
+   * The split of a source stem sale per licence tier, from the configured
+   * take-rates (public, no auth). The single source for any UI that shows an
+   * artist what they keep (#2599).
+   */
+  @Get("split")
+  getSaleSplit() {
+    return buildStemSaleSplit(this.x402Config.licensePricing);
+  }
 
   /**
    * GET /api/stem-pricing/templates

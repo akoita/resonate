@@ -277,6 +277,40 @@ export class OpenApiService {
             },
           },
         },
+        '/api/stem-pricing/split': {
+          get: {
+            summary: 'Split of a source stem sale per licence tier',
+            'x-payment-info': freePaymentInfo,
+            responses: {
+              '200': {
+                description:
+                  'Platform fee and artist share in basis points for personal, remix and commercial sales.',
+                content: {
+                  'application/json': {
+                    schema: {
+                      type: 'object',
+                      required: ['minArtistBps', 'tiers'],
+                      properties: {
+                        minArtistBps: { type: 'integer' },
+                        tiers: {
+                          type: 'object',
+                          additionalProperties: {
+                            type: 'object',
+                            required: ['platformFeeBps', 'artistBps'],
+                            properties: {
+                              platformFeeBps: { type: 'integer' },
+                              artistBps: { type: 'integer' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         '/api/stem-pricing/batch-get': {
           get: {
             summary: 'Fetch pricing for multiple stems',

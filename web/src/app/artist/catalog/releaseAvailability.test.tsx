@@ -15,6 +15,7 @@ import {
   ReleaseWithdrawnMarker,
   createReleaseAvailabilityHandlers,
   isWithdrawnRelease,
+  sourceHoldCopy,
   withdrawConfirmMessage,
   withdrawConfirmTitle,
 } from "./releaseAvailability";
@@ -258,5 +259,73 @@ describe("how a withdrawn release looks in the catalogue (#1793)", () => {
 
     expect(html).toContain("Withdrawing…");
     expect(html).toContain("disabled");
+  });
+});
+
+describe("source holds on published remixes (#2601)", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const held = release({
+    status: "withdrawn",
+    withdrawnAt: "2026-11-09T10:00:00.000Z",
+    withdrawalReason: null,
+    sourceHoldReason: "source_consent_revoked",
+  });
+
+  it("says what happened to the original and what comes next, not that the owner withdrew it", () => {
+    const html = renderToStaticMarkup(<ReleaseWithdrawnMarker release={held} />);
+
+    expect(html).toContain("On hold");
+    expect(html).toContain("The original artist switched off remixing.");
+    expect(html).toContain("It comes back by itself if they switch it on again.");
+    expect(html).toContain("People who already bought it keep it.");
+    expect(html).not.toContain(">Withdrawn<");
+    expect(html).not.toContain("Your note");
+  });
+
+  it("promises no return for an original that was taken down", () => {
+    const html = renderToStaticMarkup(
+      <ReleaseWithdrawnMarker release={{ ...held, sourceHoldReason: "source_removed" }} />,
+    );
+
+    expect(html).toContain("The original track was taken down.");
+    expect(html).not.toContain("comes back");
+  });
+
+  it("offers no restore while the hold stands", () => {
+    const html = renderToStaticMarkup(
+      <ReleaseAvailabilityActions release={held} busy={false} onWithdraw={() => {}} onRestore={() => {}} />,
+    );
+
+    expect(html).toBe("");
+    expect(sourceHoldCopy(release({ status: "published", sourceHoldReason: null }))).toBeNull();
+    expect(sourceHoldCopy(withdrawn)).toBeNull();
+  });
+
+  it("shows the server's reason when a restore is refused because of the original", async () => {
+    const body = {
+      code: "release_source_hold",
+      reason: "source_withdrawn",
+      message: "The original release is withdrawn from streaming, so this remix can't be restored for now.",
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      text: async () => JSON.stringify(body),
+    });
+    const { handlers, updated, toasts } = harness();
+
+    await expect(handlers.restore(withdrawn)).resolves.toBe(false);
+
+    expect(updated).toEqual([]);
+    expect(toasts).toEqual([{ type: "info", title: "Can't restore it yet", message: body.message }]);
   });
 });
