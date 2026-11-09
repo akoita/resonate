@@ -332,8 +332,9 @@ Nothing below is filed or scheduled until the owner accepts the decisions.
 - Private drafts must not block the source artist's release deletion
   (`release_has_remixes`).
 - Cascade consent revocation, quarantine and withdrawal to published remixes.
-- Machine-readable marking on every output path before 2026-12-02; finish
-  #2574 and #2575; deploy half resonate-iac#333.
+- ✅ Machine-readable marking on every output path (#2602; inventory in
+  `remix_studio.md`). Still open: #2575 detection and the deploy half,
+  resonate-iac#333, before 2026-12-02.
 
 ### G1. Consent per release and per capability (ADR-LD-2)
 

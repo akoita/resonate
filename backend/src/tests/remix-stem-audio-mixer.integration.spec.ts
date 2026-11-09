@@ -1051,6 +1051,67 @@ const audiowmarkAvailable = (() => {
       warn.mockRestore();
     });
 
+    // #2602: a generated layer makes the render generated audio.
+    const layer = () => [
+      { buffer: noisyWav(5), mimeType: "audio/wav", gainDb: 0, label: "generated-layer" },
+    ];
+
+    it("fails a render with a generated layer when the mark cannot be embedded (#2602)", async () => {
+      jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+      const error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+      const before = remixMixTempDirs();
+      await expect(
+        mixerWith(fakeAudiowmark(true)).mixUnmutedStemsWithAudioBuffers(
+          stems,
+          layer(),
+          auth(),
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { watermark: true },
+        ),
+      ).rejects.toMatchObject({ code: "provider_unavailable", retryable: true });
+      const logged = error.mock.calls.map(([message]) => String(message)).join("\n");
+      expect(logged).toContain("failing the render");
+      expect(logged).not.toMatch(/[0-9a-f]{32}/);
+      expect([...remixMixTempDirs()].filter((dir) => !before.has(dir))).toEqual([]);
+      jest.restoreAllMocks();
+    });
+
+    it("marks a render with a generated layer and tags the file as AI-generated (#2602)", async () => {
+      const mixed = await mixerWith(fakeAudiowmark()).mixUnmutedStemsWithAudioBuffers(
+        stems,
+        layer(),
+        auth(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { watermark: true },
+      );
+      expect(mixed.renderMetadata.watermark).toMatchObject({ status: "embedded" });
+      expect(mixed.watermark?.token).toMatch(/^[0-9a-f]{32}$/);
+      const path = join(binDir, "tagged.mp3");
+      writeFileSync(path, mixed.buffer);
+      const tags = execFileSync("ffprobe", ["-v", "error", "-show_entries", "format_tags", path]).toString();
+      expect(tags).toMatch(/AI_GENERATED=true/i);
+    });
+
+    it("leaves an unkeyed render with a generated layer unmarked and unrefused (#2602)", async () => {
+      const mixed = await mixerWith(null).mixUnmutedStemsWithAudioBuffers(
+        stems,
+        layer(),
+        auth(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { watermark: true },
+      );
+      expect(mixed.renderMetadata.watermark).toEqual({ status: "none", reason: "no_key" });
+    });
+
     it("records watermark none without a key, and nothing when the caller did not ask", async () => {
       const unkeyed = await mixerWith(null).mixUnmutedStems(
         stems,

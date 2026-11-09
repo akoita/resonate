@@ -85,7 +85,16 @@ function fakeResponse(options: {
 function buildProvider(options: {
   mix?: jest.Mock;
   upload?: jest.Mock;
+  mark?: jest.Mock;
 } = {}) {
+  // #2602: no key configured unless a test says otherwise.
+  const mark =
+    options.mark ??
+    jest.fn(async (buffer: Buffer, mimeType: string) => ({
+      buffer,
+      mimeType,
+      metadata: { status: "none", reason: "no_key" },
+    }));
   const mix =
     options.mix ??
     jest.fn().mockResolvedValue({
@@ -99,10 +108,10 @@ function buildProvider(options: {
       .fn()
       .mockResolvedValue({ uri: "gs://stems/remix-drafts/x.wav", provider: "gcs" });
   const provider = new AudioConditionedRemixGenerationProvider(
-    { mixUnmutedStems: mix } as unknown as StemAudioMixer,
+    { mixUnmutedStems: mix, markGeneratedAudio: mark } as unknown as StemAudioMixer,
     { upload } as unknown as StorageProvider,
   );
-  return { provider, mix, upload };
+  return { provider, mix, upload, mark };
 }
 
 describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
@@ -143,6 +152,45 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     if (originalWorkerUrl === undefined)
       delete process.env.REMIX_AUDIO_WORKER_URL;
     else process.env.REMIX_AUDIO_WORKER_URL = originalWorkerUrl;
+  });
+
+  it("marks the model's draft before storing it and returns the token for the record (#2602)", async () => {
+    const metadata = { status: "embedded", scheme: "audiowmark", schemeVersion: "0.6.5", strength: 15, keyId: "k1" };
+    const watermark = { ...metadata, token: "a".repeat(32), stemIndexes: [] };
+    const mark = jest.fn().mockResolvedValue({
+      buffer: Buffer.from("marked-wav"),
+      mimeType: "audio/wav",
+      metadata,
+      watermark,
+    });
+    const { provider, upload } = buildProvider({ mark });
+    const job = await provider.createRemixDraft(generationInput(), AUTH);
+
+    expect(mark).toHaveBeenCalledWith(Buffer.from("generated-wav"), "audio/wav", "project-1");
+    expect(upload).toHaveBeenCalledWith(Buffer.from("marked-wav"), expect.any(String), "audio/wav");
+    expect(job.watermark).toEqual(watermark);
+    expect(job.outputMetadata).toMatchObject({ mimeType: "audio/wav", watermark: metadata });
+    // The token goes to the admin-only record, never into the draft metadata.
+    expect(JSON.stringify(job.outputMetadata)).not.toContain(watermark.token);
+  });
+
+  it("stores nothing when the draft cannot be marked (#2602)", async () => {
+    const mark = jest
+      .fn()
+      .mockRejectedValue(new RemixGenerationProviderError("provider_unavailable", "could not be marked", true));
+    const { provider, upload } = buildProvider({ mark });
+    await expect(provider.createRemixDraft(generationInput(), AUTH)).rejects.toMatchObject({
+      code: "provider_unavailable",
+      retryable: true,
+    });
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("records why an unkeyed draft has no mark (#2602)", async () => {
+    const { provider } = buildProvider();
+    const job = await provider.createRemixDraft(generationInput(), AUTH);
+    expect(job.watermark).toBeUndefined();
+    expect(job.outputMetadata).toMatchObject({ watermark: { status: "none", reason: "no_key" } });
   });
 
   it("stays behind the master gate", async () => {
@@ -353,6 +401,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
       synthIdPresent: false,
       seed: 1189,
       sampleRate: 44100,
+      watermark: { status: "none", reason: "no_key" },
     });
   });
 

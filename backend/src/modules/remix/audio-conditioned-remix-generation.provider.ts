@@ -159,13 +159,21 @@ export class AudioConditionedRemixGenerationProvider
       projectId: input.provenance.remixProjectId,
     });
 
+    // #2602: this draft never goes through the mix graph, so it is marked
+    // here. With a key configured, a draft that cannot be marked fails.
+    const marked = await this.mixer.markGeneratedAudio(
+      generated.audio,
+      generated.mimeType,
+      input.provenance.remixProjectId,
+    );
+
     const filename = `remix-draft-${input.provenance.remixProjectId}-${jobId}.wav`;
     let outputUri: string;
     try {
       const stored = await this.storageProvider.upload(
-        generated.audio,
+        marked.buffer,
         filename,
-        generated.mimeType,
+        marked.mimeType,
       );
       outputUri = stored.uri;
     } catch (error) {
@@ -187,12 +195,15 @@ export class AudioConditionedRemixGenerationProvider
       estimatedCostUsd: estimateRemixGenerationCostUsd(durationSeconds),
       outputMetadata: {
         outputUri,
-        mimeType: generated.mimeType,
+        mimeType: marked.mimeType,
         // Stable Audio 3 is self-hosted and does not embed SynthID.
         synthIdPresent: false,
+        // #2602: our own mark, or why there is none. Never the token.
+        watermark: marked.metadata,
         seed: generated.seed,
         sampleRate: generated.sampleRate,
       },
+      ...(marked.watermark ? { watermark: marked.watermark } : {}),
       // #1897 provenance: the recipe that shaped the conditioning mix.
       ...(input.renderFx
         ? {

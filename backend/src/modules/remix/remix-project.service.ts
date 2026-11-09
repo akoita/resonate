@@ -76,6 +76,13 @@ import {
 } from "./remix-cues";
 import { renderDjExtended } from "./remix-dj-export";
 import { recordRemixRenderWatermark } from "./remix-watermark-record";
+import {
+  AI_GENERATED_AUDIO_TAGS,
+  draftMarkState,
+  type DraftMarkState,
+  remixWatermarkConfigured,
+  UNMARKED_DRAFT_REFUSAL,
+} from "./remix-watermark";
 import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 import { publicTrackAudioFeatures } from "../catalog/track-audio-features";
 import {
@@ -381,6 +388,68 @@ export function draftGroundingFromMetadata(
 
 function groundingAiGenerated(grounding: RemixDraftGrounding): boolean {
   return grounding !== "stem_audio";
+}
+
+/**
+ * #2602: the machine-readable AI disclosure written next to the audio in
+ * every export manifest, so the disclosure does not rest on the watermark
+ * alone. `marking` is how the audio itself is marked.
+ */
+export function exportAiDisclosure(generationMetadata: unknown): {
+  aiGenerated: boolean;
+  grounding: RemixDraftGrounding;
+  marking: DraftMarkState;
+  digitalSourceType?: string;
+} {
+  const metadata = normalizeMetadataObject(generationMetadata);
+  const grounding = groundingWithAiParts(
+    draftGroundingFromMetadata(generationMetadata) ?? "prompt_only",
+    renderIncludesAiParts({
+      renderMetadata: metadata.renderMetadata,
+      conditioningParts: metadata.conditioningParts,
+    }),
+  );
+  const aiGenerated = groundingAiGenerated(grounding);
+  return {
+    aiGenerated,
+    grounding,
+    marking: draftMarkState({
+      aiGenerated,
+      renderMetadata: metadata.renderMetadata,
+      output: metadata.output,
+    }),
+    ...(aiGenerated
+      ? { digitalSourceType: AI_GENERATED_AUDIO_TAGS.DIGITAL_SOURCE_TYPE }
+      : {}),
+  };
+}
+
+/**
+ * #2602: refuses to let an unmarked AI draft leave the platform when a
+ * watermark key is configured. Drafts with no generated audio, and every
+ * draft where no key is configured, pass.
+ */
+export function assertDraftMarkedForRelease(
+  generationMetadata: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (!remixWatermarkConfigured(env)) return;
+  const metadata = normalizeMetadataObject(generationMetadata);
+  const grounding = groundingWithAiParts(
+    draftGroundingFromMetadata(generationMetadata) ?? "prompt_only",
+    renderIncludesAiParts({
+      renderMetadata: metadata.renderMetadata,
+      conditioningParts: metadata.conditioningParts,
+    }),
+  );
+  const state = draftMarkState({
+    aiGenerated: groundingAiGenerated(grounding),
+    renderMetadata: metadata.renderMetadata,
+    output: metadata.output,
+  });
+  if (state === "unmarked") {
+    throw new ConflictException({ ...UNMARKED_DRAFT_REFUSAL });
+  }
 }
 
 /**
@@ -3726,6 +3795,8 @@ export class RemixProjectService {
         eligibility,
       });
     }
+    // #2602: generated audio is not published unmarked.
+    assertDraftMarkedForRelease(project.generationMetadata);
 
     const audioBytes = await this.storageProvider.download(outputUri);
     if (!audioBytes) {
@@ -4212,6 +4283,8 @@ export class RemixProjectService {
         eligibility,
       });
     }
+    // #2602: generated audio does not leave unmarked.
+    assertDraftMarkedForRelease(project.generationMetadata);
 
     // DJ extended (#2540, Pro): checked before any audio is read.
     let djPlan: ReturnType<typeof djExtendedPlan> | null = null;
@@ -4306,6 +4379,7 @@ export class RemixProjectService {
       });
       const files = stems.files;
       const storage = this.storageProvider;
+      const aiDisclosure = exportAiDisclosure(project.generationMetadata);
       return {
         streamed: true,
         mimeType: "application/zip",
@@ -4318,7 +4392,10 @@ export class RemixProjectService {
           };
           zip.add({
             name: "stems.json",
-            data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
+            // #2602: the AI disclosure travels in the manifest.
+            data: Buffer.from(
+              `${JSON.stringify({ ...manifest, ai: aiDisclosure }, null, 2)}\n`,
+            ),
           });
           await flush();
           // One stem in memory at a time.
@@ -4371,7 +4448,14 @@ export class RemixProjectService {
           { name: audioFile, data: extended },
           {
             name: `${base}.cues.json`,
-            data: Buffer.from(`${JSON.stringify(sidecar, null, 2)}\n`),
+            // #2602: the AI disclosure travels in the sidecar.
+            data: Buffer.from(
+              `${JSON.stringify(
+                { ...sidecar, ai: exportAiDisclosure(project.generationMetadata) },
+                null,
+                2,
+              )}\n`,
+            ),
           },
         ]),
         mimeType: "application/zip",

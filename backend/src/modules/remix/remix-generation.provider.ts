@@ -455,6 +455,11 @@ export type RemixGenerationOutputMetadata = {
   synthIdPresent: boolean | null;
   seed: number | null;
   sampleRate: number | null;
+  /**
+   * #2602: the remix mark on a draft that did not go through the mix graph
+   * (those record it in `renderMetadata.watermark`). Never the token.
+   */
+  watermark?: RemixRenderWatermarkMetadata;
 };
 
 export type RemixGeneratedLayerMetadata = {
