@@ -7363,6 +7363,13 @@ export type RemixRenderMetadata = {
     reason: "take_missing" | "take_not_ready" | string;
   }>;
   partsDspVersion?: string;
+  /**
+   * Whether the render carries the inaudible Resonate mark (#2573). The
+   * token itself is never sent to the browser.
+   */
+  watermark?:
+    | { status: "embedded"; stemsEmbedded?: number; stemsFailed?: number }
+    | { status: "none"; reason?: string };
 };
 
 /** One AI part mixed into a render (#1901). */

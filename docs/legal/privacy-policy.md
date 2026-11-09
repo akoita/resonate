@@ -68,6 +68,15 @@ basis** they were collected under — the system rejects them otherwise. Events
 in the pseudonymous tier may not carry one, and lineage references are recorded
 where the emitting system supplies them rather than always.
 
+**Marks in remix audio.** A remix you render in the studio, the files you
+export from it and the track you publish can carry an inaudible mark. The mark
+is a random value. It contains no name, wallet address or email, and it is not
+derived from them. We keep a record that links each mark to the remix project,
+the render, the source tracks and stems, and the licence each was used under,
+so that audio found elsewhere can be traced to the licence it was made under.
+Only operators can read that record. Legal basis: our legitimate interest, and
+that of the artists whose work is remixed, in enforcing the licence.
+
 Behaviour events are keyed to a **pseudonymous actor identifier**, derived with
 a secret salt, rather than to your email. Artists see aggregate audience
 figures; they never see your identifier or your raw activity.
@@ -156,6 +165,7 @@ the product does not have is a false statement, not an aspiration.
 | Behaviour facts linked to you | 24 months |
 | Financial, payout, royalty, dispute, settlement, rights and tax facts | 7–10 years, with personal fields minimised |
 | Your recorded delivery choice at checkout (immediate delivery and waiver, or wait) | As long as the purchase record it relates to, because it is the proof used to answer a withdrawal or refund claim |
+| Record linking a remix audio mark to its project and licence | Kept as rights evidence, also after your account is erased; your identifier in it is replaced by a pseudonymous one |
 | Aggregate views that cannot re-identify you | Kept while useful |
 | Quarantined records | 30 days (personal or sensitive), 90 days (pseudonymous) |
 | Last sign-in and last activity | While your account exists; cleared when it is erased |
@@ -186,6 +196,13 @@ anonymous, and read the deletion record on every later rebuild so deleted rows
 do not come back. Your account id is replaced, because for a wallet account that
 id is your wallet address. If you released music, it stops streaming; people who
 bought something from you keep it.
+
+**Remix mark records are kept.** The record that links an audio mark to a
+remix project and its licence stays after erasure, because a copy of the audio
+may already be elsewhere and the artist whose work was remixed must still be
+able to trace it. Your identifier in the record is replaced by a pseudonymous
+one, the record holds no text you wrote, and the mark inside the audio never
+contained anything about you.
 
 **Financial and audit records are redacted rather than deleted.** We keep what
 accounting, rights and tax law require us to keep — the fact, the date, the

@@ -2328,7 +2328,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "audio", "listen", "example", "before and after", "short edit", "echo", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade", "share", "share remix"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "audio", "listen", "example", "before and after", "short edit", "echo", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade", "share", "share remix", "watermark", "mark", "inaudible mark", "export"],
     levelIntros: {
       beginner: {
         title: "Your first remix in 3 minutes",
@@ -2744,10 +2744,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/remix-studio-drafts.png`,
-              alt: "The Drafts panel: the current Stem mix render with a Your stems only chip, its date, a waveform, Play, Publish on Resonate and Export audio buttons, and a previous version below with Play and a delete button.",
+              alt: "The Drafts panel: the current Stem mix render with a Your stems only chip, its date, a waveform, Play, Publish on Resonate and Export audio buttons, a note that the draft carries an inaudible Resonate mark, and a previous version below with Play and a delete button.",
               caption: "Your latest draft on top, earlier versions below.",
-              width: 703,
-              height: 386,
+              width: 709,
+              height: 442,
               source: LOCAL,
             },
           },
@@ -2757,6 +2757,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "\"Render mix\" (or \"Re-render mix\") makes a new draft of what you hear. Earlier drafts move to \"Previous versions\", where you can play them to compare.",
               "Delete a version you don't want with its bin button. It asks first, because it can't be undone. Your current draft can't be deleted; render again instead.",
               "\"How this draft was made\" explains where the sound came from.",
+              "A draft can carry an inaudible Resonate mark. When it does, a note above Publish and Export says so. You can't hear the mark and it doesn't change the sound.",
             ],
           },
           {
@@ -2786,6 +2787,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Selling: on the \"Published on Resonate\" panel, \"List this remix for sale\" takes you to your release page to protect it and list it for sale. You keep the artist's share, like any other sale. It needs the commercial license on every stem you used (or you own the original artist).",
               "Sharing: the \"Published on Resonate\" panel also offers Share your remix (X, Facebook, Reddit, your device's share sheet, or Copy link). The post names your remix and the song and artist it remixes, and links your release page. Nothing is posted unless you choose to share.",
             ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "The inaudible mark",
+            text: "A marked draft keeps its mark in everything made from it: the exported audio, exported stems, a DJ export, and the track you publish. The mark is a random code that identifies your remix project and the license it was made under. It holds no name, wallet or email. If a marked file turns up somewhere it shouldn't, Resonate can read the mark to tell which remix it came from. That shows where the audio came from, not who shared it. The record behind the mark is kept if you delete your account, without your identity.",
           },
           {
             kind: "callout",
@@ -3044,10 +3051,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/remix-studio-stems.png`,
-              alt: "The Drafts card with Publish on Resonate, Export audio and Export stems, and the note that export needs a commercial license on the source stems.",
+              alt: "The Drafts card with Publish on Resonate, Export audio and Export stems, the note that the draft carries an inaudible Resonate mark, and the note that export needs a commercial license on the source stems.",
               caption: "Export stems sits next to Export audio on a draft rendered with stems.",
               width: 709,
-              height: 426,
+              height: 482,
               source: LOCAL,
             },
           },

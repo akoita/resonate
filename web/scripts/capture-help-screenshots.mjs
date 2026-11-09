@@ -890,6 +890,8 @@ const REMIX_WITH_DRAFTS = {
     estimatedCostUsd: 0,
     completedAt: "2026-09-20T13:36:00.000Z",
     output: { outputUri: "/storage/remix-drafts/job-current.mp3" },
+    // #2574: a marked draft, so the guide shows the disclosure.
+    renderMetadata: { watermark: { status: "embedded" } },
     previousDrafts: [
       {
         jobId: "job-older",

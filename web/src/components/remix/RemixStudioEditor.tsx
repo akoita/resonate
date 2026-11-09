@@ -3460,6 +3460,7 @@ export function RemixStudioEditor({
         peaks: transport.draftPeaksFor(null),
         playing: draftTransportState(null) === "playing",
         loading: draftTransportState(null) === "loading",
+        watermarked: generationMetadata?.renderMetadata?.watermark?.status === "embedded",
       }
     : null;
   const draftVersions: RemixDraftVersion[] = previousDrafts.map((entry) => ({
