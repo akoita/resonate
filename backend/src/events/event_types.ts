@@ -307,6 +307,21 @@ export interface RemixDraftVersionDeletedEvent extends BaseEvent {
   generationJobId: string;
 }
 
+/**
+ * An unpublished remix project was removed because the artist deleted its
+ * source release (#2600, ADR-LD-5 §5). Carries the two titles so the creator
+ * can be told which draft went: the rows no longer exist to look them up.
+ * Not an analytics event.
+ */
+export interface RemixDraftSourceRemovedEvent extends BaseEvent {
+  eventName: "remix.draft_source_removed";
+  remixProjectId: string;
+  creatorId: string;
+  sourceTrackId: string;
+  projectTitle: string;
+  sourceTrackTitle: string;
+}
+
 export interface ArtistRemixConsentUpdatedEvent extends BaseEvent {
   eventName: "artist.remix_consent_updated";
   artistId: string;
@@ -1636,6 +1651,7 @@ export type ResonateEvent =
   | RemixPublishedEvent
   | RemixExportedEvent
   | RemixDraftVersionDeletedEvent
+  | RemixDraftSourceRemovedEvent
   | ArtistRemixConsentUpdatedEvent
   | PunchlineDropPublishedEvent
   | PunchlineMomentCollectedEvent

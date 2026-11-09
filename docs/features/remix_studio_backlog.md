@@ -330,8 +330,8 @@ Nothing below is filed or scheduled until the owner accepts the decisions.
 
 - ✅ Replace the hardcoded 70/20/10 `PayoutSplitPreview` with the canonical
   split (#2599).
-- Private drafts must not block the source artist's release deletion
-  (`release_has_remixes`).
+- ✅ Private drafts must not block the source artist's release deletion
+  (`release_has_remixes`, #2600).
 - Cascade consent revocation, quarantine and withdrawal to published remixes.
 - Machine-readable marking on every output path before 2026-12-02; finish
   #2574 and #2575; deploy half resonate-iac#333.

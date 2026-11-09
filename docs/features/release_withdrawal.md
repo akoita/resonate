@@ -61,13 +61,23 @@ people's work or an off-chain sale depends on the release:
 
 | Code | Blocker |
 | --- | --- |
-| `release_has_remixes` | a remix project uses one of its tracks or stems as source |
+| `release_has_remixes` | a **published** remix uses one of its tracks or stems (#2600) |
 | `release_has_punchline_drops` | a Punchline drop exists on one of its tracks |
 | `release_has_sales` | an x402 settlement (the only record of that sale) references one of its stems |
 | `release_has_dependents` | any other foreign key raised during the delete |
 
 The release page shows the `409` message; withdrawal remains the reversible
 alternative.
+
+Unpublished remix projects never block deletion (ADR-LD-5 §5, #2600). In the
+same transaction, a draft or archived project whose leading source is one of
+the release's tracks is removed with its stem rows and AI part takes, and its
+stored draft audio is deleted after the commit. Each creator gets an in-app
+notice naming the draft and the track (`remix.draft_source_removed`). A
+project that only borrowed stems from the release, or used it as a mashup's
+second track, is kept: it loses those stems and becomes single-source again.
+Watermark token rows are kept as evidence. A generation running for a removed
+draft fails and is refunded by the worker's existing failure path.
 
 ## What actually had to be built
 

@@ -2757,6 +2757,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "\"Render mix\" (or \"Re-render mix\") makes a new draft of what you hear. Earlier drafts move to \"Previous versions\", where you can play them to compare.",
               "Delete a version you don't want with its bin button. It asks first, because it can't be undone. Your current draft can't be deleted; render again instead.",
+              "A draft you haven't published depends on its source track. If the artist deletes that release, the draft is removed with it and you get a notification. Remixes you published and stems you bought are not affected.",
               "\"How this draft was made\" explains where the sound came from.",
             ],
           },
@@ -3731,7 +3732,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "This is a pause, not a deletion",
-            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, delete it from its release page instead. Deleting is refused while other people depend on the release — remixes built on it, Punchline drops, or paid downloads — and the message tells you which; withdraw it in that case.",
+            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, delete it from its release page instead. Deleting is refused while other people depend on the release — published remixes built on it, Punchline drops, or paid downloads — and the message tells you which; withdraw it in that case. Remix drafts that were never published don't stop you: they are removed with the release, and their creators are told.",
           },
         ],
       },
