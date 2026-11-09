@@ -246,8 +246,10 @@ $1–1.5k MRR target implies about 70–100 subscribers, or a higher price.
 - A subscription is a digital service. The checkout records an
   immediate-start consent, using a new `subscription` surface in the #1776
   consent model, with no hold.
-- Withdrawing within 14 days refunds pro rata for unused time, and the
-  allowance already spent is deducted.
+- Withdrawing within 14 days refunds the price less a proportionate amount:
+  the larger of the share of the period passed and the share of the allowance
+  used (decided 2026-11-09, replacing "unused time less allowance spent",
+  which could count the same use twice; see `docs/legal/refund-policy.md`).
 
 **Accounting:**
 

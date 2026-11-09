@@ -1935,7 +1935,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "An Artist Pro subscription is a service, so it works differently: you ask for it to start now and keep your right to withdraw for 14 days, but if you withdraw you are refunded only for the unused time. The subscription checkout asks you to tick that box before you pay.",
+            text: "An Artist Pro subscription is a service, so it works differently: you ask for it to start now and keep your right to withdraw for 14 days, but if you withdraw you pay only for the service you received before withdrawing, and the rest is refunded. The subscription checkout shows the renewal price and asks you to tick that box before you pay.",
           },
           {
             kind: "paragraph",
@@ -2281,7 +2281,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Manage billing opens Stripe's billing page, where you can update your card, see invoices or cancel. After you cancel, Pro stays on until the end of the period you paid for.",
               "If a payment fails, the Plan section says so and asks you to update your card. Pro stays on for 7 days; after that your plan returns to Free. Nothing is deleted.",
               "Each paid month adds a generation allowance to Usage & Billing. It is spent before your credits and expires at the end of the month; a yearly plan adds it month by month.",
-              "You can withdraw within 14 days of subscribing. Because Artist Pro starts straight away at your request, you are then refunded for the unused time only, less any monthly generation allowance you have already used.",
+              "Artist Pro renews automatically every month or year, at the price shown next to the tick box, until you cancel. You can withdraw within 14 days of subscribing. Because Artist Pro starts straight away at your request, you then pay only for the service you received before withdrawing, in proportion to the price, and the rest is refunded.",
               "If you ask to close your account, renewal stops at once, so you are not charged again while the 30-day closure window runs. Signing in during the window cancels the closure but not this: renew from Manage billing if you want to keep Pro.",
               "When your account is erased or closed, your subscription is cancelled immediately, before anything is deleted. The rest of the period is not refunded beyond what the refund policy already gives you.",
               "While your account is suspended you are not charged: billing is paused and starts again when the suspension ends.",

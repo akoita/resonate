@@ -137,8 +137,17 @@ pledges are not digital content and are governed by the section above.
 
 Purchases made before this checkout step existed are delivered as before and are not held; this policy does not change what you could already download or use.
 
-If you withdraw within the 14 days (having chosen Wait, or having never asked
-for delivery), write to {{OPERATOR_CONTACT_EMAIL}}.
+**How to withdraw.** To withdraw within the 14 days (having chosen Wait, or
+having never asked for delivery), use **Withdraw from contract** on the
+purchase, at any time during the 14 days. We confirm your withdrawal straight
+away in your notices, and by email if you have confirmed a contact address. You
+can also write to {{OPERATOR_CONTACT_EMAIL}}.
+
+> **Not built yet** ([#2594](https://github.com/akoita/resonate/issues/2594)).
+> Until the in-app withdrawal button exists, writing to
+> {{OPERATOR_CONTACT_EMAIL}} is the only route. EU law has required an online
+> withdrawal function since 19 June 2026, so this must ship before live
+> charging.
 
 Beyond that period, these purchases are not refundable, with two exceptions:
 
@@ -167,6 +176,25 @@ will say what happens to unused balances before the change takes effect —
 subject to the same missing notice workflow the terms of service records in
 section 11.
 
+## Artist Pro subscription
+
+**Automatic renewal.** Artist Pro renews automatically every month or every
+year, at the price shown at checkout, until you cancel. The checkout states the
+price and how often you are charged next to the box you tick. You can cancel at
+any time from Manage billing; your plan then stays on until the end of the
+period you paid for.
+
+**Withdrawing within 14 days.** You can withdraw within 14 days of subscribing,
+using **Withdraw from contract** in Usage & Billing or by writing to
+{{OPERATOR_CONTACT_EMAIL}} (the in-app button is
+[#2594](https://github.com/akoita/resonate/issues/2594), not built yet).
+Because Artist Pro starts straight away at your request, you pay only for the
+service you received before withdrawing, in proportion to the price, and the
+rest is refunded. We work out that share as the larger of two figures: the
+share of the billing period that has passed, or the share of that period's
+generation allowance you have used. We never deduct the payment provider's fees
+from a withdrawal refund.
+
 ## Artist Pro subscription: closing, erasing or suspending an account
 
 > **Wording for legal review before production** ([#2430](https://github.com/akoita/resonate/issues/2430)).
@@ -178,17 +206,40 @@ section 11.
   until the end of the period you already paid for. Cancelling the closure
   (by signing in) does not turn renewal back on; you can do that yourself from
   Manage billing.
-- **Your account is erased, or closed by us.** Your subscription is cancelled
-  immediately, before any of your data is erased. We do not refund the rest of
-  the current period beyond what this policy already gives you (for example,
-  withdrawing within 14 days of subscribing). Your data is not erased until
-  the payment provider has confirmed the cancellation; until then we keep
-  trying.
+- **Your account is erased at your request.** Your subscription is cancelled
+  immediately, before any of your data is erased, and the unused part of the
+  current period is not refunded beyond what this policy already gives you
+  (for example, withdrawing within 14 days of subscribing). Before you confirm
+  an erasure, we tell you this and the date your paid period would otherwise
+  end, so you can close your account instead and keep using it until then.
+  Your data is not erased until the payment provider has confirmed the
+  cancellation; until then we keep trying.
+- **Your account is closed by us.** Your subscription is cancelled
+  immediately. If we close your account for a reason other than a serious or
+  repeated breach of the terms of service by you, we refund the unused part of
+  your current period, in proportion to the days left, and the money value of
+  any credits you bought and did not use.
+
+> **Not built yet.** The warning before erasure and the refund on a closure by
+> us are tracked in [#2595](https://github.com/akoita/resonate/issues/2595).
+> Until it ships, the system cancels without these refunds and without the
+> warning; the wording above is the decided policy and must be live before
+> live charging.
 - **Your account is suspended.** We stop charging you while the suspension
   lasts: invoices that fall due during a suspension are voided, not collected
   later. Billing starts again when the suspension ends.
 - **Your billing email.** When you confirm a new contact email, it becomes the
   email on your receipts.
+
+## Chargebacks
+
+If you dispute a payment with your bank instead of asking us for a refund, we
+may pause the plan or the credits it paid for while the dispute is open. If the
+bank refunds you, we remove what that payment bought. Please write to us first;
+a refund through us is faster for you.
+
+> **Not built yet** ([#2596](https://github.com/akoita/resonate/issues/2596)).
+> The system does not yet react to a card dispute.
 
 ## What we cannot reverse
 
@@ -248,11 +299,13 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
    published response window with nobody staffing the inbox is a commitment
    that fails quietly.
 6. **Artist Pro on closure, erasure and suspension**
-   ([#2430](https://github.com/akoita/resonate/issues/2430)). Defaults chosen
-   for review: (a) erasure and operator closure cancel at once with no
-   proration credit beyond this policy, on the reasoning that a closed account
-   cannot use the rest of the period; is a pro-rata refund owed in the
-   operator's jurisdiction, in particular when the operator closed the account;
+   ([#2430](https://github.com/akoita/resonate/issues/2430),
+   [#2595](https://github.com/akoita/resonate/issues/2595)). Decided for review:
+   (a) erasure at the person's request cancels at once with no proration
+   beyond this policy, after a warning; an operator closure refunds the unused
+   days and unspent bought credits unless it is for a serious or repeated
+   breach. Does the breach exception hold in the operator's jurisdiction (an
+   unfair-terms risk), and what counts as a serious breach;
    (b) a self-service closure request stops renewal at once and leaves the paid
    period running; (c) suspension voids the invoices that fall due while it
    lasts, so a suspended person is not charged and is not back-billed; confirm
@@ -265,3 +318,20 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
    describes exactly that, deliberately promising nothing firmer. Before
    publication, confirm what production will actually be configured to
    sponsor — a refund a user cannot afford to claim is not a refund.
+8. **Withdrawal from Artist Pro**
+   ([#2407](https://github.com/akoita/resonate/issues/2407)). The amount kept
+   on withdrawal is the larger of the share of the period passed and the share
+   of the period's allowance used. Is that a proportionate amount under
+   Directive 2011/83/EU art. 14(3)? Also: are generation credits digital
+   content (Deliver now ends the right) or a prepaid service (the right
+   survives and only used credits are kept)?
+9. **Automatic renewal** ([#2597](https://github.com/akoita/resonate/issues/2597)).
+   The checkout now asks for consent to the renewal with the price and
+   interval beside the tick box. Which US state renewal laws apply, and are
+   the planned acknowledgement email, yearly reminder and price-change notice
+   enough?
+10. **Withdrawal button and chargebacks**
+    ([#2594](https://github.com/akoita/resonate/issues/2594),
+    [#2596](https://github.com/akoita/resonate/issues/2596)). Confirm the
+    button's labels for the operator's country, and that pausing what a
+    disputed payment bought is acceptable.

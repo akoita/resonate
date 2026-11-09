@@ -150,7 +150,8 @@ export class PurchaseConsentService {
    * caller has already checked that the person ticked the acknowledgement and
    * saw the current wording. `consented` means "start now";
    * `acknowledgedWaiver` means the person acknowledged that withdrawing within
-   * 14 days refunds only the unused time. There is no hold.
+   * 14 days refunds the price less a proportionate amount for the service
+   * received, and agreed to the automatic renewal. There is no hold.
    */
   async recordSubscriptionStart(
     userId: string,
@@ -271,8 +272,9 @@ export class PurchaseConsentService {
       body =
         `On ${when} UTC you asked for "${row.subjectLabel}" to start straight away, before the ` +
         `${WITHDRAWAL_PERIOD_DAYS}-day withdrawal period ends, and you acknowledged that if you withdraw within ` +
-        `those ${WITHDRAWAL_PERIOD_DAYS} days you are refunded only for the unused time, less the value of any ` +
-        `monthly generation allowance you have already used. ${wording}`;
+        `those ${WITHDRAWAL_PERIOD_DAYS} days you pay only for the service you received before withdrawing, in ` +
+        `proportion to the price, and the rest is refunded. You also agreed that it renews automatically until ` +
+        `you cancel; you can cancel at any time from Manage billing. ${wording}`;
     } else if (row.deliveryKind === "on_chain_mint") {
       title = "Immediate delivery confirmed";
       body =

@@ -174,9 +174,13 @@ cancellation still owed is never a clean run.
 ### The subscription consent
 
 A subscription is a service, so the wording (`SUBSCRIPTION_CONSENT_WORDING`,
-version `2026-10-25.subscription-draft-1`, for legal review before production)
-asks the person to request an immediate start and acknowledge that withdrawing
-within 14 days refunds only the unused time, less any allowance used. It is
+version `2026-11-09.subscription-draft-2`, for legal review before production)
+shows the automatic-renewal terms next to the tick box (`renewal`, a template
+the web fills with the chosen price and interval, #2597) and asks the person to
+agree to the renewal, request an immediate start, and acknowledge that
+withdrawing within 14 days refunds the price less a proportionate amount for
+the service received. The refund policy defines that amount as the larger of
+the share of the period passed and the share of the allowance used. It is
 served by `GET /billing/subscription`, so the web carries no copy. The generic
 `POST /purchase-consents` refuses the `subscription` surface
 (`400 use_subscription_checkout`).

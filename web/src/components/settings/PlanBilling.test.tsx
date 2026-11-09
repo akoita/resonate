@@ -20,10 +20,11 @@ import {
 const NOW = Date.parse("2026-10-25T12:00:00.000Z");
 
 const consent = {
-  version: "2026-10-25.subscription-draft-1",
+  version: "2026-11-09.subscription-draft-2",
   reviewStatus: "for_legal_review_before_production",
   heading: "Your subscription starts now",
   intro: "You can withdraw within 14 days.",
+  renewal: "Artist Pro renews automatically every {interval} at {price} until you cancel.",
   acknowledgement: "I ask for my Artist Pro subscription to start now.",
   cancellation: "You can cancel at any time.",
   confirmation: "We record your choice.",
@@ -136,6 +137,21 @@ describe("PlanBillingView (#2407)", () => {
     expect(eur).toMatch(/<input type="radio"[^>]*disabled=""/);
     const usdYear = render(billing(), { chosenInterval: "year" });
     expect(usdYear).toContain("Artist Pro · Yearly</strong> — $149.90/year, plus any applicable tax.");
+  });
+
+  it("consent step: shows the renewal terms with the chosen price next to the tick box", () => {
+    const usdYear = render(billing(), { chosenInterval: "year" });
+    expect(usdYear).toContain(
+      "Artist Pro renews automatically every year at $149.90 (plus any applicable tax) until you cancel.",
+    );
+    const eurMonth = render(billing({ currencies: ["usd", "eur"] }), { currency: "eur", chosenInterval: "month" });
+    expect(eurMonth).toContain("Artist Pro renews automatically every month at €14.99 (VAT included) until you cancel.");
+    expect(usdYear.indexOf("renews automatically")).toBeLessThan(usdYear.indexOf('type="checkbox"'));
+  });
+
+  it("consent step: an older server without renewal wording shows no renewal line", () => {
+    const html = render(billing({ consent: { ...consent, renewal: undefined } }), { chosenInterval: "month" });
+    expect(html).not.toContain("renews automatically");
   });
 
   it("builds the price headline per currency", () => {
