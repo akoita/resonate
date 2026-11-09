@@ -25,21 +25,26 @@ jest.mock("@prisma/client", () => {
   const mockDispute = {
     findFirst: jest.fn(),
   };
+  const mockRelease = {
+    findUnique: jest.fn(),
+  };
   return {
     PrismaClient: jest.fn().mockImplementation(() => ({
       notification: mockNotification,
       notificationPreference: mockPreference,
       dispute: mockDispute,
+      release: mockRelease,
     })),
     __mockNotification: mockNotification,
     __mockPreference: mockPreference,
     __mockDispute: mockDispute,
+    __mockRelease: mockRelease,
   };
 });
 
 // Get mock references
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { __mockNotification, __mockPreference, __mockDispute } = require("@prisma/client");
+const { __mockNotification, __mockPreference, __mockDispute, __mockRelease } = require("@prisma/client");
 
 function getSubscribedHandler(eventName: string) {
   const call = (mockEventBus.subscribe as jest.Mock).mock.calls.find(([name]) => name === eventName);
@@ -463,8 +468,80 @@ describe("NotificationService", () => {
 
       // 3 dispute subscriptions + 1 credit-request subscription (#1334)
       // + 1 credit-grant subscription (#1885) + 1 refund_due-stale (#1506)
-      // + 1 removed remix draft (#2600)
-      expect(mockEventBus.subscribe).toHaveBeenCalledTimes(7);
+      // + 1 remix source hold (#2601) + 1 removed remix draft (#2600)
+      expect(mockEventBus.subscribe).toHaveBeenCalledTimes(8);
+    });
+  });
+
+  describe("remix source holds (#2601)", () => {
+    const wallet = "0x" + "Cd".repeat(20);
+    const event = {
+      eventName: "remix.source_hold_changed",
+      eventVersion: 1,
+      occurredAt: "2026-11-09T10:00:00.000Z",
+      releaseId: "release-1",
+      remixProjectId: "project-1",
+      creatorId: wallet,
+      held: true,
+      reason: "source_consent_revoked",
+    };
+
+    beforeEach(() => {
+      __mockPreference.findUnique.mockResolvedValue(null);
+      __mockNotification.create.mockResolvedValue({ id: "notif-hold" });
+      __mockRelease.findUnique.mockResolvedValue({ title: "Night Drive (remix)" });
+    });
+
+    it("tells the remixer why the remix is hidden, without blaming them", async () => {
+      const service = createService();
+      service.onModuleInit();
+
+      await getSubscribedHandler("remix.source_hold_changed")(event);
+
+      expect(__mockNotification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          walletAddress: wallet.toLowerCase(),
+          type: "remix_source_hold",
+          releaseId: "release-1",
+          message:
+            'The original artist switched off remixing, so "Night Drive (remix)" is hidden for now. '
+            + "It comes back by itself if they switch it on again. People who already bought it keep it.",
+        }),
+      });
+    });
+
+    it("promises no return for a track that was taken down", async () => {
+      const service = createService();
+      service.onModuleInit();
+
+      await getSubscribedHandler("remix.source_hold_changed")({ ...event, reason: "source_removed" });
+
+      const message = __mockNotification.create.mock.calls[0][0].data.message;
+      expect(message).toContain("The original track was taken down");
+      expect(message).not.toContain("comes back");
+    });
+
+    it("says so when the remix is available again", async () => {
+      const service = createService();
+      service.onModuleInit();
+
+      await getSubscribedHandler("remix.source_hold_changed")({ ...event, held: false });
+
+      expect(__mockNotification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: "remix_source_hold_lifted",
+          message: '"Night Drive (remix)" is available again.',
+        }),
+      });
+    });
+
+    it("skips a remixer whose id is not a wallet address", async () => {
+      const service = createService();
+      service.onModuleInit();
+
+      await getSubscribedHandler("remix.source_hold_changed")({ ...event, creatorId: "user-uuid" });
+
+      expect(__mockNotification.create).not.toHaveBeenCalled();
     });
   });
 

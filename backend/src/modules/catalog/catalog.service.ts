@@ -49,6 +49,20 @@ import {
   type AiDisclosureInput,
 } from "./ai-disclosure.policy";
 import { DEFAULT_SEPARATION_MODEL } from "../shared/stem-source";
+import type { ArtistRemixConsentUpdatedEvent } from "../../events/event_types";
+import {
+  currentSourceHoldReason,
+  reconcileAndAnnounceRemixSourceHolds,
+  type RemixSourceHoldReason,
+  type RemixSourceHoldScope,
+} from "./remix-source-hold";
+
+const SOURCE_HOLD_RESTORE_MESSAGES: Record<RemixSourceHoldReason, string> = {
+  source_removed: "The original track was taken down, so this remix can't be restored.",
+  source_under_review: "The original track is under review, so this remix can't be restored yet.",
+  source_consent_revoked: "The original artist has switched off remixing, so this remix can't be restored for now.",
+  source_withdrawn: "The original release is withdrawn from streaming, so this remix can't be restored for now.",
+};
 import { remixDraftStorageUris } from "../remix/remix-draft-storage";
 import type { RemixDraftSourceRemovedEvent } from "../../events/event_types";
 
@@ -196,6 +210,7 @@ const RELEASE_WITHDRAWAL_SELECT = {
   statusBeforeWithdrawal: true,
   withdrawnAt: true,
   withdrawalReason: true,
+  sourceHoldReason: true,
 } as const;
 
 /** Response of the withdraw/restore routes. */
@@ -207,6 +222,11 @@ export type ReleaseWithdrawalState = {
   statusBeforeWithdrawal: string | null;
   withdrawnAt: Date | null;
   withdrawalReason: string | null;
+  /**
+   * Set when the platform holds a published remix because its source stopped
+   * being remixable (#2601). The owner cannot restore it while it is set.
+   */
+  sourceHoldReason: string | null;
   /** True when the release was already in the requested state (no-op call). */
   alreadyInState: boolean;
 };
@@ -219,6 +239,7 @@ function toWithdrawalState(
     statusBeforeWithdrawal: string | null;
     withdrawnAt: Date | null;
     withdrawalReason: string | null;
+    sourceHoldReason: string | null;
   },
   options: { alreadyInState: boolean },
 ): ReleaseWithdrawalState {
@@ -229,6 +250,7 @@ function toWithdrawalState(
     statusBeforeWithdrawal: release.statusBeforeWithdrawal,
     withdrawnAt: release.withdrawnAt,
     withdrawalReason: release.withdrawalReason,
+    sourceHoldReason: release.sourceHoldReason,
     alreadyInState: options.alreadyInState,
   };
 }
@@ -933,6 +955,18 @@ export class CatalogService implements OnModuleInit {
   }
 
   onModuleInit() {
+    // Remix consent switched off or back on: published remixes follow (#2601).
+    this.eventBus.subscribe("artist.remix_consent_updated", async (event: ArtistRemixConsentUpdatedEvent) => {
+      try {
+        await this.reconcileRemixSourceHolds({ artistIds: [event.artistId] });
+      } catch (error) {
+        console.error(
+          `[Catalog] Remix source hold reconcile failed for artist ${event.artistId} (error=${error instanceof Error ? error.name : "unknown"})`,
+        );
+      }
+    });
+    // A hold placed by another module (takedown, quarantine) changes what is public.
+    this.eventBus.subscribe("remix.source_hold_changed", () => this.clearCache());
     this.eventBus.subscribe("stems.uploaded", async (event: StemsUploadedEvent) => {
       console.log(`[Catalog] Received stems.uploaded for release ${event.releaseId} (artist: ${event.artistId})`);
       this.clearCache();
@@ -2116,6 +2150,7 @@ export class CatalogService implements OnModuleInit {
         // withdrawal rather than an opaque status string.
         withdrawnAt: true,
         withdrawalReason: true,
+        sourceHoldReason: true,
         processingError: true,
         type: true,
         primaryArtist: true,
@@ -2200,6 +2235,7 @@ export class CatalogService implements OnModuleInit {
             status: true,
             withdrawnAt: true,
             withdrawalReason: true,
+            sourceHoldReason: true,
             processingError: true,
             type: true,
             primaryArtist: true,
@@ -2440,6 +2476,7 @@ export class CatalogService implements OnModuleInit {
         // withdrawal rather than an opaque status string.
         withdrawnAt: true,
         withdrawalReason: true,
+        sourceHoldReason: true,
         processingError: true,
         type: true,
         primaryArtist: true,
@@ -2784,6 +2821,8 @@ export class CatalogService implements OnModuleInit {
       return toWithdrawalState(updated, { alreadyInState: false });
     });
     this.clearCache();
+    // Published remixes built on this release leave discovery with it (#2601).
+    await this.reconcileRemixSourceHolds({ releaseIds: [releaseId] });
     return result;
   }
 
@@ -2806,6 +2845,16 @@ export class CatalogService implements OnModuleInit {
       if (release.status !== RELEASE_STATUS_WITHDRAWN) {
         throw new BadRequestException("Only a withdrawn release can be restored to streaming.");
       }
+      // A published remix cannot come back while one of its sources still
+      // blocks it (#2601), whether the platform or the owner withdrew it.
+      const sourceHold = await currentSourceHoldReason(tx, releaseId);
+      if (sourceHold) {
+        throw new ConflictException({
+          code: "release_source_hold",
+          reason: sourceHold,
+          message: SOURCE_HOLD_RESTORE_MESSAGES[sourceHold],
+        });
+      }
       // A row withdrawn before this field existed has no recorded origin;
       // "ready" is the conservative fallback, not a forced publication.
       const restoredTo = (WITHDRAWABLE_RELEASE_STATUSES as readonly string[]).includes(
@@ -2818,13 +2867,26 @@ export class CatalogService implements OnModuleInit {
           statusBeforeWithdrawal: null,
           withdrawnAt: null,
           withdrawalReason: null,
+          sourceHoldReason: null,
         },
         select: RELEASE_WITHDRAWAL_SELECT,
       });
       return toWithdrawalState(updated, { alreadyInState: false });
     });
     this.clearCache();
+    // Remixes the platform held because of this withdrawal come back (#2601).
+    await this.reconcileRemixSourceHolds({ releaseIds: [releaseId] });
     return result;
+  }
+
+  /**
+   * Hold or restore the published remixes of sources whose state changed
+   * (#2601). Announces each change and drops the catalogue caches.
+   */
+  async reconcileRemixSourceHolds(scope: RemixSourceHoldScope) {
+    const changes = await reconcileAndAnnounceRemixSourceHolds(this.eventBus, scope);
+    if (changes.length > 0) this.clearCache();
+    return changes;
   }
 
   /** Serialize catalog edits with management transfers before rechecking authority. */

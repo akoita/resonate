@@ -8,6 +8,7 @@ import {
   ContractDisputeAppealedEvent,
   GenerationCreditsGrantedEvent,
   GenerationCreditsRequestedEvent,
+  RemixSourceHoldChangedEvent,
   RemixDraftSourceRemovedEvent,
   X402RefundDueStaleEvent,
 } from "../../events/event_types";
@@ -16,6 +17,19 @@ import { formatUsdCents, notifiableWalletForUserId } from "./notification_format
 import { SIGNUP_STARTER_REASON } from "../credits/generation-credits.service";
 
 const prisma = new PrismaClient();
+
+/** Plain-language cause of a remix source hold (#2601). Never blames the remixer. */
+const REMIX_SOURCE_HOLD_CAUSES: Record<string, string> = {
+  source_consent_revoked: "The original artist switched off remixing",
+  source_withdrawn: "The original release was withdrawn from streaming",
+  source_under_review: "The original track is under review",
+  source_removed: "The original track was taken down",
+};
+const REMIX_SOURCE_HOLD_OUTLOOK: Record<string, string> = {
+  source_consent_revoked: "It comes back by itself if they switch it on again. ",
+  source_withdrawn: "It comes back by itself if the release is restored. ",
+  source_under_review: "It comes back by itself if the review clears the track. ",
+};
 
 /** Window in which a repeat credit request from the same user is coalesced. */
 const CREDIT_REQUEST_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
@@ -44,6 +58,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
     this.subscribeToCreditRequests();
     this.subscribeToCreditGrants();
     this.subscribeToRefundDueAlerts();
+    this.subscribeToRemixSourceHolds();
     this.subscribeToRemovedRemixDrafts();
     this.logger.log(
       "Notification service initialized — listening for dispute + credit-request + credit-grant + refund-due events",
@@ -219,6 +234,48 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
             type: "credits_granted",
             title: "Generation credits added",
             message: `You received ${formatUsdCents(event.amountCents)} of generation credits.`,
+          });
+        },
+      ),
+    );
+  }
+
+  private subscribeToRemixSourceHolds() {
+    // The platform held a published remix because of its source, or restored
+    // it (#2601, ADR-LD-5 §4) -> tell the remixer what happened and that it is
+    // not about them. Only ids that are wallet addresses have an inbox.
+    this.subscriptions.push(
+      this.eventBus.subscribe(
+        "remix.source_hold_changed",
+        async (event: RemixSourceHoldChangedEvent) => {
+          const walletAddress = notifiableWalletForUserId(event.creatorId);
+          if (!walletAddress) {
+            this.logger.log(
+              `Remix source hold on release ${event.releaseId} not notified - user id is not a wallet address`,
+            );
+            return;
+          }
+          const release = await prisma.release.findUnique({
+            where: { id: event.releaseId },
+            select: { title: true },
+          });
+          const name = release?.title ? `"${release.title}"` : "Your remix";
+          if (!event.held) {
+            await this.createNotification({
+              walletAddress,
+              type: "remix_source_hold_lifted",
+              title: "Your remix is back",
+              message: `${name} is available again.`,
+              releaseId: event.releaseId,
+            });
+            return;
+          }
+          await this.createNotification({
+            walletAddress,
+            type: "remix_source_hold",
+            title: "Your remix is on hold",
+            message: `${REMIX_SOURCE_HOLD_CAUSES[event.reason] ?? REMIX_SOURCE_HOLD_CAUSES.source_withdrawn}, so ${name} is hidden for now. ${REMIX_SOURCE_HOLD_OUTLOOK[event.reason] ?? ""}People who already bought it keep it.`,
+            releaseId: event.releaseId,
           });
         },
       ),
