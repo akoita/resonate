@@ -93,6 +93,13 @@ Triage order:
    (`npm update <package> --package-lock-only --ignore-scripts` in the affected
    project). Do not use `npm audit fix --force`; it proposes major upgrades or
    downgrades of unrelated packages.
+   When the fix exists only in a new major of a transitive package and its
+   consumers have not adopted it yet, a range-scoped `overrides` entry in the
+   affected `package.json` may force the fixed major, provided every consumer's
+   call sites are checked against the new API first. Scope the key to the
+   vulnerable range (for example `"minimatch@>=7.0.0 <11.0.1"`), so untouched
+   older majors stay as they are, and remove the entry once the consumers
+   declare the fixed major themselves.
 3. Respect the npm `min-release-age=7` cutoff. A fix newer than seven days
    waits for the cutoff unless the alert is critical and reachable; record that
    urgent exception in the pull request.
