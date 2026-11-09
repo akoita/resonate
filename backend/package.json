@@ -111,6 +111,8 @@
     "seed": "ts-node-dev --transpile-only prisma/seed.ts"
   },
   "overrides": {
-    "multer": "2.5.0"
+    "multer": "2.5.0",
+    "minimatch@>=7.0.0 <11.0.1": "^11.0.4",
+    "glob@>=9.0.0 <=14.0.1": "^14.0.3"
   }
 }
