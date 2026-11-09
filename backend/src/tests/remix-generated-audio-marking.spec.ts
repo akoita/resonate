@@ -1,14 +1,11 @@
 /**
  * #2602: generated audio is marked on every output path, or refuses to ship.
- * Unit level: no database. The mixer cases run real ffmpeg with a stand-in
- * for audiowmark; the render graph itself is covered by
+ * Unit level: no database and no ffmpeg. The cases that run real ffmpeg
+ * with a stand-in for audiowmark are in
  * remix-stem-audio-mixer.integration.spec.ts.
  */
-import { execFileSync } from "child_process";
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
-import { Logger } from "@nestjs/common";
 import type { EncryptionService } from "../modules/encryption/encryption.service";
 import type { StorageProvider } from "../modules/storage/storage_provider";
 import { GENERATED_AUDIO_OUTPUT_PATHS } from "../modules/remix/generated-audio-outputs";
@@ -23,9 +20,7 @@ import {
   draftMarkState,
   embedWatermarkWithRetry,
   REMIX_WATERMARK_EMBED_ATTEMPTS,
-  RemixWatermarkEmbedder,
   UNMARKED_DRAFT_REFUSAL,
-  UNMARKED_GENERATED_AUDIO_MESSAGE,
 } from "../modules/remix/remix-watermark";
 import { buildMasterEncodeArgs, FfmpegStemAudioMixer } from "../modules/remix/stem-audio-mixer";
 
@@ -169,80 +164,15 @@ describe("AI-generated file tags (#2602)", () => {
   });
 });
 
-describe("markGeneratedAudio (#2602)", () => {
-  let dir: string;
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "wm-mark-"));
-  });
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-    jest.restoreAllMocks();
-  });
-
-  /** A stand-in for audiowmark add: fails `failures` times, then copies input to output. */
-  function fakeAudiowmark(failures: number): string {
-    const path = join(dir, "fake.sh");
-    writeFileSync(
-      path,
-      `#!/bin/sh\nn=$(cat "${dir}/calls" 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > "${dir}/calls"\n` +
-        `if [ $n -le ${failures} ]; then echo boom >&2; exit 1; fi\ncp "$6" "$7"\n`,
-    );
-    chmodSync(path, 0o755);
-    return path;
-  }
-  const mixerWith = (binary: string | null) =>
-    new FfmpegStemAudioMixer(
+describe("markGeneratedAudio without a key (#2602)", () => {
+  // The keyed cases run real ffmpeg: remix-stem-audio-mixer.integration.spec.ts.
+  it("returns the audio untouched where no key is configured", async () => {
+    const mixer = new FfmpegStemAudioMixer(
       {} as unknown as StorageProvider,
       {} as unknown as EncryptionService,
-      binary ? new RemixWatermarkEmbedder({ key: KEY, keyId: "k1", strength: 15, binary }) : undefined,
     );
-  const calls = () => Number(readFileSync(join(dir, "calls"), "utf8").trim());
-  const markTempDirs = () => readdirSync(tmpdir()).filter((name) => name.startsWith("remix-mark-"));
-  function tone(): Buffer {
-    const path = join(dir, "tone.flac");
-    execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=330:duration=2", path]);
-    return readFileSync(path);
-  }
-
-  it("returns a marked WAV and its token, whatever format the model returned", async () => {
-    const before = markTempDirs();
-    const marked = await mixerWith(fakeAudiowmark(0)).markGeneratedAudio(tone(), "audio/flac", "p1");
-    expect(marked.mimeType).toBe("audio/wav");
-    expect(marked.buffer.subarray(0, 4).toString("latin1")).toBe("RIFF");
-    expect(marked.metadata).toEqual(EMBEDDED);
-    expect(marked.watermark).toMatchObject({ token: expect.stringMatching(/^[0-9a-f]{32}$/), keyId: "k1" });
-    expect(JSON.stringify(marked.metadata)).not.toContain(marked.watermark!.token);
-    expect(markTempDirs()).toEqual(before);
-  });
-
-  it("retries once before giving up", async () => {
-    jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-    const marked = await mixerWith(fakeAudiowmark(1)).markGeneratedAudio(tone(), "audio/flac", "p1");
-    expect(marked.metadata.status).toBe("embedded");
-    expect(calls()).toBe(2);
-  });
-
-  it("fails the draft when the mark cannot be embedded, without logging the token", async () => {
-    const error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
-    jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-    const before = markTempDirs();
-    await expect(
-      mixerWith(fakeAudiowmark(99)).markGeneratedAudio(tone(), "audio/flac", "p1"),
-    ).rejects.toMatchObject({
-      code: "provider_unavailable",
-      retryable: true,
-      message: UNMARKED_GENERATED_AUDIO_MESSAGE,
-    });
-    expect(calls()).toBe(REMIX_WATERMARK_EMBED_ATTEMPTS);
-    const logged = error.mock.calls.map(([message]) => String(message)).join("\n");
-    expect(logged).toContain("could not be marked");
-    expect(logged).not.toMatch(/[0-9a-f]{32}/);
-    expect(markTempDirs()).toEqual(before);
-  });
-
-  it("returns the audio untouched where no key is configured", async () => {
     const audio = Buffer.from("model-output");
-    const marked = await mixerWith(null).markGeneratedAudio(audio, "audio/wav", "p1");
+    const marked = await mixer.markGeneratedAudio(audio, "audio/wav", "p1");
     expect(marked.buffer).toBe(audio);
     expect(marked.metadata).toEqual({ status: "none", reason: "no_key" });
     expect(marked.watermark).toBeUndefined();

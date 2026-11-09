@@ -1112,6 +1112,72 @@ const audiowmarkAvailable = (() => {
       expect(mixed.renderMetadata.watermark).toEqual({ status: "none", reason: "no_key" });
     });
 
+    /** A stand-in that fails `failures` times, then copies its input to its output. */
+    function countingAudiowmark(failures: number): string {
+      const path = join(binDir, `count-${failures}.sh`);
+      const calls = join(binDir, `calls-${failures}`);
+      rmSync(calls, { force: true });
+      writeFileSync(
+        path,
+        `#!/bin/sh\nn=$(cat "${calls}" 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > "${calls}"\n` +
+          `if [ $n -le ${failures} ]; then echo boom >&2; exit 1; fi\ncp "$6" "$7"\n`,
+      );
+      chmodSync(path, 0o755);
+      return path;
+    }
+    const callsOf = (failures: number) =>
+      Number(readFileSync(join(binDir, `calls-${failures}`), "utf8").trim());
+    const markTempDirs = () =>
+      readdirSync(tmpdir()).filter((entry) => entry.startsWith("remix-mark-"));
+
+    it("marks a whole-model draft as WAV and returns its token (#2602)", async () => {
+      const before = markTempDirs();
+      const marked = await mixerWith(countingAudiowmark(0)).markGeneratedAudio(
+        noisyWav(2),
+        "audio/wav",
+        "p1",
+      );
+      expect(marked.mimeType).toBe("audio/wav");
+      expect(marked.buffer.subarray(0, 4).toString("latin1")).toBe("RIFF");
+      expect(marked.metadata).toEqual({
+        status: "embedded",
+        scheme: "audiowmark",
+        schemeVersion: "0.6.5",
+        strength: 15,
+        keyId: "test-key",
+      });
+      expect(marked.watermark?.token).toMatch(/^[0-9a-f]{32}$/);
+      expect(JSON.stringify(marked.metadata)).not.toContain(marked.watermark!.token);
+      expect(markTempDirs()).toEqual(before);
+    });
+
+    it("retries the mark of a whole-model draft once (#2602)", async () => {
+      jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+      const marked = await mixerWith(countingAudiowmark(1)).markGeneratedAudio(
+        noisyWav(2),
+        "audio/wav",
+        "p1",
+      );
+      expect(marked.metadata.status).toBe("embedded");
+      expect(callsOf(1)).toBe(2);
+      jest.restoreAllMocks();
+    });
+
+    it("fails a whole-model draft that cannot be marked, without logging the token (#2602)", async () => {
+      jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+      const error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+      const before = markTempDirs();
+      await expect(
+        mixerWith(countingAudiowmark(99)).markGeneratedAudio(noisyWav(2), "audio/wav", "p1"),
+      ).rejects.toMatchObject({ code: "provider_unavailable", retryable: true });
+      expect(callsOf(99)).toBe(2);
+      const logged = error.mock.calls.map(([message]) => String(message)).join("\n");
+      expect(logged).toContain("could not be marked");
+      expect(logged).not.toMatch(/[0-9a-f]{32}/);
+      expect(markTempDirs()).toEqual(before);
+      jest.restoreAllMocks();
+    });
+
     it("records watermark none without a key, and nothing when the caller did not ask", async () => {
       const unkeyed = await mixerWith(null).mixUnmutedStems(
         stems,
