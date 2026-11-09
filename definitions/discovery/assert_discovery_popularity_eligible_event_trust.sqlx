@@ -1,0 +1,17 @@
+config {
+  type: "assertion",
+  name: "assert_discovery_popularity_eligible_event_trust",
+  tags: ["discovery_popularity", "assertion"],
+}
+
+SELECT event_id
+FROM ${ref(require("includes/discovery_popularity_config").eligibleEventsTableName(dataform.projectConfig))}
+WHERE NULLIF(TRIM(actor_id), '') IS NULL
+  OR NOT REGEXP_CONTAINS(TRIM(actor_id), r'^user_[0-9a-fA-F]{32}$')
+  OR self_engagement IS NOT FALSE
+  OR ai_disclosure_level NOT IN ('NONE', 'PARTLY', 'UNDECLARED')
+  OR consent_basis IS NULL
+  OR NOT (
+    (event_name IN ('playback.completed', 'library.saved', 'playlist.track_added') AND consent_basis = 'consent')
+    OR (event_name IN ('commerce.settled', 'payment.settled', 'x402.purchase', 'agent.purchase_completed') AND consent_basis IN ('contract', 'performance_of_contract'))
+  )

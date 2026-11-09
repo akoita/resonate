@@ -1,0 +1,22 @@
+config {
+  type: "assertion",
+  name: "assert_discovery_popularity_snapshot_contract",
+  tags: ["discovery_popularity", "assertion"],
+}
+
+WITH snapshot_check AS (
+  SELECT
+    COUNT(*) AS snapshot_rows,
+    ANY_VALUE(computed_at) AS computed_at,
+    ANY_VALUE(track_rows) AS track_rows,
+    ANY_VALUE(artist_rows) AS artist_rows
+  FROM ${ref(require("includes/discovery_popularity_config").snapshotTableName(dataform.projectConfig))}
+)
+SELECT *
+FROM snapshot_check
+WHERE snapshot_rows != 1
+  OR computed_at IS NULL
+  OR computed_at > CURRENT_TIMESTAMP()
+  OR TIMESTAMP_ADD(computed_at, INTERVAL ${require("includes/discovery_popularity_config").snapshotMaxAgeMinutes(dataform.projectConfig)} MINUTE) < CURRENT_TIMESTAMP()
+  OR track_rows != (SELECT COUNT(*) FROM ${ref(require("includes/discovery_popularity_config").trackPopularityTableName(dataform.projectConfig))})
+  OR artist_rows != (SELECT COUNT(*) FROM ${ref(require("includes/discovery_popularity_config").artistEngagementTableName(dataform.projectConfig))})
