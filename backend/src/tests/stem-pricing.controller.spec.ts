@@ -17,8 +17,17 @@ const mockPricingService = {
   batchUpsertByMap: jest.fn().mockResolvedValue({}),
 };
 
-function makeController() {
-  return new StemPricingController(mockPricingService as any);
+const licensePricing = {
+  personal: { amountUsd: 0.05, feeBps: 1500 },
+  remix: { amountUsd: 5, feeBps: 1000 },
+  commercial: { amountUsd: 25, feeBps: 1000 },
+};
+
+function makeController(pricing = licensePricing) {
+  return new StemPricingController(
+    mockPricingService as any,
+    { licensePricing: pricing } as any,
+  );
 }
 
 const req = { user: { userId: 'user-1' } };
@@ -26,6 +35,35 @@ const req = { user: { userId: 'user-1' } };
 beforeEach(() => jest.clearAllMocks());
 
 describe('StemPricingController', () => {
+  describe('getSaleSplit — canonical split per licence tier (#2599)', () => {
+    it('returns the configured take-rate and the artist share for each tier', () => {
+      expect(makeController().getSaleSplit()).toEqual({
+        minArtistBps: 8500,
+        tiers: {
+          personal: { platformFeeBps: 1500, artistBps: 8500 },
+          remix: { platformFeeBps: 1000, artistBps: 9000 },
+          commercial: { platformFeeBps: 1000, artistBps: 9000 },
+        },
+      });
+    });
+
+    it('never reports an artist share under 85% (ADR-BM-4)', () => {
+      const split = makeController().getSaleSplit();
+      for (const tier of Object.values(split.tiers)) {
+        expect(tier.artistBps).toBeGreaterThanOrEqual(8500);
+        expect(tier.artistBps + tier.platformFeeBps).toBe(10000);
+      }
+    });
+
+    it('refuses a take-rate that would break the 85% floor instead of showing it', () => {
+      const ctrl = makeController({
+        ...licensePricing,
+        remix: { amountUsd: 5, feeBps: 2000 },
+      });
+      expect(() => ctrl.getSaleSplit()).toThrow(/ADR-BM-4/);
+    });
+  });
+
   describe('batchGetPricing — stemIds parsing', () => {
     it('splits comma-separated stemIds string', () => {
       const ctrl = makeController();

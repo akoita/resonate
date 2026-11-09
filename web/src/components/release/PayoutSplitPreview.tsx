@@ -1,49 +1,93 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import {
+  STEM_SALE_TIERS,
+  artistNetUsd,
+  fetchStemSaleSplit,
+  formatSplitPercent,
+  formatSplitUsd,
+  type StemSaleSplit,
+  type StemSaleTier,
+} from "../../lib/stemSaleSplit";
 
-interface PayoutSplitPreviewProps {
-  priceUsd: number;
+export type PayoutSplitPrices = Record<StemSaleTier, number>;
+
+const TIER_LABELS: Record<StemSaleTier, string> = {
+  personal: "Personal (per play)",
+  remix: "Remix licence",
+  commercial: "Commercial licence",
+};
+
+export type PayoutSplitState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; split: StemSaleSplit };
+
+/** Pure view: what the artist keeps per licence tier, from the server's split. */
+export function PayoutSplitView({
+  prices,
+  state,
+}: {
+  prices: PayoutSplitPrices;
+  state: PayoutSplitState;
+}) {
+  return (
+    <section className="payout-split-container" aria-label="What you keep from each sale">
+      <h4 className="payout-split-title">What you keep from each sale</h4>
+      {state.status === "loading" && (
+        <p className="payout-split-note" role="status">Loading the current split…</p>
+      )}
+      {state.status === "error" && (
+        <p className="payout-split-note" role="alert">
+          We couldn&apos;t load the current split, so no numbers are shown. Your prices are not affected.
+        </p>
+      )}
+      {state.status === "ready" && (
+        <>
+          <ul className="payout-split-tiers">
+            {STEM_SALE_TIERS.map((tier) => {
+              const { artistBps, platformFeeBps } = state.split.tiers[tier];
+              const net = artistNetUsd(prices[tier], artistBps);
+              return (
+                <li key={tier} className="payout-split-tier">
+                  <div className="payout-split-tier-head">
+                    <span className="split-legend-label">{TIER_LABELS[tier]}</span>
+                    <span className="split-legend-value">You keep {formatSplitPercent(artistBps)}</span>
+                  </div>
+                  <div className="payout-split-bar" aria-hidden="true">
+                    <span className="payout-split-bar-artist" style={{ width: `${artistBps / 100}%` }} />
+                  </div>
+                  <div className="split-legend-amount">
+                    {net === null
+                      ? `Platform fee ${formatSplitPercent(platformFeeBps)}`
+                      : `${formatSplitUsd(net)} of ${formatSplitUsd(prices[tier])} · platform fee ${formatSplitPercent(platformFeeBps)}`}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="payout-split-note">
+            You keep at least {formatSplitPercent(state.split.minArtistBps)} of every sale of your own stem.
+          </p>
+        </>
+      )}
+    </section>
+  );
 }
 
-const SPLITS = [
-  { label: "Artist", pct: 70, color: "#8b5cf6" },
-  { label: "Mixer / Remixer", pct: 20, color: "#3b82f6" },
-  { label: "Platform", pct: 10, color: "#6b7280" },
-];
+export function PayoutSplitPreview({ prices }: { prices: PayoutSplitPrices }) {
+  const [state, setState] = useState<PayoutSplitState>({ status: "loading" });
 
-export function PayoutSplitPreview({ priceUsd }: PayoutSplitPreviewProps) {
-  // Build conic-gradient segments using reduce to avoid mutable reassignment
-  const { segments } = SPLITS.reduce<{ segments: string[]; cumulative: number }>(
-    (acc, s) => {
-      const start = acc.cumulative;
-      const end = start + s.pct;
-      acc.segments.push(`${s.color} ${start}% ${end}%`);
-      acc.cumulative = end;
-      return acc;
-    },
-    { segments: [], cumulative: 0 },
-  );
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchStemSaleSplit(controller.signal)
+      .then((split) => setState({ status: "ready", split }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ status: "error" });
+      });
+    return () => controller.abort();
+  }, []);
 
-  const gradient = `conic-gradient(${segments.join(", ")})`;
-
-  return (
-    <div className="payout-split-container">
-      <div className="split-donut" style={{ background: gradient }} />
-      <div className="split-legend">
-        {SPLITS.map((s) => (
-          <div key={s.label} className="split-legend-row">
-            <span className="split-color-dot" style={{ background: s.color }} />
-            <span className="split-legend-label">{s.label}</span>
-            <span className="split-legend-value">{s.pct}%</span>
-            {priceUsd > 0 && (
-              <span className="split-legend-amount">
-                ${((priceUsd * s.pct) / 100).toFixed(4)}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  return <PayoutSplitView prices={prices} state={state} />;
 }
