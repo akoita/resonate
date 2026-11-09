@@ -2,8 +2,8 @@
 
 **Status:** 🟡 Proposed on 2026-11-09. The three defect fixes are in review;
 the plan waits for the owner's approval.
-**Milestone:** not created yet. Issues carry the `sprint:vision-56` label and
-are sub-issues of epic #2589.
+**Milestone:** [Vision Sprint 56: Marked and honest remixes](https://github.com/akoita/resonate/milestone/54).
+Issues also carry the `sprint:vision-56` label and are sub-issues of epic #2589.
 **Goal:** By 2026-12-02, every piece of generated audio that leaves Resonate
 carries a machine-readable mark, and the three places where the product
 contradicts its own remix rules are fixed: the split an artist is shown, an
