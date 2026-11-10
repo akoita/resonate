@@ -266,7 +266,16 @@ more frames. What is left above the floor: on Home, the sticky top bar's
 The laptop check (Chrome Task Manager, GPU process, Home with the mouse
 moving) is the acceptance reading; repeat it on staging after a deploy.
 
+## Later readings
+
+The in-use numbers above were taken before the shell's film grain layer was
+removed and decorative loops were made to wait for the page to settle. Those
+changes, and the same table measured again, are in the
+[load-cost harness](load-cost-harness.md): Home is at about 14 ms per frame.
+
 ## Related
+
+- [Load-cost harness](load-cost-harness.md): CPU spent in every browser process while a page opens
 
 - `web/scripts/measure-idle-cost.mjs`: the probe
 - [Home performance harness](home-performance-harness.md): load-time metrics (LCP, CLS, bytes)

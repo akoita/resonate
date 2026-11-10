@@ -25,11 +25,22 @@
  * -------------------------------------------------------------------- */
 
 /* ----------------------------------------------------------------------
- * 1. Canvas — ambient aurora + cinematic grain
+ * 1. Canvas — ambient aurora
  * The app-shell is solid obsidian and the app-main above it is translucent
  * glass, so enriching the shell gives app-wide ambient depth for free.
  * -------------------------------------------------------------------- */
 .app-shell {
+  /* No film grain layer here. There used to be one: an SVG noise at 2.5%
+   * opacity on a fixed, full-viewport ::after with `mix-blend-mode: overlay`.
+   * Over this dark canvas it moves a channel by less than half a level out of
+   * 255. Composited through GL, screenshots with and without it are
+   * identical; the software compositor rounds some pixels up by one level.
+   * But a blend layer over the whole viewport is composited again on every
+   * frame in which anything on the page changes, and it cost a third of the
+   * compositor time per frame on every page. Do not bring it back as a
+   * layer; if texture is wanted, bake it into this background.
+   * `animationBudget.test.ts` guards this
+   * (docs/engineering/load-cost-harness.md). */
   background:
     radial-gradient(ellipse 60% 50% at 12% -8%, rgba(124, 92, 255, 0.10), transparent 60%),
     radial-gradient(ellipse 50% 45% at 92% 8%, rgba(196, 181, 253, 0.06), transparent 58%),
@@ -38,23 +49,9 @@
   position: relative;
 }
 
-/* Fine film grain — kills banding on the dark gradients, reads as texture. */
-.app-shell::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.025;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 200px 200px;
-}
-
-/* Keep real content above the grain. The sidebar already sits at a high
- * z-index (5000, and 9000 for the mobile drawer) in globals.css — do NOT
- * lower it here or the open mobile nav drawer falls behind content. Only
- * the translucent main column needs lifting above the fixed grain layer. */
+/* The sidebar already sits at a high z-index (5000, and 9000 for the mobile
+ * drawer) in globals.css — do NOT lower it here or the open mobile nav drawer
+ * falls behind content. The main column keeps its own stacking level. */
 .app-main { z-index: 1; }
 
 /* ----------------------------------------------------------------------

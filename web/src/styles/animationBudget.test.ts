@@ -155,3 +155,25 @@ describe("full-page blur budget (#2534)", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("full-viewport blend budget", () => {
+  // A layer with `mix-blend-mode` cannot be drawn on its own: it is composited
+  // together with everything behind it, again on every frame in which any of
+  // that changes. The shell used to carry a film grain this way (a fixed,
+  // full-viewport ::after at 2.5% opacity); it cost a third of the compositor
+  // time per frame on every page and, over the dark canvas, changed no pixel.
+  // See docs/engineering/load-cost-harness.md.
+  it("keeps mix-blend-mode off the app shell and its page-sized children", () => {
+    const offenders: string[] = [];
+    for (const { file, css } of sheets()) {
+      if (!file.endsWith(".css")) continue;
+      const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const rule of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const selectors = rule[1].split(",").map((s) => s.trim());
+        if (!selectors.some((s) => /(^|\s|>)\.app-(shell|main|content|page)(::?(before|after))?$/.test(s))) continue;
+        if (/(^|[;\s])mix-blend-mode\s*:/.test(rule[2])) offenders.push(path.relative(SRC, file));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

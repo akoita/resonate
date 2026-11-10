@@ -96,12 +96,22 @@ function setup(initiallyHidden = false) {
     clock = until;
   };
 
-  const start = (idleAfterMs = IDLE_MS) =>
+  let finishSettle: (() => void) | null = null;
+  let settleCancelled = false;
+  const start = (idleAfterMs = IDLE_MS, options: { settle?: boolean } = {}) =>
     startIdleAnimationGuard({
       doc: doc as never,
       IntersectionObserverCtor: FakeObserver as never,
       idleAfterMs,
       timers,
+      settle: options.settle
+        ? (onSettled) => {
+            finishSettle = onSettled;
+            return () => {
+              settleCancelled = true;
+            };
+          }
+        : undefined,
     });
   const intersect = (target: FakeElement, isIntersecting: boolean) => callback([{ target, isIntersecting }]);
   const setHidden = (hidden: boolean) => {
@@ -118,6 +128,8 @@ function setup(initiallyHidden = false) {
     advance,
     pendingTimers: () => pending.size,
     isDisconnected: () => disconnected,
+    settle: () => finishSettle?.(),
+    isSettleCancelled: () => settleCancelled,
   };
 }
 
@@ -289,6 +301,51 @@ describe("startIdleAnimationGuard (#2436)", () => {
     expect(env.pendingTimers()).toBe(1);
     stop();
     expect(env.pendingTimers()).toBe(0);
+  });
+
+  it("holds decorative loops until the page has settled, then lets them run", () => {
+    const env = setup();
+    const early = new FakeElement().loop();
+    env.doc.animations.push(early.animations[0]);
+    env.start(IDLE_MS, { settle: true });
+    expect(early.paused).toBe(true);
+
+    const late = new FakeElement().loop();
+    env.doc.fire("animationstart", late);
+    expect(late.paused).toBe(true);
+
+    // Input does not start them early: the page is still arriving.
+    env.doc.fire("pointermove");
+    expect(early.paused).toBe(true);
+
+    env.settle();
+    expect(early.paused).toBe(false);
+    expect(late.paused).toBe(false);
+  });
+
+  it("keeps loading indicators running while the page settles", () => {
+    const env = setup();
+    const spinner = new FakeElement().loop(Infinity, "aid-spin");
+    const oneShot = new FakeElement().loop(1, "fade-in");
+    env.start(IDLE_MS, { settle: true });
+    env.doc.fire("animationstart", spinner);
+    env.doc.fire("animationstart", oneShot);
+    expect(spinner.paused).toBe(false);
+    expect(oneShot.paused).toBe(false);
+  });
+
+  it("still holds off-screen loops after the page settles, and cancels the settle watch on cleanup", () => {
+    const env = setup();
+    const ping = new FakeElement().loop();
+    const stop = env.start(IDLE_MS, { settle: true });
+    env.doc.fire("animationstart", ping);
+    env.intersect(ping, false);
+    env.settle();
+    expect(ping.paused).toBe(true);
+    env.intersect(ping, true);
+    expect(ping.paused).toBe(false);
+    stop();
+    expect(env.isSettleCancelled()).toBe(true);
   });
 
   it("is a no-op without a document", () => {

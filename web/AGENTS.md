@@ -62,6 +62,14 @@ Keep the visuals; pay for them on the compositor.
   idle, so name a new loading loop that way. Pause a loop for your own reasons with
   CSS (`animation-play-state` or a class), never with `Animation.pause()`,
   which would fight the guard.
+- Decorative loops also wait for the page to arrive: the guard holds them
+  until the document has loaded and gone quiet (`src/lib/pageSettle.ts`), so
+  the compositor is not drawing a frame every vsync during the busiest second
+  a page has. Loading indicators are exempt, by the same names.
+- No `mix-blend-mode` on the shell or anything page-sized. A blend layer is
+  composited together with everything behind it, again on every frame in
+  which any of that changes. If a texture is wanted, bake it into a
+  background.
 - Keep `backdrop-filter` off large or full-page containers (#2534). A frame
   that changes anything over a blurred surface recomputes that whole blur,
   however small the change and whatever its stacking context, so one blurred
@@ -81,6 +89,22 @@ Keep the visuals; pay for them on the compositor.
 new infinite animation that animates a paint/layout property. Its allowlist is
 legacy debt and may only shrink. Measure idle cost with `npm run perf:idle`
 (see `docs/engineering/idle-cost-harness.md`).
+
+## Load cost
+
+Opening a page is its busiest moment. Keep work that can wait out of it, and
+measure with `npm run perf:load` (see `docs/engineering/load-cost-harness.md`).
+
+- A self-contained widget below the first screen that fetches its own data is
+  wrapped in `DeferredMount` (`src/components/system/DeferredMount.tsx`) with
+  its skeleton as the fallback. It mounts once the page has settled, or as
+  soon as it nears the viewport.
+- Whatever depends on the stored session must have the same size before and
+  after the session is restored. The root layout marks
+  `<html data-session="stored">` before first paint; style the pending state
+  from it, as `ConnectButton` does, so signed-in opens do not shift the page.
+- Data effects that depend on the session wait for `sessionChecked` instead
+  of running once signed out and again signed in.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

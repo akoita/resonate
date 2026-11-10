@@ -7,7 +7,7 @@ import { useAuth } from "./AuthProvider";
 const subscribe = () => () => { };
 
 export default function ConnectButton() {
-  const { status, address, login, signup, disconnect, error } = useAuth();
+  const { status, sessionChecked, address, login, signup, disconnect, error } = useAuth();
   const [copied, setCopied] = useState(false);
   const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
 
@@ -67,8 +67,36 @@ export default function ConnectButton() {
     );
   }
 
+  // Until the stored session has been read (server render, and the first
+  // client render before hydration effects run) nobody knows whether this
+  // visitor is signed in. The sign-in block is twice the height of the signed-in
+  // chip, so showing it to a returning listener made the top bar shrink, and
+  // the whole page jump up 57px and be drawn again, as soon as the session
+  // restored. The root layout's inline script marks <html data-session="stored">
+  // before first paint when a session is stored; CSS (globals.css) then shows
+  // this empty chip-sized frame in place of the sign-in block. A signed-out
+  // visitor has no mark and sees the sign-in block from the first paint.
+  const sessionPending = !hasMounted || !sessionChecked;
+
   return (
-    <div className="wallet-connect">
+    <>
+      {sessionPending ? (
+        <div className="wallet-connected wallet-connected--pending" aria-hidden="true">
+          <div className="wallet-connected-info">
+            <div className="wallet-avatar" />
+            <button type="button" className="wallet-address" tabIndex={-1}>
+              <span className="wallet-address-text">0x0000…0000</span>
+              <span className="wallet-copy-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" />
+              </span>
+            </button>
+          </div>
+          <button type="button" className="wallet-disconnect" tabIndex={-1}>
+            <svg width="16" height="16" viewBox="0 0 24 24" />
+          </button>
+        </div>
+      ) : null}
+    <div className="wallet-connect" data-session-pending={sessionPending ? "" : undefined}>
       <div className="wallet-connect-label">Secure Access</div>
       <div className="wallet-connect-actions">
         <button
@@ -118,5 +146,6 @@ export default function ConnectButton() {
         <div className="wallet-error">{error}</div>
       ) : null}
     </div>
+    </>
   );
 }

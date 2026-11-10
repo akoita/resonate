@@ -179,13 +179,27 @@
   pointer-events: none;
 }
 
-.home-ng .ng-hero__motif-rings,
-.home-ng .ng-hero__motif-ping {
+.home-ng .ng-hero__motif-rings {
   position: absolute;
   inset: 0;
   display: block;
   width: 100%;
   height: 100%;
+  overflow: visible;
+}
+
+/* The ping's box hugs its ring: 124.8 of the motif's 600 units (the r=60 ring
+ * plus its stroke), centred. It scales about its own centre, which is the
+ * motif's centre, so the ring is drawn exactly where a full-size box drew it,
+ * while the area each frame changes is 23× smaller and stays clear of the
+ * blurred hero card. Keep the box and the viewBox in step (HomeHeroEmpty.tsx). */
+.home-ng .ng-hero__motif-ping {
+  position: absolute;
+  top: 39.6%;
+  left: 39.6%;
+  display: block;
+  width: 20.8%;
+  height: 20.8%;
   overflow: visible;
 }
 
