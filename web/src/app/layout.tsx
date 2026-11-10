@@ -113,8 +113,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // suppressHydrationWarning: the inline script below may add `data-session`
+    // to this element before React hydrates it.
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Runs before first paint. A returning listener's session lives in
+          * localStorage, which the server cannot see, so the server renders the
+          * signed-out top bar. This marks the document when a session is
+          * stored, and CSS keeps the top bar at its signed-in height until
+          * AuthProvider restores it (ConnectButton.tsx). It reads two keys and
+          * sets one attribute; it never exposes their values. The key names
+          * mirror TOKEN_KEY / ADDRESS_KEY in lib/authSession.ts. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(localStorage.getItem("resonate.token")&&localStorage.getItem("resonate.address"))document.documentElement.setAttribute("data-session","stored")}catch(e){}',
+          }}
+        />
         {/* Material Symbols icon font — used by the Stitch-designed home.
          * Lives in the root layout so it applies app-wide; the lint rule
          * flags page-scoped font links, not root-layout ones.

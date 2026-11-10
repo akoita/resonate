@@ -19,6 +19,15 @@
  * (spinners, shimmers, skeletons) keep running while the user is idle, because
  * a frozen spinner reads as a hang.
  *
+ * And it holds them while the page is still arriving (`settle`). Opening a
+ * page is its busiest moment: scripts run, data lands in waves and the first
+ * screen is drawn several times. A decorative loop running through that makes
+ * the compositor draw a full frame every vsync on top of it, which measured as
+ * about two thirds of all browser CPU in the first six seconds of Home
+ * (docs/engineering/load-cost-harness.md). The loops start once the page has
+ * settled, a second or two after it appears. Loading indicators are exempt
+ * here too.
+ *
  * Why an attribute rather than `Animation.pause()`: a WAAPI pause overrides
  * the stylesheet until `play()` is called, so resuming would also override a
  * component's own CSS pause (the player marquee holds still while playback is
@@ -74,6 +83,12 @@ export type IdleAnimationGuardOptions = {
   /** Hold decorative loops after this long without input. 0 or less disables it. */
   idleAfterMs?: number;
   timers?: Timers;
+  /**
+   * Hold decorative loops until this signal fires (the page has settled after
+   * loading). It receives a callback to call once and returns a cleanup.
+   * Omitted: nothing is held for loading.
+   */
+  settle?: (onSettled: () => void) => () => void;
 };
 
 function isInfinite(animation: AnimationLike): boolean {
@@ -114,6 +129,7 @@ export function startIdleAnimationGuard({
   IntersectionObserverCtor,
   idleAfterMs = DEFAULT_IDLE_AFTER_MS,
   timers = defaultTimers,
+  settle,
 }: IdleAnimationGuardOptions = {}): () => void {
   const target: GuardDocument | undefined =
     doc ?? (typeof document === "undefined" ? undefined : (document as unknown as GuardDocument));
@@ -127,9 +143,11 @@ export function startIdleAnimationGuard({
   const keepWhileIdle = new WeakSet<Element>();
   let tabHidden = target.visibilityState === "hidden";
   let userIdle = false;
+  let settling = Boolean(settle);
 
   const apply = (element: Element) => {
-    const hold = tabHidden || offscreen.has(element) || (userIdle && !keepWhileIdle.has(element));
+    const hold =
+      tabHidden || offscreen.has(element) || ((userIdle || settling) && !keepWhileIdle.has(element));
     if (hold) element.setAttribute(IDLE_PAUSED_ATTRIBUTE, "");
     else element.removeAttribute(IDLE_PAUSED_ATTRIBUTE);
   };
@@ -216,6 +234,11 @@ export function startIdleAnimationGuard({
     if (idleTimer === null) idleTimer = timers.setTimeout(checkIdle, idleAfterMs);
   };
 
+  const stopSettleWatch = settle?.(() => {
+    settling = false;
+    applyAll();
+  });
+
   for (const animation of target.getAnimations?.() ?? []) {
     if (isInfinite(animation)) track(animation.effect?.target);
   }
@@ -228,6 +251,7 @@ export function startIdleAnimationGuard({
   }
 
   return () => {
+    stopSettleWatch?.();
     target.removeEventListener("animationstart", onAnimationStart, true);
     target.removeEventListener("animationcancel", onAnimationCancel, true);
     target.removeEventListener("visibilitychange", onVisibilityChange);

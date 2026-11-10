@@ -14,6 +14,7 @@
     "lint": "eslint",
     "perf:home": "node scripts/measure-home-performance.mjs",
     "perf:idle": "node scripts/measure-idle-cost.mjs",
+    "perf:load": "node scripts/measure-load-cost.mjs",
     "test:aa-smoke": "node scripts/smoke-local-aa.mjs",
     "test:unit": "vitest run --config ./vitest.config.ts",
     "test:e2e": "playwright test"

@@ -53,6 +53,7 @@ import { LiveEventRail } from "../components/home/LiveEventRail";
 import { StemLab, selectStemLabEntries } from "../components/home/StemLab";
 import { HomeHeroEmpty, HomeHeroMotif, HomeHeroSkeleton } from "../components/home/HomeHeroEmpty";
 import EmailPromptCard from "../components/email/EmailPromptCard";
+import { DeferredMount } from "../components/system/DeferredMount";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { rememberHomeAttribution } from "../lib/homeAttribution";
@@ -448,13 +449,27 @@ export default function Home() {
     }
   });
 
+  // Both catalog reads below refresh when the sign-in state changes. They wait
+  // for the stored session to be read first: restoring it flips `status` a
+  // moment after mount, and without the wait each list was fetched, parsed and
+  // rendered twice on every signed-in load.
   useEffect(() => {
+    if (!sessionChecked) return;
+    let cancelled = false;
     listPublishedReleases(48)
-      .then(setReleases)
-      .catch(() => setReleases([]));
-  }, [status]);
+      .then((items) => {
+        if (!cancelled) setReleases(items);
+      })
+      .catch(() => {
+        if (!cancelled) setReleases([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status, sessionChecked]);
 
   useEffect(() => {
+    if (!sessionChecked) return;
     let cancelled = false;
     listPublicPlaylists(HOME_PLAYLIST_SNAPSHOT_LIMIT)
       .then((items) => {
@@ -466,7 +481,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [status]);
+  }, [status, sessionChecked]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1078,7 +1093,11 @@ export default function Home() {
         <LiveEventRail campaigns={actionableCampaigns} />
 
         {/* 8. DROPS — collectible moments shelf (#1479) ——————————— */}
-        <DropsShelf token={token} />
+        {/* Starts after the page has settled, or when scrolled near: its
+            fetch, its cards and their artwork are not part of opening Home. */}
+        <DeferredMount fallback={<DropsShelfSkeleton />}>
+          <DropsShelf token={token} />
+        </DeferredMount>
 
         {/* 9. CATALOG BROWSER — "Recently Added" snapshot ——————————— */}
         <section className="ng-section">
@@ -1241,7 +1260,12 @@ export default function Home() {
             </div>
           </header>
           {status === "authenticated" ? (
-            <AgentSessionPanel refreshKey={aiDjRefreshKey} />
+            // Same deferral: the panel makes nine requests of its own, far
+            // below the first screen. `/#ai-dj` (the old /agent URL) mounts it
+            // at once.
+            <DeferredMount fallback={<AgentSessionPresetsSkeleton />}>
+              <AgentSessionPanel refreshKey={aiDjRefreshKey} />
+            </DeferredMount>
           ) : (
             <>
               <AgentSessionPresets compact showOpenLink={false} />

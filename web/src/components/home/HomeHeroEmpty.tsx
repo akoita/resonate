@@ -15,6 +15,12 @@ import Link from "next/link";
  * own <svg> box so its scale/opacity animation runs on the compositor. An
  * animated element *inside* an SVG forces style, layout and a repaint of the
  * whole motif (and of the blurred card above it) on every frame (#2436).
+ *
+ * The ping's box is only as large as the ring it draws. It used to be the
+ * whole 600-unit motif, mostly empty, and it scales to 2.6×: every frame of
+ * the loop then marked an area wider than the hero as changed, including the
+ * blurred hero card, which had to be blurred again. The tight box draws the
+ * same ring in the same place and never reaches the card.
  */
 
 export function HomeHeroMotif() {
@@ -30,7 +36,7 @@ export function HomeHeroMotif() {
         </g>
         <circle cx="300" cy="300" r="6" fill="currentColor" opacity="0.9" />
       </svg>
-      <svg className="ng-hero__motif-ping" viewBox="0 0 600 600" focusable="false">
+      <svg className="ng-hero__motif-ping" viewBox="237.6 237.6 124.8 124.8" focusable="false">
         <circle cx="300" cy="300" r="60" fill="none" stroke="currentColor" strokeWidth="1.4" />
       </svg>
     </span>

@@ -412,6 +412,7 @@ methodology so an old artifact stays interpretable.
 
 - `web/scripts/measure-home-performance.mjs` — the harness
 - [Idle-cost harness](idle-cost-harness.md) — what an idle, already-loaded tab costs (#2436)
+- [Load-cost harness](load-cost-harness.md) — CPU spent in every browser process while a page opens
 - `web/scripts/capture-help-screenshots.mjs` — sibling Playwright script, same conventions
 - [#1491](https://github.com/akoita/resonate/issues/1491) — completed Home performance audit & fix
 - [#1604](https://github.com/akoita/resonate/issues/1604) — cache-coherent mutable artwork versioning
