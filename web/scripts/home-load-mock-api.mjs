@@ -273,11 +273,11 @@ const playlists = () =>
   }));
 
 function cors(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+  // Any origin, no credentials: the app authenticates with a bearer header,
+  // and everything served here is made-up data.
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", req.headers["access-control-request-headers"] ?? "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.setHeader("Vary", "Origin");
 }
 
 /**
@@ -342,7 +342,8 @@ export async function startHomeLoadMockApi({ port = 3000, latencyMs = 80 } = {})
       return json({ message: "Not found" }, 404);
     } catch (error) {
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: String(error) }));
+      console.error("home-load mock API:", error);
+      res.end(JSON.stringify({ message: "Mock API error" }));
     }
   });
   await new Promise((resolve, reject) => {
