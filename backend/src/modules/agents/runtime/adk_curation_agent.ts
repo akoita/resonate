@@ -12,6 +12,7 @@ import type { AgentRuntimeInput } from "./agent_runtime.adapter";
 import { getAgentTrackLimit } from "../agent_runtime.config";
 import { describeTempoRange, keepItemsOnRequest, requestScopeFor, type AgentRequestScope } from "../agent_session_request";
 import { requestGuidelines } from "./request_guidelines";
+import type { OfferedTracks } from "./offered_tracks";
 
 // ---------------------------------------------------------------------------
 // Tool definitions — each delegates to the existing ToolRegistry
@@ -35,6 +36,8 @@ export interface CurationAgentOptions {
    * left out of keyword search.
    */
   requestScope?: AgentRequestScope;
+  /** Collects the track ids the catalog tools return in this run. */
+  offered?: OfferedTracks;
 }
 
 function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): FunctionTool[] {
@@ -64,9 +67,11 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         allowExplicit,
         ...(scope ? { excludeTrackIds: options.recentTrackIds ?? [] } : {}),
       });
-      return scope && Array.isArray(result.items)
+      const shown = scope && Array.isArray(result.items)
         ? { ...result, items: keepItemsOnRequest(result.items as any[], scope) }
         : result;
+      options.offered?.record(shown);
+      return shown;
     },
   });
 
@@ -97,9 +102,11 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         ...(options.seedTrackId ? { seedTrackId: options.seedTrackId } : {}),
       });
       // Neighbours of a "More like this" seed are the request; a described session's are filtered.
-      return options.requestScope && !options.seedTrackId && Array.isArray(result.items)
+      const shown = options.requestScope && !options.seedTrackId && Array.isArray(result.items)
         ? { ...result, items: keepItemsOnRequest(result.items as any[], options.requestScope) }
         : result;
+      options.offered?.record(shown);
+      return shown;
     },
   });
 

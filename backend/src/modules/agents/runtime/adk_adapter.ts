@@ -20,6 +20,7 @@ import {
 import { ToolRegistry } from "../tools/tool_registry";
 import { getAgentTrackLimit } from "../agent_runtime.config";
 import { createCurationAgent, buildUserMessage } from "./adk_curation_agent";
+import { boundedReasoning, keepOfferedPicks, OfferedTracks } from "./offered_tracks";
 import { requestScopeFor } from "../agent_session_request";
 import { AgentRuntimeUnavailableError } from "./agent_runtime.errors";
 
@@ -53,7 +54,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     return this.withTimeout(this.callAgent(input, start), TIMEOUT_MS, start);
   }
 
-  private createRunner(input: AgentRuntimeInput): InMemoryRunner {
+  private createRunner(input: AgentRuntimeInput, offered: OfferedTracks): InMemoryRunner {
     // Create a fresh runner per call. The session's explicit-content choice is
     // forced onto every catalog tool call; the model cannot override it.
     const agent = createCurationAgent(this.tools, {
@@ -61,6 +62,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       recentTrackIds: input.recentTrackIds,
       seedTrackId: input.preferences.seedTrackId,
       requestScope: requestScopeFor(input.preferences),
+      offered,
     });
     return new InMemoryRunner({ agent, appName: APP_NAME });
   }
@@ -83,7 +85,8 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     input: AgentRuntimeInput,
     startMs: number
   ): Promise<AgentRuntimeResult> {
-    const runner = this.createRunner(input);
+    const offered = new OfferedTracks();
+    const runner = this.createRunner(input, offered);
     await this.ensureSession(runner, input);
     const userMessage = buildUserMessage(input);
 
@@ -108,7 +111,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
     }
 
     const latencyMs = Date.now() - startMs;
-    return this.parseResponse(finalText, input, latencyMs);
+    return this.parseResponse(finalText, input, latencyMs, offered);
   }
 
   /**
@@ -118,15 +121,16 @@ export class AdkAdapter implements AgentRuntimeAdapter {
   private parseResponse(
     text: string,
     input: AgentRuntimeInput,
-    latencyMs: number
+    latencyMs: number,
+    offered: OfferedTracks
   ): AgentRuntimeResult {
     const trackPattern =
       /TRACK:\s*(.+?)\s*\|\s*LICENSE:\s*(\w+)\s*\|\s*PRICE:\s*\$?([\d.]+)/gi;
-    const picks: LlmTrackPick[] = [];
+    const parsed: LlmTrackPick[] = [];
     const pickLimit = getAgentTrackLimit();
     let match: RegExpExecArray | null;
 
-    while (picks.length < pickLimit && (match = trackPattern.exec(text)) !== null) {
+    while (parsed.length < pickLimit && (match = trackPattern.exec(text)) !== null) {
       const trackId = match[1].trim();
       const licenseType = match[2].trim().toLowerCase() as
         | "personal"
@@ -136,12 +140,12 @@ export class AdkAdapter implements AgentRuntimeAdapter {
 
       // Listening picks are not budget-limited (ADR-TE-1).
       if (trackId) {
-        picks.push({ trackId, licenseType, priceUsd });
+        parsed.push({ trackId, licenseType, priceUsd });
       }
     }
 
     // Fallback: single-line format
-    if (picks.length === 0) {
+    if (parsed.length === 0) {
       const trackMatch = text.match(/TRACK:\s*(.+)/i);
       const licenseMatch = text.match(/LICENSE:\s*(.+)/i);
       const priceMatch = text.match(/PRICE:\s*\$?([\d.]+)/i);
@@ -153,12 +157,21 @@ export class AdkAdapter implements AgentRuntimeAdapter {
           | "remix"
           | "commercial";
         const priceUsd = priceMatch ? parseFloat(priceMatch[1]) : 0;
-        picks.push({ trackId, licenseType, priceUsd });
+        parsed.push({ trackId, licenseType, priceUsd });
       }
     }
 
     const reasoningMatch = text.match(/REASONING:\s*(.+)/i);
-    const reasoning = reasoningMatch?.[1]?.trim() ?? text.slice(0, 200);
+    const reasoning = boundedReasoning(reasoningMatch?.[1] ?? text.slice(0, 200));
+
+    // Only a track this run's tools returned can be a pick.
+    const bound = keepOfferedPicks(parsed, offered);
+    if (bound.dropped > 0) {
+      this.logger.warn(
+        `ADK reply named ${bound.dropped} track(s) its tools did not return; not served`
+      );
+    }
+    const picks = bound.picks;
 
     if (picks.length === 0) {
       return {

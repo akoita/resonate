@@ -6,16 +6,23 @@ const mockGetSession = jest.fn();
 const mockCreateSession = jest.fn();
 const mockRunAsync = jest.fn();
 let mockEvents: Array<{ final: boolean; text: string }> = [];
+/** The agent the adapter built for the current run (its tools are the real ones). */
+let mockAgent: { tools: Array<{ name: string; execute: (args: any) => Promise<any> }> } | undefined;
+/** What the catalog returns to the agent's search tools in the current test. */
+let mockCatalogItems: Array<{ id: string }> = [];
 
 jest.mock("@google/genai", () => ({}));
 jest.mock("@google/adk", () => ({
-  InMemoryRunner: jest.fn().mockImplementation(() => ({
+  InMemoryRunner: jest.fn().mockImplementation((options: any) => {
+    mockAgent = options.agent;
+    return {
     sessionService: {
       getSession: mockGetSession,
       createSession: mockCreateSession,
     },
     runAsync: mockRunAsync,
-  })),
+    };
+  }),
   isFinalResponse: (event: { final: boolean }) => event.final,
   stringifyContent: (event: { text: string }) => event.text,
   FunctionTool: jest.fn().mockImplementation((opts: any) => opts),
@@ -51,11 +58,16 @@ describe("AdkAdapter (#2075)", () => {
     process.env.AGENT_TRACK_LIMIT = "5";
     mockGetSession.mockResolvedValue(undefined);
     mockCreateSession.mockResolvedValue({});
+    mockCatalogItems = [{ id: "t1" }, { id: "t2" }];
     mockRunAsync.mockImplementation(async function* () {
+      // The model searches the catalog before it answers.
+      await mockAgent?.tools.find((tool) => tool.name === "catalog_search")?.execute({ query: "soul" });
       for (const event of mockEvents) yield { author: "agent", ...event };
     });
     finalReply("TRACK: t1 | LICENSE: personal | PRICE: $0\nREASONING: ok");
-    adapter = new AdkAdapter({ get: () => ({ run: jest.fn() }) } as any);
+    adapter = new AdkAdapter({
+      get: () => ({ run: jest.fn(async () => ({ items: mockCatalogItems })) }),
+    } as any);
   });
 
   afterEach(() => {
@@ -104,6 +116,58 @@ describe("AdkAdapter (#2075)", () => {
         { trackId: "t2", licenseType: "remix", priceUsd: 1.5 },
       ],
     });
+  });
+
+  it("serves only tracks the run's catalog tools returned", async () => {
+    finalReply(
+      "TRACK: t9 | LICENSE: personal | PRICE: $0\n" +
+        "TRACK: t2 | LICENSE: personal | PRICE: $0\n" +
+        "REASONING: ok",
+    );
+
+    const result = await adapter.run(input);
+
+    expect(result.picks).toEqual([{ trackId: "t2", licenseType: "personal", priceUsd: 0 }]);
+    expect(result.trackId).toBe("t2");
+  });
+
+  it("treats a reply naming only tracks the tools never returned as an empty reply", async () => {
+    mockCatalogItems = [];
+    finalReply("TRACK: t1 | LICENSE: personal | PRICE: $0\nREASONING: ok");
+
+    const result = await adapter.run(input);
+
+    expect(result).toMatchObject({ status: "rejected", reason: "llm_no_track_selected" });
+    expect(result.picks).toBeUndefined();
+  });
+
+  it("does not count ids the model passes into a ranking tool as offered", async () => {
+    mockCatalogItems = [];
+    mockRunAsync.mockImplementation(async function* () {
+      await mockAgent?.tools
+        .find((tool) => tool.name === "embeddings_similarity")
+        ?.execute({ query: "soul", candidates: ["t1"] });
+      for (const event of mockEvents) yield { author: "agent", ...event };
+    });
+    adapter = new AdkAdapter({
+      get: () => ({ run: jest.fn(async () => ({ items: [{ id: "t1" }] })) }),
+    } as any);
+    finalReply("TRACK: t1 | LICENSE: personal | PRICE: $0\nREASONING: ok");
+
+    const result = await adapter.run(input);
+
+    expect(result).toMatchObject({ status: "rejected", reason: "llm_no_track_selected" });
+  });
+
+  it("keeps the model's reasoning to one bounded line", async () => {
+    finalReply(
+      "TRACK: t1 | LICENSE: personal | PRICE: $0\nREASONING: " + "soul\u0007 ".repeat(200),
+    );
+
+    const result = await adapter.run(input);
+
+    expect(result.reasoning!.length).toBeLessThanOrEqual(300);
+    expect(result.reasoning).not.toMatch(/[\u0000-\u001f]/);
   });
 
   it("rejects a reply without any TRACK line", async () => {
