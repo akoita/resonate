@@ -1306,6 +1306,13 @@ Still open:
   embedding or analytics work; the reply can still pick from what the run was
   shown. Taste-edit preview and apply are paced per listener (20 and 10 a
   minute).
+- One "playable now" filter: `PLAYABLE_TRACK_WHERE`
+  (`catalog/track-availability.ts`) is the query form of the availability
+  classifier (published or ready release, not withdrawn, not held or removed,
+  public rights route). The `catalog.search` tool, the reload of model picks
+  and playback resolution filter on it, so none returns a track that a
+  library or playlist read would mark withdrawn or unavailable.
+  `playable_track_where.integration.spec.ts` holds one fixture per state.
 
 ## "Right now": a session with no filters follows the time of day (#2245)
 

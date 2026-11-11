@@ -143,6 +143,25 @@ describe('SessionsController (e2e)', () => {
 
   // ----- Body validation (#1890) -----
 
+  it('rejects oversized preference lists and strings with 400', async () => {
+    const post = (path: string, preferences: unknown) =>
+      request(app.getHttpServer())
+        .post(path)
+        .set('Authorization', `Bearer ${token}`)
+        .send(path === '/sessions/start' ? { budgetCapUsd: 10, preferences } : { sessionId: 's1', preferences });
+    const tooMany = Array.from({ length: 33 }, (_, i) => `genre ${i}`);
+    const tooLong = 'x'.repeat(65);
+
+    for (const path of ['/sessions/start', '/sessions/agent/next']) {
+      await post(path, { genres: tooMany }).expect(400);
+      await post(path, { genres: [tooLong] }).expect(400);
+      await post(path, { artists: tooMany }).expect(400);
+      await post(path, { mood: 'x'.repeat(101) }).expect(400);
+      await post(path, { sessionIntent: 'x'.repeat(101) }).expect(400);
+      await post(path, { source: 'x'.repeat(101) }).expect(400);
+    }
+  });
+
   it('rejects wrongly typed session bodies with 400 before the service runs', async () => {
     const post = (path: string, body: unknown) =>
       request(app.getHttpServer()).post(path).set('Authorization', `Bearer ${token}`).send(body as object);
