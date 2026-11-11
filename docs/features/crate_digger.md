@@ -99,7 +99,8 @@ artist keeps at least 85% (ADR-BM-4). No fee change.
      returned as `unparsed`, never guessed. With
      `CRATE_REQUEST_PARSER_STRATEGY=model-assisted` a model may fill fields the
      deterministic parser left open; its output is re-validated and any failure
-     falls back to the deterministic result.
+     falls back to the deterministic result. A spending cap is taken from the
+     model only when the request text states that amount.
    - A reference track contributes its measured tempo (±4%), its Camelot key
      with neighbours, its energy (±0.15) and its genre. It produces the same
      filter structure as a text request.

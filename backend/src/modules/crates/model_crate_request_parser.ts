@@ -443,6 +443,12 @@ function digitsAreInText(text: string, value: unknown): boolean {
   return new RegExp(`(?<!\\d)${digits}(?!\\d)`).test(text);
 }
 
+/** True when the whole-dollar part of a model amount is a run of digits in the request. */
+function amountIsInText(text: string, value: number): boolean {
+  if (!Number.isFinite(value)) return false;
+  return new RegExp(`(?<!\\d)${Math.trunc(Math.abs(value))}(?!\\d)`).test(text);
+}
+
 /**
  * Session mode: keep only what the sentence itself backs. Tempo numbers need
  * their digits in the sentence; artist names need their words in the sentence
@@ -511,8 +517,20 @@ function mergeModelFilters(
     fill("energy", base.energy === null, model.energy, model.energy !== null),
     fill("requiredStems", base.requiredStems.length === 0, model.requiredStems, model.requiredStems.length > 0),
     fill("licenseType", base.licenseType === null, model.licenseType, model.licenseType !== null),
-    fill("maxTotalUsd", base.maxTotalUsd === null, model.maxTotalUsd, model.maxTotalUsd !== null),
-    fill("maxPerItemUsd", base.maxPerItemUsd === null, model.maxPerItemUsd, model.maxPerItemUsd !== null),
+    // A spending cap is only taken from the model when the request states
+    // that amount: a cap the listener never wrote must not appear.
+    fill(
+      "maxTotalUsd",
+      base.maxTotalUsd === null,
+      model.maxTotalUsd,
+      model.maxTotalUsd !== null && amountIsInText(text, model.maxTotalUsd),
+    ),
+    fill(
+      "maxPerItemUsd",
+      base.maxPerItemUsd === null,
+      model.maxPerItemUsd,
+      model.maxPerItemUsd !== null && amountIsInText(text, model.maxPerItemUsd),
+    ),
     fill("verifiedHumanOnly", !base.verifiedHumanOnly, model.verifiedHumanOnly, model.verifiedHumanOnly),
     fill("genres", base.genres.length === 0, model.genres, model.genres.length > 0),
     fill("moods", base.moods.length === 0, model.moods, model.moods.length > 0),
