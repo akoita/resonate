@@ -1,5 +1,6 @@
 import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -20,12 +21,13 @@ import {
   type SessionSeedKind,
 } from "../agents/agent_session_seed";
 import type { AgentSessionRequest } from "../agents/agent_session_request";
+import { SHORT_TEXT_MAX_LENGTH, TERM_LIST_MAX_ITEMS, TERM_MAX_LENGTH } from "../shared/request_bounds";
 import { MY_MIX_CONTEXTS, type MyMixContext, type MyMixPreferences } from "../agents/agent_my_mix";
 
 /**
  * Session bodies (#1890). The global pipe keeps unknown fields and does not
- * coerce, so these only reject wrong types: the services keep their own value
- * checks. `request` and `myMix` are left undecorated because the agent runtime
+ * coerce, so these reject wrong types and oversized lists and strings: the
+ * services keep their own value checks. `request` and `myMix` are left undecorated because the agent runtime
  * sanitizes and validates them.
  */
 /**
@@ -51,15 +53,19 @@ export class SessionSeedDto {
 export class SessionPreferencesDto {
   @IsOptional()
   @IsString()
+  @MaxLength(SHORT_TEXT_MAX_LENGTH)
   mood?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(SHORT_TEXT_MAX_LENGTH)
   energy?: "low" | "medium" | "high";
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(TERM_LIST_MAX_ITEMS)
   @IsString({ each: true })
+  @MaxLength(TERM_MAX_LENGTH, { each: true })
   genres?: string[];
 
   @IsOptional()
@@ -68,22 +74,27 @@ export class SessionPreferencesDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(SHORT_TEXT_MAX_LENGTH)
   licenseType?: "personal" | "remix" | "commercial";
 
   @IsOptional()
   @IsString()
+  @MaxLength(SHORT_TEXT_MAX_LENGTH)
   sessionIntent?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(SHORT_TEXT_MAX_LENGTH)
   sessionIntentName?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(SHORT_TEXT_MAX_LENGTH)
   queueStyle?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(SHORT_TEXT_MAX_LENGTH)
   source?: string;
 
   /**
@@ -108,7 +119,9 @@ export class SessionPreferencesDto {
   /** Catalog artists the sentence named (#2241); the service bounds the list. */
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(TERM_LIST_MAX_ITEMS)
   @IsString({ each: true })
+  @MaxLength(TERM_MAX_LENGTH, { each: true })
   artists?: string[];
 
   /**
