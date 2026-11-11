@@ -55,6 +55,11 @@ type McpSession = {
   lastSeenAt: number;
 };
 
+/** Input bounds for the public MCP tools: a search phrase, an id, a payment proof. */
+const MCP_QUERY_MAX_LENGTH = 200;
+const MCP_ID_MAX_LENGTH = 100;
+const MCP_PAYMENT_PROOF_MAX_LENGTH = 16_384;
+
 @Injectable()
 export class McpService implements OnModuleDestroy {
   private readonly logger = new Logger(McpService.name);
@@ -211,7 +216,10 @@ export class McpService implements OnModuleDestroy {
         description:
           "Search public Resonate releases by title, artist, genre, or track title.",
         inputSchema: {
-          query: z.string().describe("Search text for releases, artists, genres, or tracks."),
+          query: z
+            .string()
+            .max(MCP_QUERY_MAX_LENGTH)
+            .describe("Search text for releases, artists, genres, or tracks."),
           limit: z
             .number()
             .int()
@@ -275,7 +283,7 @@ export class McpService implements OnModuleDestroy {
         description:
           "Return a USDC quote and x402 payment challenge for a stem license.",
         inputSchema: {
-          stemId: z.string().describe("Resonate stem ID to quote."),
+          stemId: z.string().max(MCP_ID_MAX_LENGTH).describe("Resonate stem ID to quote."),
           licenseType: licenseTypeSchema
             .optional()
             .describe("License tier to quote. Defaults to personal."),
@@ -368,12 +376,13 @@ export class McpService implements OnModuleDestroy {
         description:
           "Validate an x402 payment proof and return the purchased stem as an MCP resource.",
         inputSchema: {
-          stemId: z.string().describe("Resonate stem ID to download."),
+          stemId: z.string().max(MCP_ID_MAX_LENGTH).describe("Resonate stem ID to download."),
           licenseType: licenseTypeSchema
             .optional()
             .describe("License tier being purchased. Defaults to personal."),
           paymentProof: z
             .string()
+            .max(MCP_PAYMENT_PROOF_MAX_LENGTH)
             .optional()
             .describe(
               "x402 PAYMENT-SIGNATURE or legacy X-PAYMENT proof returned by the payment client.",

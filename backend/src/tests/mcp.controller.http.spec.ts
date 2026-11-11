@@ -270,6 +270,22 @@ describe("McpController (HTTP)", () => {
       "horizon",
       5,
     );
+
+    // An oversized search phrase is refused by the tool's input schema.
+    mockCatalogService.searchMcpCatalog.mockClear();
+    const oversized = await request(app.getHttpServer())
+      .post("/mcp")
+      .set("mcp-session-id", sessionId)
+      .set("Accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: { name: "catalog.search", arguments: { query: "x".repeat(201) } },
+      })
+      .expect(200);
+    expect(oversized.body.error ?? oversized.body.result?.isError).toBeTruthy();
+    expect(mockCatalogService.searchMcpCatalog).not.toHaveBeenCalled();
     expect(call.body.result.structuredContent.items[0]).toEqual(
       expect.objectContaining({
         id: "rel_1",

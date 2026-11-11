@@ -341,7 +341,7 @@ When adding a new environment variable:
 | `SIGNUP_FAUCET_RPC_URL` | Backend | Optional faucet RPC override; otherwise resolves from the active chain (`BASE_SEPOLIA_RPC_URL`, `BASE_RPC_URL`, `SEPOLIA_RPC_URL`, `LOCAL_RPC_URL`) before falling back to `RPC_URL` |
 | `SIGNUP_FAUCET_FUNDER_PRIVATE_KEY` | Backend secret | Optional faucet funding key; falls back to the deployer `PRIVATE_KEY`. Store in secret manager/GitHub environment secrets, never source |
 | `SIGNUP_SEPOLIA_FAUCET_*` | Backend | Backward-compatible legacy aliases for the signup faucet variables above. Prefer `SIGNUP_FAUCET_*` for new environments; legacy chain ID is only a fallback when no active signup chain is available |
-| `LANGFUSE_ENABLED` | Backend | Optional agent observability switch. Set to `true` only when Langfuse credentials and host are configured |
+| `LANGFUSE_ENABLED` | Backend | Optional agent observability switch. Set to `true` only when Langfuse credentials and host are configured. Traces redact values by key name: passwords, secrets, tokens, keys, authorization, signatures, payment proofs and payment headers; a `...Sha256` digest of one is kept |
 | `LANGFUSE_BASE_URL` | Backend | Langfuse base URL for trace ingestion. Required only when `LANGFUSE_ENABLED=true` |
 | `LANGFUSE_HOST` | Backend | Backward-compatible alias for `LANGFUSE_BASE_URL` |
 | `LANGFUSE_PUBLIC_KEY` | Backend secret | Langfuse public key for Basic Auth ingestion. Required only when tracing is enabled |
