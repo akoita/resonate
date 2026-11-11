@@ -4802,9 +4802,11 @@ export type CommunityModerationReport = {
     reasonCodes: string[];
     reviewFocus: string[];
     source: "bounded_moderation_context" | string;
-    strategy?: "deterministic" | "model-assisted" | string;
+    strategy?: "deterministic" | "model-assisted" | "decision" | string;
     model?: string;
     fallbackReason?: string;
+    /** Decision triage only (#2584): `false` hints the report looks unfounded. Advisory. */
+    needsReview?: boolean;
     advisory: {
       noAutoEnforcement: boolean;
       copy: string;

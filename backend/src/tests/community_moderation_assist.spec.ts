@@ -16,6 +16,8 @@ jest.mock("@google/generative-ai", () => ({
 }));
 
 import { CommunityModerationAssistService } from "../modules/community/community_moderation_assist.service";
+import { FakeDecisionClient, type FakeDecisionScript } from "../modules/shared/decision/fake_decision_client";
+import { DisabledDecisionClient } from "../modules/shared/decision/decision_client";
 
 describe("CommunityModerationAssistService", () => {
   const originalEnv = { ...process.env };
@@ -206,7 +208,141 @@ describe("CommunityModerationAssistService", () => {
     expect(mockGenerateContent).toHaveBeenCalledTimes(6);
     expect(maxActiveCalls).toBeLessThanOrEqual(2);
   });
+
+  describe("decision strategy (#2584)", () => {
+    const confidentUnfounded: FakeDecisionScript = {
+      predicate: { answer: false, confidence: 0.95 },
+      choice: { selected: ["other"], confidence: 0.9 },
+      score: { scores: [{ id: "report", score: 0.1 }] },
+    };
+
+    function triage(script: FakeDecisionScript, input = quietInput()) {
+      process.env.COMMUNITY_MODERATION_ASSIST_STRATEGY = "decision";
+      const client = new FakeDecisionClient(script);
+      return { client, assist: new CommunityModerationAssistService(client).buildAssist(input) };
+    }
+
+    it("triages with three bounded calls and keeps the deterministic text", async () => {
+      const { client, assist } = triage({
+        predicate: { answer: true, confidence: 0.9 },
+        choice: { selected: ["spam"], confidence: 0.9 },
+        score: { scores: [{ id: "report", score: 0.8 }] },
+      });
+      const result = await assist;
+      const deterministic = new CommunityModerationAssistService().deterministicAssist(quietInput());
+
+      expect(result).toMatchObject({
+        strategy: "decision",
+        needsReview: true,
+        severity: "high",
+        likelihood: deterministic.likelihood,
+        summary: deterministic.summary,
+        reviewFocus: deterministic.reviewFocus,
+        advisory: { noAutoEnforcement: true },
+      });
+      expect(result.reasonCodes).toEqual([...deterministic.reasonCodes, "spam_language_signal"]);
+      expect(result.fallbackReason).toBeUndefined();
+      expect(client.calls.map((call) => call.kind).sort()).toEqual(["choice", "predicate", "score"]);
+      expect(mockGenerateContent).not.toHaveBeenCalled();
+    });
+
+    it("sends only the redacted, bounded context", async () => {
+      const input = sampleInput();
+      input.reason = "Contact reporter@example.com about 0x1111111111111111111111111111111111111111";
+      const { client, assist } = triage(confidentUnfounded, input);
+      await assist;
+
+      const sent = JSON.stringify(client.calls.map((call) => call.request));
+      expect(sent).toContain("[email redacted]");
+      expect(sent).toContain("[wallet redacted]");
+      expect(sent).not.toContain("reporter@example.com");
+      expect(sent).not.toContain("reporter-user");
+      expect(sent).not.toContain("message-author-user");
+    });
+
+    it("clears the review hint only on a confident no, and still changes nothing else", async () => {
+      const result = await triage(confidentUnfounded).assist;
+      expect(result).toMatchObject({
+        strategy: "decision",
+        needsReview: false,
+        severity: "low",
+        advisory: { noAutoEnforcement: true },
+      });
+    });
+
+    it("never lowers the severity the deterministic signals gave", async () => {
+      const result = await triage(confidentUnfounded, sampleInput()).assist;
+      expect(result.severity).toBe("high");
+      expect(result.reasonCodes).toEqual(
+        expect.arrayContaining(["safety_language_signal", "privacy_language_signal"]),
+      );
+    });
+
+    it("needs review when the no is not confident", async () => {
+      const result = await triage({ ...confidentUnfounded, predicate: { answer: false, confidence: 0.79 } }).assist;
+      expect(result).toMatchObject({ strategy: "decision", needsReview: true });
+    });
+
+    it("ignores a low-confidence category", async () => {
+      const result = await triage({ ...confidentUnfounded, choice: { selected: ["privacy"], confidence: 0.4 } }).assist;
+      expect(result.reasonCodes).not.toContain("privacy_language_signal");
+    });
+
+    it.each([
+      ["a provider error", { fail: "provider_error" }, "decision_provider_error"],
+      ["a timeout", { fail: "timeout" }, "decision_timeout"],
+      ["no capacity", { fail: "over_capacity" }, "decision_over_capacity"],
+      ["a malformed predicate", { ...confidentUnfounded, predicate: "not json" }, "decision_invalid_output"],
+      ["an out-of-range confidence", { ...confidentUnfounded, predicate: { answer: false, confidence: 1.4 } }, "decision_invalid_output"],
+      ["a category that was not offered", { ...confidentUnfounded, choice: { selected: ["harmless"], confidence: 0.99 } }, "decision_invalid_output"],
+      ["an out-of-range severity", { ...confidentUnfounded, score: { scores: [{ id: "report", score: 7 }] } }, "decision_invalid_output"],
+      ["a severity for another candidate", { ...confidentUnfounded, score: { scores: [{ id: "other", score: 0.1 }] } }, "decision_invalid_output"],
+    ] as Array<[string, FakeDecisionScript, string]>)("fails closed on %s", async (_name, script, fallbackReason) => {
+      const result = await triage(script).assist;
+      expect(result).toMatchObject({ strategy: "deterministic", needsReview: true, fallbackReason });
+    });
+
+    it("fails closed when the client throws", async () => {
+      jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      const { assist } = triage({
+        ...confidentUnfounded,
+        predicate: () => {
+          throw new Error("boom");
+        },
+      });
+      expect(await assist).toMatchObject({ strategy: "deterministic", needsReview: true, fallbackReason: "decision_error" });
+    });
+
+    it("fails closed when decisions are switched off or not wired", async () => {
+      process.env.COMMUNITY_MODERATION_ASSIST_STRATEGY = "decision";
+      const disabled = await new CommunityModerationAssistService(new DisabledDecisionClient()).buildAssist(quietInput());
+      expect(disabled).toMatchObject({ strategy: "deterministic", needsReview: true, fallbackReason: "decision_disabled" });
+      const unwired = await new CommunityModerationAssistService().buildAssist(quietInput());
+      expect(unwired).toMatchObject({ strategy: "deterministic", needsReview: true, fallbackReason: "decision_unavailable" });
+    });
+
+    it("keeps the queue cap: capped reports get no call and need review", async () => {
+      process.env.COMMUNITY_MODERATION_ASSIST_STRATEGY = "decision";
+      const client = new FakeDecisionClient(confidentUnfounded);
+      const result = await new CommunityModerationAssistService(client).buildAssist(quietInput(), { allowModel: false });
+      expect(result).toMatchObject({ strategy: "deterministic", needsReview: true, fallbackReason: "model_assist_queue_cap" });
+      expect(client.calls).toHaveLength(0);
+    });
+
+    it("adds no review hint outside the decision strategy", async () => {
+      delete process.env.COMMUNITY_MODERATION_ASSIST_STRATEGY;
+      const result = await new CommunityModerationAssistService(new FakeDecisionClient(confidentUnfounded)).buildAssist(quietInput());
+      expect(result.strategy).toBe("deterministic");
+      expect(result).not.toHaveProperty("needsReview");
+    });
+  });
 });
+
+function quietInput() {
+  const input = sampleInput();
+  input.reason = "not sure about this one";
+  return input;
+}
 
 function sampleInput() {
   return {
