@@ -8669,7 +8669,7 @@ export type RemixWatermarkDetection = {
   clipSha256: string;
   clipBytes: number;
   candidatesDecoded: number;
-  failureCode: "decode_failed" | "detector_failed" | "interrupted" | null;
+  failureCode: "decode_failed" | "detector_failed" | "search_timeout" | "interrupted" | null;
   createdAt: string;
   completedAt: string | null;
   evidenceId: string | null;
@@ -8677,7 +8677,9 @@ export type RemixWatermarkDetection = {
   match: {
     keyId: string | null;
     keySlot: "active" | "retired" | null;
-    stage: "plain" | "speed" | null;
+    stage: "plain" | "speed" | "inverse" | null;
+    /** #2614: the change undone before the decode that matched (inverse stage). Semitones or percent. */
+    shift?: { kind: "pitch" | "tempo"; amount: number } | null;
     decodeError: number | null;
     syncQuality: number | null;
     occurrences: number | null;

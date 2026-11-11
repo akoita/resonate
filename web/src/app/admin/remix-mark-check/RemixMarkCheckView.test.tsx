@@ -100,6 +100,16 @@ describe("RemixMarkCheckView (#2575)", () => {
     expect(html).toContain("Attach as evidence");
   });
 
+  it("says which pitch or tempo change was undone to find the mark (#2614)", () => {
+    const found = (shift: { kind: "pitch" | "tempo"; amount: number }) =>
+      render({ current: { ...MATCHED, match: { ...MATCHED.match!, keySlot: "active", stage: "inverse", shift } } });
+    expect(found({ kind: "pitch", amount: 2 })).toContain("the current key, after undoing a pitch shift of 2 semitones up");
+    expect(found({ kind: "pitch", amount: -1 })).toContain("after undoing a pitch shift of 1 semitone down");
+    expect(found({ kind: "tempo", amount: -3 })).toContain("after undoing a tempo change of 3% slower");
+    expect(found({ kind: "tempo", amount: 5 })).toContain("after undoing a tempo change of 5% faster");
+    expect(render({ current: { ...BASE, status: "failed", failureCode: "search_timeout" } })).toContain("ran out of time");
+  });
+
   it("replaces the attach form once the match is attached", () => {
     const html = render({ current: { ...MATCHED, evidenceId: "ev-1" } });
     expect(html).toContain("Attached as evidence.");

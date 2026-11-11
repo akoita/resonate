@@ -580,7 +580,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Remixes rendered on Resonate carry an inaudible mark. When audio that looks like one of them turns up somewhere it should not be, an admin can open Remix Mark Check in the sidebar, upload a clip of it and see whether the mark is there. A clip of 30 seconds or more works best. Most checks finish in a few seconds; a long or sped-up clip can take a few minutes, and you can leave the page and come back to the result under Recent checks.",
+            text: "Remixes rendered on Resonate carry an inaudible mark. When audio that looks like one of them turns up somewhere it should not be, an admin can open Remix Mark Check in the sidebar, upload a clip of it and see whether the mark is there. A clip of 30 seconds or more works best. Most checks finish in a few seconds; a long clip, or one that was sped up, pitch-shifted or time-stretched, can take several minutes, and you can leave the page and come back to the result under Recent checks.",
           },
           {
             kind: "paragraph",

@@ -16,6 +16,7 @@ import { prisma } from "../../db/prisma";
 import {
   REMIX_WATERMARK_DETECT_STAGES,
   RemixWatermarkDetector,
+  inverseSearchShifts,
   remixWatermarkDetectorFromEnv,
   type RemixWatermarkCandidate,
 } from "./remix-watermark-detect";
@@ -31,8 +32,15 @@ export const REMIX_WATERMARK_MATCH_CAVEAT =
 /** Clips are short excerpts; 50 MB covers a 10-minute WAV. */
 export const REMIX_WATERMARK_DETECT_MAX_CLIP_BYTES = 50 * 1024 * 1024;
 
+/**
+ * #2614: how long the inverse pitch/tempo search may run in one check. The
+ * coarse grid is 16 tries; a search that runs out of time ends as
+ * `search_timeout`, not as "no match", because it did not finish looking.
+ */
+export const INVERSE_SEARCH_BUDGET_MS = 15 * 60 * 1000;
+
 /** A check that has not finished after this long was lost with its process. */
-const INTERRUPTED_AFTER_MS = 30 * 60 * 1000;
+const INTERRUPTED_AFTER_MS = 45 * 60 * 1000;
 
 export const REMIX_WATERMARK_EVIDENCE_SUBJECT_TYPES = ["dispute", "release", "track"] as const;
 export type RemixWatermarkEvidenceSubjectType =
@@ -65,6 +73,8 @@ export type RemixWatermarkDetectionView = {
     keyId: string | null;
     keySlot: string | null;
     stage: string | null;
+    /** #2614: the change undone before the decode that matched, on the inverse stage. */
+    shift: { kind: string; amount: number } | null;
     decodeError: number | null;
     syncQuality: number | null;
     occurrences: number | null;
@@ -106,6 +116,10 @@ function toView(row: DetectionWithRender): RemixWatermarkDetectionView {
             keyId: row.keyId,
             keySlot: row.keySlot,
             stage: row.stage,
+            shift:
+              row.shiftKind && row.shiftAmount !== null
+                ? { kind: row.shiftKind, amount: row.shiftAmount }
+                : null,
             decodeError: row.decodeError,
             syncQuality: row.syncQuality,
             occurrences: row.occurrences,
@@ -239,17 +253,40 @@ export class RemixWatermarkDetectionService implements OnModuleInit {
         for (const candidate of candidates) seen.add(candidate.payload);
         const hit = await this.matchCandidates(candidates);
         if (hit) {
+          await this.finishMatched(id, hit, seen.size);
+          return;
+        }
+      }
+      // #2614: the earlier stages found nothing, so try undoing a pitch shift
+      // or a pitch-preserving tempo change, likeliest first.
+      const deadline = Date.now() + INVERSE_SEARCH_BUDGET_MS;
+      for (const shift of inverseSearchShifts()) {
+        if (Date.now() >= deadline) {
           await this.finish(id, {
-            status: "matched",
+            status: "failed",
+            failureCode: "search_timeout",
             candidatesDecoded: seen.size,
-            renderWatermarkId: hit.renderWatermarkId,
-            keyId: hit.candidate.keyId,
-            keySlot: hit.candidate.keySlot,
-            stage: hit.candidate.stage,
-            decodeError: hit.candidate.decodeError,
-            syncQuality: hit.candidate.syncQuality,
-            occurrences: hit.candidate.occurrences,
           });
+          return;
+        }
+        let candidates: RemixWatermarkCandidate[];
+        try {
+          candidates = await detector.inverseCandidates(wavPath, shift);
+        } catch (error) {
+          this.logger.warn(
+            `Remix watermark check ${id}: the inverse stage failed (${shift.kind} ${shift.amount}): ${error instanceof Error ? error.message : String(error)}`,
+          );
+          await this.finish(id, {
+            status: "failed",
+            failureCode: "detector_failed",
+            candidatesDecoded: seen.size,
+          });
+          return;
+        }
+        for (const candidate of candidates) seen.add(candidate.payload);
+        const hit = await this.matchCandidates(candidates);
+        if (hit) {
+          await this.finishMatched(id, hit, seen.size);
           return;
         }
       }
@@ -281,6 +318,26 @@ export class RemixWatermarkDetectionService implements OnModuleInit {
       )
       .sort((a, b) => (b.candidate.syncQuality ?? 0) - (a.candidate.syncQuality ?? 0));
     return hits[0] ? { candidate: hits[0].candidate, renderWatermarkId: hits[0].row.id } : null;
+  }
+
+  private async finishMatched(
+    id: string,
+    hit: { candidate: RemixWatermarkCandidate; renderWatermarkId: string },
+    candidatesDecoded: number,
+  ): Promise<void> {
+    await this.finish(id, {
+      status: "matched",
+      candidatesDecoded,
+      renderWatermarkId: hit.renderWatermarkId,
+      keyId: hit.candidate.keyId,
+      keySlot: hit.candidate.keySlot,
+      stage: hit.candidate.stage,
+      shiftKind: hit.candidate.shift?.kind ?? null,
+      shiftAmount: hit.candidate.shift?.amount ?? null,
+      decodeError: hit.candidate.decodeError,
+      syncQuality: hit.candidate.syncQuality,
+      occurrences: hit.candidate.occurrences,
+    });
   }
 
   private async finish(
@@ -404,6 +461,9 @@ export class RemixWatermarkDetectionService implements OnModuleInit {
                   keyId: row.keyId,
                   keySlot: row.keySlot,
                   stage: row.stage,
+                  ...(row.shiftKind && row.shiftAmount !== null
+                    ? { shift: { kind: row.shiftKind, amount: row.shiftAmount } }
+                    : {}),
                   decodeError: row.decodeError,
                   syncQuality: row.syncQuality,
                   occurrences: row.occurrences,
