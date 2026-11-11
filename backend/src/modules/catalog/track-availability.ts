@@ -9,6 +9,7 @@
  * This helper answers that for a batch of catalog track ids in ONE query, so a
  * playlist or library read never degrades into a per-track round trip.
  */
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { PUBLIC_RELEASE_ROUTES } from "./catalog-public.constants";
 
@@ -101,6 +102,35 @@ export function classifyTrackAvailability(track: AvailabilityTrackRow): TrackAva
   }
   return AVAILABLE;
 }
+
+const PUBLIC_ROUTE_OR = [
+  { rightsRoute: null },
+  { rightsRoute: { in: [...PUBLIC_RELEASE_ROUTES] } },
+];
+
+/**
+ * The query form of `classifyTrackAvailability(...) === AVAILABLE`: a track
+ * that can be played publicly right now. Surfaces that search or pick catalog
+ * tracks for someone other than their owner (the AI DJ's catalog tools and
+ * pick reload, playback resolution) filter on it, so they never return a
+ * track that a library or playlist read would mark withdrawn or unavailable.
+ * It carries `AND` only at the top level; combine it with other filters as
+ * `{ AND: [PLAYABLE_TRACK_WHERE, other] }`.
+ */
+export const PLAYABLE_TRACK_WHERE = {
+  AND: [
+    { contentStatus: { notIn: ["dmca_removed", "quarantined"] } },
+    { OR: PUBLIC_ROUTE_OR },
+    {
+      release: {
+        is: {
+          status: { in: [...WITHDRAWABLE_RELEASE_STATUSES] },
+          OR: PUBLIC_ROUTE_OR,
+        },
+      },
+    },
+  ],
+} satisfies Prisma.TrackWhereInput;
 
 /**
  * Resolve availability for a batch of catalog track ids.
