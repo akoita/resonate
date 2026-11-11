@@ -70,6 +70,12 @@ describe('LighthouseStorageProvider', () => {
         expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('refuses to upload without an API key instead of returning a made-up CID (#380)', async () => {
+        await expect(makeProvider().upload(Buffer.from('audio'), 'a.wav', 'audio/wav')).rejects.toThrow(
+            /LIGHTHOUSE_API_KEY is not configured/,
+        );
+    });
+
     it('validates delete input before preserving the no-op delete semantics', async () => {
         await expect(makeProvider().delete('https://evil.example/ipfs/bafybeigdyrmockcid123')).rejects.toBeInstanceOf(
             StorageUriPolicyError,

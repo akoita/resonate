@@ -122,6 +122,7 @@ When adding a new environment variable:
 | `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | Analytics Dataflow publication | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
 | `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | Analytics Dataflow publication | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
 | `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | Analytics Dataflow publication | Optional full `gs://.../template.json` override for the analytics Dataflow Flex Template publish workflow |
+| `STORAGE_PROVIDER`, `LIGHTHOUSE_API_KEY` | Backend storage | `STORAGE_PROVIDER` selects where uploads go: `local` (default), `gcs`, or `ipfs` / `filecoin` (Lighthouse). The Lighthouse provider requires `LIGHTHOUSE_API_KEY` (a secret): without it every upload fails with an error instead of recording a file that was never stored. Its delete is a no-op by design, because public IPFS content cannot be recalled. |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
 | `AA_ENTRY_POINT` | Backend | EntryPoint v0.7 address used by AA services and exposed runtime configuration. |
 | `AA_FACTORY` | Backend | Kernel v3.1 factory address paired with `AA_ENTRY_POINT`. |
