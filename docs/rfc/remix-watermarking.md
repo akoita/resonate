@@ -377,7 +377,7 @@ No GPU, no Python worker and no model download are needed.
 | #2572 exit criterion | Result |
 | --- | --- |
 | Token recovered from ≥95 % of 30 s excerpts after the attack set at 128 kbit/s | **Met on the real renders:** 312/312 (100 %) at strength 15 with the full detector. All 10 fixtures: 365/378 (96.6 %), with the 13 misses all on the two synthetic signals and the electro loop's 12 pitch/tempo trials not run (93.6 % if all 12 count as misses). Caveat: the inverse search recovers whole-number pitch/tempo changes quickly. Arbitrary values need the slower fine grid. |
-| No false positive on the unwatermarked set | **Met on the proxy set:** 0 of 1,000 excerpts from 25 sources (plain detector), and 0 of 200 with the full three-stage detector. The ≥1,000 *catalog tracks* run waits for staging access (#2575). |
+| No false positive on the unwatermarked set | **Met on the proxy set:** 0 of 1,000 excerpts from 25 sources (plain detector), and 0 of 200 with the full three-stage detector. The ≥1,000 *catalog tracks* run is still to do: `npm run remix:watermark-false-positives -- --catalog 1000` (#2614) runs it in an environment that has the catalog, the key and stored tokens, and its report goes in this row. |
 | No audible difference in a blind check | **Open:** needs a human listener. Kit: `make_abx_kit.py`. Objective residual: 32–36 dB under programme at strength 15. |
 | If no open-source option meets the bar, name the fallback | audiowmark meets it, apart from the human check. Fallback if the blind check fails at every usable strength, or if pitch/tempo-robustness without a detector search becomes a requirement: commercial forensic watermarking, for an owner decision. |
 
@@ -393,8 +393,12 @@ No GPU, no Python worker and no model download are needed.
   1,000 distinct catalog tracks: this sandbox has no catalog access. Each
   excerpt is a different source/attack/offset combination, which exercises
   the decoder's chance of emitting a matching payload, but it is not the
-  catalog-scale check #2572 asks for. #2575 should run the detector over
-  ≥1,000 staging catalog tracks once the detect path exists.
+  catalog-scale check #2572 asks for. The script for it exists (#2614):
+  `backend/src/scripts/remix_watermark_false_positive_run.ts` runs the
+  detector over the full mix of up to *n* catalog tracks that are not remix
+  releases, or over a list of files, and reports any payload equal to a
+  stored token. It reads only, and exits 1 on a hit. The run itself needs an
+  environment with the catalog and the key.
 - **No human listening test yet.** The blind A/B check needs ears;
   `make_abx_kit.py` builds the kit (10 randomised pairs plus a sealed answer
   key) for the owner to run. Until then, audibility rests on the residual
