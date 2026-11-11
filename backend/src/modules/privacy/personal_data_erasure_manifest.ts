@@ -1109,6 +1109,14 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "to the reporter, not to the person being erased; it is theirs to request, not ours to delete.",
   },
   {
+    model: "RemixWatermarkDetection",
+    disposition: "untouched",
+    reason:
+      "One admin check of an uploaded clip for the remix watermark (#2575): the clip's hash and size, the decoder's "
+      + "figures and a reference to the matched token row. It has no column naming a person; the admin who ran it is "
+      + "in AdminAuditEvent, and the matched render's owner is on RemixRenderWatermark, which has its own rule.",
+  },
+  {
     model: "IndexerState",
     disposition: "untouched",
     reason: "Per-chain block cursor and worker lease for the contract indexer; operator infrastructure, and `leaseOwnerId` is a worker process.",

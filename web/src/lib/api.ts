@@ -2312,7 +2312,8 @@ export type RightsEvidenceKind =
   | "proof_of_control"
   | "legal_notice"
   | "narrative_statement"
-  | "internal_review_note";
+  | "internal_review_note"
+  | "remix_watermark_match";
 export type RightsEvidenceStrength = "low" | "medium" | "high" | "very_high";
 export type RightsEvidenceVerificationStatus =
   | "unverified"
@@ -8600,7 +8601,10 @@ export type AdminAuditAction =
   | "show_pledge.operator_acted"
   | "community_campaign_update.operator_posted"
   | "community_benefit_rule.operator_managed"
-  | "billing.reconciliation_viewed";
+  | "billing.reconciliation_viewed"
+  | "remix_watermark.detect_started"
+  | "remix_watermark.detect_viewed"
+  | "remix_watermark.evidence_attached";
 
 export type AdminAuditOutcome = "success" | "denied";
 
@@ -8644,6 +8648,101 @@ export function listAdminAuditEvents(token: string, query: AdminAuditEventsQuery
   return apiRequest<AdminAuditEventsPage>(
     `/admin/audit-events${buildAdminAuditQueryString(query)}`,
     { cache: "no-store" },
+    token,
+  );
+}
+
+// ============ Remix mark check (#2575) ============
+
+export type RemixWatermarkDetectionStatus = "pending" | "processing" | "matched" | "no_match" | "failed";
+
+export type RemixWatermarkStemLicense = {
+  stemId: string;
+  basis: "owner" | "commercial" | "remix" | "none";
+  stemPurchaseIds: string[];
+  x402SettlementIds: string[];
+};
+
+export type RemixWatermarkDetection = {
+  id: string;
+  status: RemixWatermarkDetectionStatus;
+  clipSha256: string;
+  clipBytes: number;
+  candidatesDecoded: number;
+  failureCode: "decode_failed" | "detector_failed" | "interrupted" | null;
+  createdAt: string;
+  completedAt: string | null;
+  evidenceId: string | null;
+  caveat: string;
+  match: {
+    keyId: string | null;
+    keySlot: "active" | "retired" | null;
+    stage: "plain" | "speed" | null;
+    decodeError: number | null;
+    syncQuality: number | null;
+    occurrences: number | null;
+    render: {
+      id: string;
+      remixProjectId: string;
+      generationJobId: string;
+      renderJobId: string;
+      ownerUserId: string;
+      sourceTrackId: string;
+      secondarySourceTrackId: string | null;
+      stemIds: string[];
+      stemLicenses: RemixWatermarkStemLicense[];
+      renderedStemIndexes: number[];
+      policyVersion: string;
+      scheme: string;
+      schemeVersion: string;
+      renderedAt: string;
+    };
+  } | null;
+};
+
+export type RemixWatermarkDetectionList = {
+  configured: boolean;
+  keyIds: string[];
+  maxClipBytes: number;
+  detections: RemixWatermarkDetection[];
+};
+
+export type RemixWatermarkEvidenceSubjectType = "dispute" | "release" | "track";
+
+export function listRemixWatermarkDetections(token: string) {
+  return apiRequest<RemixWatermarkDetectionList>(
+    "/admin/remix-watermark/detections",
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export function startRemixWatermarkDetection(token: string, clip: File) {
+  const body = new FormData();
+  body.append("clip", clip);
+  return apiRequest<RemixWatermarkDetection>(
+    "/admin/remix-watermark/detections",
+    { method: "POST", body },
+    token,
+  );
+}
+
+export function getRemixWatermarkDetection(token: string, id: string) {
+  return apiRequest<RemixWatermarkDetection>(
+    `/admin/remix-watermark/detections/${encodeURIComponent(id)}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export function attachRemixWatermarkEvidence(
+  token: string,
+  id: string,
+  subject: { subjectType: RemixWatermarkEvidenceSubjectType; subjectId: string },
+) {
+  return apiRequest<{ detection: RemixWatermarkDetection; bundleId: string; evidenceId: string }>(
+    `/admin/remix-watermark/detections/${encodeURIComponent(id)}/evidence`,
+    { method: "POST", body: JSON.stringify(subject) },
     token,
   );
 }

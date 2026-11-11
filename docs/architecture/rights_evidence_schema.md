@@ -60,7 +60,8 @@ type EvidenceKind =
   | "proof_of_control"
   | "legal_notice"
   | "narrative_statement"
-  | "internal_review_note";
+  | "internal_review_note"
+  | "remix_watermark_match";
 
 type EvidenceStrength = "low" | "medium" | "high" | "very_high";
 
@@ -231,6 +232,22 @@ Use for:
 - moderation findings,
 - trusted source follow-up,
 - review outcomes that should remain internal.
+
+### 9. `remix_watermark_match`
+
+Recorded by the platform only (#2575): the admin remix mark check found the
+remix render watermark in an uploaded clip. It cannot be submitted through
+the evidence routes, so an item of this kind always means the detector
+matched a stored render token.
+
+Metadata carries the check id, the clip's SHA-256, the render reference
+(remix project, generation and render job ids, source tracks, render time)
+and the detector's figures. It never carries the token or the creator's
+account id.
+
+It shows which render the audio came from. It does not show who uploaded or
+shared the audio elsewhere, and must be read with the licence record for
+that render and the remix project's export history. Default strength: high.
 
 ## Evidence Strength Policy
 

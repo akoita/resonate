@@ -383,7 +383,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "account",
     audiences: ["operator"],
     status: "partial",
-    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan", "billing", "reconciliation", "month end", "stripe", "refunds", "invoices", "csv"],
+    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan", "billing", "reconciliation", "month end", "stripe", "refunds", "invoices", "csv", "remix mark", "watermark", "leak", "detect"],
     sections: [
       {
         id: "who-can-use-it",
@@ -574,12 +574,37 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "remix-mark-check",
+        heading: "Checking a clip for the remix mark (admins)",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Remixes rendered on Resonate carry an inaudible mark. When audio that looks like one of them turns up somewhere it should not be, an admin can open Remix Mark Check in the sidebar, upload a clip of it and see whether the mark is there. A clip of 30 seconds or more works best. Most checks finish in a few seconds; a long or sped-up clip can take a few minutes, and you can leave the page and come back to the result under Recent checks.",
+          },
+          {
+            kind: "paragraph",
+            text: "A match shows the remix project and the render the audio came from, when it was rendered, the source track, the licence on record for each stem at that time and the creator's account. From the result you can attach the match to a dispute, a release or a track, where it appears with the other evidence as a remix mark match.",
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "What a match does and does not show",
+            text: "A match shows which remix render the audio came from. It does not show who uploaded or shared it elsewhere: the creator may have passed the file on, or it may have been taken from them. Read it together with the licence record for that render and the export history of the same remix project before deciding anything. No match is not proof either: heavy editing, a pitch or tempo change, or a remix made before marking was switched on can leave nothing to find.",
+          },
+          {
+            kind: "paragraph",
+            text: "The clip itself is not kept after the check. Each check, each result you open and each match you attach is written to the admin audit log.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Users (operators)", href: "/admin/users", description: "The overview, search and filters, and each person's record." },
       { label: "DJ Session Events (admins)", href: "/admin/agent-sessions", description: "Look up one AI DJ session and see what it decided.", audience: "operator" },
       { label: "Audit Log (admins)", href: "/admin/audit", description: "See what operators did, newest first.", audience: "operator" },
       { label: "Billing Reconciliation (operators)", href: "/admin/billing-reconciliation", description: "Open one month of credit pack payments, credits and Artist Pro invoices, and download each section.", audience: "operator" },
+      { label: "Remix Mark Check (admins)", href: "/admin/remix-mark-check", description: "Upload a clip and see whether it came from a remix rendered here.", audience: "operator" },
     ],
     related: ["account-suspension", "platform-notices", "settings-privacy"],
   },

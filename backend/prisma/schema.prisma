@@ -1832,10 +1832,46 @@ model RemixRenderWatermark {
   keyId                  String
   createdAt              DateTime @default(now())
   user                   User     @relation(fields: [userId], references: [id])
+  detections             RemixWatermarkDetection[]
 
   @@index([remixProjectId])
   @@index([userId])
   @@index([sourceTrackId])
+}
+
+// #2575: one admin check of an uploaded clip for the remix render watermark.
+// The clip is not kept: only its SHA-256 and size. The row holds no person
+// column; who ran the check is in AdminAuditEvent (`remix_watermark.detect_started`).
+model RemixWatermarkDetection {
+  id                String                @id @default(uuid())
+  // pending | processing | matched | no_match | failed
+  status            String                @default("pending")
+  clipSha256        String
+  clipBytes         Int
+  // How many distinct payloads the decoder printed across keys and stages.
+  // The decoder prints candidates on unmarked audio too; only an exact token
+  // match counts.
+  candidatesDecoded Int                   @default(0)
+  // Set on a match: the token row, the key and stage that decoded it, and
+  // the decoder's figures for it.
+  renderWatermarkId String?
+  keyId             String?
+  keySlot           String?
+  stage             String?
+  decodeError          Float?
+  syncQuality       Float?
+  occurrences       Int?
+  // decode_failed | detector_failed | interrupted
+  failureCode       String?
+  // The rights evidence item this result was attached as, if any.
+  evidenceId        String?
+  createdAt         DateTime              @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  renderWatermark   RemixRenderWatermark? @relation(fields: [renderWatermarkId], references: [id])
+
+  @@index([createdAt])
+  @@index([renderWatermarkId])
 }
 
 // Per-chain block cursor for the contract indexer. Also carries the fenced,
@@ -3107,6 +3143,7 @@ enum RightsEvidenceKind {
   legal_notice
   narrative_statement
   internal_review_note
+  remix_watermark_match
 }
 
 enum RightsEvidenceStrength {
