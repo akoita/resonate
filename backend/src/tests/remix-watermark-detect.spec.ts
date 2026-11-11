@@ -6,7 +6,7 @@
  * MP3 excerpt of a marked file, an unmarked clip and a retired key.
  */
 import { execFileSync, spawnSync } from "child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -173,7 +173,7 @@ describe("RemixWatermarkDetector (stand-in program)", () => {
       ["9".repeat(32), "k2", "active", "speed"],
       [TOKEN, "k1", "retired", "speed"],
     ]);
-    const calls = execFileSync("cat", [join(dir, "calls")]).toString().trim().split("\n");
+    const calls = readFileSync(join(dir, "calls"), "utf8").trim().split("\n");
     expect(calls).toHaveLength(2);
     for (const call of calls) {
       expect(call).toContain("--detect-speed");
