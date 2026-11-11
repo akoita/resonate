@@ -31,6 +31,7 @@
     "identity:merge-case-variants": "ts-node --transpile-only src/scripts/merge_case_variant_users.ts",
     "verify:migration": "ts-node --transpile-only src/scripts/verify_migration.ts",
     "credits:grant": "ts-node --transpile-only src/scripts/grant_credits.ts",
+    "remix:watermark-false-positives": "ts-node --transpile-only src/scripts/remix_watermark_false_positive_run.ts",
     "credits:reconcile-generation-refunds": "ts-node --transpile-only src/scripts/reconcile_generation_refunds.ts",
     "credits:reconcile-generation-refunds:prod": "node dist/scripts/reconcile_generation_refunds.js",
     "catalog:report-attestation-candidates": "ts-node --transpile-only src/scripts/report_ai_disclosure_attestation_candidates.ts",

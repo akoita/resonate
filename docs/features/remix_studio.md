@@ -1550,8 +1550,13 @@ from the JWT, never the request body.
   it elsewhere, and that it is read with the licence record and the
   project's `remix.exported` events. All four routes are admin only and
   audited (`remix_watermark.detect_started`, `.detect_viewed`,
-  `.evidence_attached`). Not yet: the RFC's fine pitch/tempo grid and the
-  false-positive run over 1,000+ catalog tracks (#2614).
+  `.evidence_attached`). An operator script,
+  `npm run remix:watermark-false-positives -- --catalog <n>` (or `--list
+  <file>`, `--depth plain|speed|full`), runs the same detector over catalog
+  full mixes that are not remix releases and reports any payload equal to a
+  stored token; it reads only and exits 1 on a hit (#2614). Not yet: the
+  RFC's fine pitch/tempo grid, and the result of that run on 1,000+ catalog
+  tracks, which needs an environment with the catalog and the key.
 - Watermark disclosure (#2574, slice 4 of #2566): when the current draft's
   render metadata says `watermark.status: "embedded"`, the Drafts panel shows
   a note above Publish and Export: the draft carries an inaudible mark, every
