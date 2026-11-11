@@ -1,10 +1,14 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Throttle } from "@nestjs/throttler";
+import { minutes } from "../shared/rate_limits";
 import { HomeFeedService } from "./home-feed.service";
 import { RecommendationsService } from "./recommendations.service";
 import { SetPreferencesDto } from "./preferences.dto";
 import { ApplyTasteEditsDto, PreviewTasteEditsDto } from "./taste_edit.dto";
 import { TasteMemoryService } from "./taste_memory.service";
+
+const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
 @Controller("recommendations")
 export class RecommendationsController {
@@ -61,6 +65,8 @@ export class RecommendationsController {
 
   /** Proposes edits for free text (#1961). Never writes. */
   @UseGuards(AuthGuard("jwt"))
+  // A preview may read the text with a model, so it is paced per listener.
+  @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
   @Post("taste-memory/edits/preview")
   previewTasteEdits(@Body() body: PreviewTasteEditsDto) {
     return this.tasteMemoryService.previewTasteEdits(body.text);
@@ -68,6 +74,7 @@ export class RecommendationsController {
 
   /** Applies only the edits the listener confirmed (#1961). */
   @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: { limit: 10, ttl: minutes(1), getTracker: trackByUser } })
   @Post("taste-memory/edits/apply")
   applyTasteEdits(@Req() req: any, @Body() body: ApplyTasteEditsDto) {
     return this.tasteMemoryService.applyTasteEdits(req.user.userId, body.items);

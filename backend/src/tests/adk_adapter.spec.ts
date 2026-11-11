@@ -159,6 +159,24 @@ describe("AdkAdapter (#2075)", () => {
     expect(result).toMatchObject({ status: "rejected", reason: "llm_no_track_selected" });
   });
 
+  it("stops doing tool work after the per-run bound", async () => {
+    const run = jest.fn(async () => ({ items: mockCatalogItems }));
+    adapter = new AdkAdapter({ get: () => ({ run }) } as any);
+    const answers: any[] = [];
+    mockRunAsync.mockImplementation(async function* () {
+      const search = mockAgent!.tools.find((tool) => tool.name === "catalog_search")!;
+      for (let i = 0; i < 30; i++) answers.push(await search.execute({ query: `q${i}` }));
+      for (const event of mockEvents) yield { author: "agent", ...event };
+    });
+
+    const result = await adapter.run(input);
+
+    expect(run).toHaveBeenCalledTimes(24);
+    expect(answers.slice(24)).toEqual(Array(6).fill({ error: "tool_budget_exhausted" }));
+    // What the run was shown before the bound is still pickable.
+    expect(result.picks?.[0]?.trackId).toBe("t1");
+  });
+
   it("keeps the model's reasoning to one bounded line", async () => {
     finalReply(
       "TRACK: t1 | LICENSE: personal | PRICE: $0\nREASONING: " + "soul\u0007 ".repeat(200),

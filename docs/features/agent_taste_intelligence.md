@@ -1300,6 +1300,12 @@ Still open:
   deterministic selector. Ids the model passes into a ranking or analytics
   tool do not count as offered. The model's reasoning line is kept to one
   bounded line (300 characters, no control characters).
+- A model run's tool calls are bounded (`runtime/tool_call_budget.ts`): 24
+  per run on both runtimes, and 8 per model turn on the Vertex runtime. A call
+  over the bound is answered `tool_budget_exhausted` and does no catalog,
+  embedding or analytics work; the reply can still pick from what the run was
+  shown. Taste-edit preview and apply are paced per listener (20 and 10 a
+  minute).
 - One "playable now" filter: `PLAYABLE_TRACK_WHERE`
   (`catalog/track-availability.ts`) is the query form of the availability
   classifier (published or ready release, not withdrawn, not held or removed,
