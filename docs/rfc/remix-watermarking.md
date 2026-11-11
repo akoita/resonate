@@ -336,7 +336,9 @@ from proprietary code), but the owner can ask counsel to confirm before
 - **For #2575 (detect):** run `audiowmark get` with `--key` for the active and
   retired keys (it accepts the option more than once), retry with
   `--detect-speed`, and treat only an exact database match as a hit. The
-  inverse pitch/tempo search is an optional extra stage. Detection takes
+  inverse pitch/tempo search is an optional extra stage (built in #2614 as
+  the coarse grid, with ffmpeg's `rubberband` filter instead of the
+  `rubberband` command, so the image needs no new binary). Detection takes
   3–4 s per 30-second clip, about 20 s with speed search, so run it as an
   async admin job, not in the request.
 

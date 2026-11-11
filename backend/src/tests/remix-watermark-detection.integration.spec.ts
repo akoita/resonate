@@ -10,6 +10,7 @@ import { prisma } from "../db/prisma";
 import type {
   RemixWatermarkCandidate,
   RemixWatermarkDetector,
+  RemixWatermarkShift,
 } from "../modules/remix/remix-watermark-detect";
 import {
   REMIX_WATERMARK_MATCH_CAVEAT,
@@ -42,8 +43,11 @@ const candidate = (
 function detectorReturning(
   byStage: Partial<Record<Stage, RemixWatermarkCandidate[] | Error>>,
   decode: () => Promise<void> = async () => undefined,
+  /** #2614: what the inverse search decodes after undoing a given shift. */
+  inverse: (shift: RemixWatermarkShift) => RemixWatermarkCandidate[] = () => [],
 ) {
   const calls: Stage[] = [];
+  const shifts: RemixWatermarkShift[] = [];
   const detector = {
     keyIds: ["key-new", "key-old"],
     decodeClip: decode,
@@ -53,8 +57,12 @@ function detectorReturning(
       if (result instanceof Error) throw result;
       return result;
     },
+    inverseCandidates: async (_wav: string, shift: RemixWatermarkShift) => {
+      shifts.push(shift);
+      return inverse(shift).map((found) => ({ ...found, stage: "inverse" as const, shift }));
+    },
   } as unknown as RemixWatermarkDetector;
-  return { detector, calls };
+  return { detector, calls, shifts };
 }
 
 describe("RemixWatermarkDetectionService (integration)", () => {
@@ -164,13 +172,49 @@ describe("RemixWatermarkDetectionService (integration)", () => {
   });
 
   it("is no match for unknown payloads, and for a token decoded with a key it was not embedded with", async () => {
+    const { detector, shifts } = detectorReturning({
+      plain: [candidate(hex("noise"), "key-new", "plain")],
+      speed: [candidate(TOKEN, "key-old", "speed")],
+    });
+    const view = await check(detector);
+    expect(view).toMatchObject({ status: "no_match", match: null, candidatesDecoded: 2 });
+    // #2614: "no match" is only said after the whole inverse grid was tried.
+    expect(shifts).toHaveLength(16);
+  });
+
+  it("falls through to the inverse search, stops at the first match and records the change it undid (#2614)", async () => {
+    const { detector, calls, shifts } = detectorReturning({}, undefined, (shift) =>
+      shift.kind === "tempo" && shift.amount === -2
+        ? [candidate(TOKEN, "key-new", "plain")]
+        : [candidate(hex(`noise-${shift.kind}-${shift.amount}`), "key-new", "plain")],
+    );
+    const view = await check(detector);
+    expect(calls).toEqual(["plain", "speed"]);
+    expect(shifts[shifts.length - 1]).toEqual({ kind: "tempo", amount: -2 });
+    expect(shifts).toHaveLength(8);
+    expect(view).toMatchObject({ status: "matched", candidatesDecoded: 8 });
+    expect(view.match).toMatchObject({
+      keyId: "key-new",
+      stage: "inverse",
+      shift: { kind: "tempo", amount: -2 },
+      render: { id: renderId },
+    });
+  });
+
+  it("does not run the inverse search when an earlier stage matched", async () => {
+    const { detector, shifts } = detectorReturning({ plain: [candidate(TOKEN, "key-new", "plain")] });
+    const view = await check(detector);
+    expect(view.match).toMatchObject({ stage: "plain", shift: null });
+    expect(shifts).toEqual([]);
+  });
+
+  it("records a failed inverse search as failed, not as no match", async () => {
     const view = await check(
-      detectorReturning({
-        plain: [candidate(hex("noise"), "key-new", "plain")],
-        speed: [candidate(TOKEN, "key-old", "speed")],
+      detectorReturning({}, undefined, () => {
+        throw new Error("No such filter: 'rubberband'");
       }).detector,
     );
-    expect(view).toMatchObject({ status: "no_match", match: null, candidatesDecoded: 2 });
+    expect(view).toMatchObject({ status: "failed", failureCode: "detector_failed", match: null });
   });
 
   it("records a decode failure and a detector failure as failed, with a code", async () => {
@@ -190,7 +234,7 @@ describe("RemixWatermarkDetectionService (integration)", () => {
         clipSha256: "0".repeat(64),
         clipBytes: 1,
         status: "processing",
-        createdAt: new Date(Date.now() - 31 * 60 * 1000),
+        createdAt: new Date(Date.now() - 46 * 60 * 1000),
       },
     });
     detectionIds.push(row.id);

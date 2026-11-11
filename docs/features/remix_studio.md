@@ -1525,7 +1525,14 @@ from the JWT, never the request body.
   backend process: ffmpeg decodes the clip (local file only, audio
   containers only), then `audiowmark get` runs with the active key and the
   retired key (`REMIX_WATERMARK_RETIRED_KEY` + `REMIX_WATERMARK_RETIRED_KEY_ID`),
-  plain first and with `--detect-speed` if nothing matched. Only a decoded
+  plain first and with `--detect-speed` if nothing matched. If that finds
+  nothing either, an inverse search (#2614) undoes a guessed change with
+  ffmpeg's `rubberband` filter on the first 120 seconds and decodes again:
+  ±1 and ±2 semitones of pitch, then ±1 to 6 % of tempo with pitch kept, 16
+  tries, stopping at the first match. A match found this way records the
+  change that was undone (`shiftKind`, `shiftAmount`). The search has 15
+  minutes; running out is `failed` / `search_timeout`, never "no match".
+  A shift between those steps is not recovered. Only a decoded
   payload equal to a stored token, decoded with the key that render was
   embedded with, is a match; the decoder prints candidates on unmarked
   audio too. `GET /admin/remix-watermark/detections/:id` returns the status
@@ -1543,8 +1550,8 @@ from the JWT, never the request body.
   it elsewhere, and that it is read with the licence record and the
   project's `remix.exported` events. All four routes are admin only and
   audited (`remix_watermark.detect_started`, `.detect_viewed`,
-  `.evidence_attached`). Not yet: the inverse pitch/tempo search stage and
-  the false-positive run over 1,000+ catalog tracks from the RFC (#2614).
+  `.evidence_attached`). Not yet: the RFC's fine pitch/tempo grid and the
+  false-positive run over 1,000+ catalog tracks (#2614).
 - Watermark disclosure (#2574, slice 4 of #2566): when the current draft's
   render metadata says `watermark.status: "embedded"`, the Drafts panel shows
   a note above Publish and Export: the draft carries an inaudible mark, every

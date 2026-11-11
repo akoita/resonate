@@ -12,8 +12,10 @@ const execFileAsync = promisify(execFile);
  * `remix-watermark.ts` embeds, with the active key and an optional retired
  * key, following the detector the #2572 spike measured
  * (docs/rfc/remix-watermarking.md): a plain `audiowmark get`, then a retry
- * with `--detect-speed`. Only a decoded payload that equals a stored token is
- * a match; the decoder always prints candidates, on unmarked audio too.
+ * with `--detect-speed`, then (#2614) an inverse search that undoes a guessed
+ * pitch shift or pitch-preserving tempo change before decoding again. Only a
+ * decoded payload that equals a stored token is a match; the decoder always
+ * prints candidates, on unmarked audio too.
  */
 export type RemixWatermarkDetectKey = {
   /** The audiowmark key-file text (`key <32 hex>`). Never logged. */
@@ -77,7 +79,72 @@ export function readRemixWatermarkDetectConfig(
   };
 }
 
-export type RemixWatermarkDetectStage = "plain" | "speed";
+export type RemixWatermarkDetectStage = "plain" | "speed" | "inverse";
+
+/**
+ * #2614: a change the inverse search undoes before decoding.
+ * - `pitch`: the clip was shifted by `amount` semitones with its tempo kept.
+ * - `tempo`: the clip was sped up by `amount` percent with its pitch kept.
+ */
+export type RemixWatermarkShift = { kind: "pitch" | "tempo"; amount: number };
+
+/**
+ * Pure. The coarse grid of the RFC ("Pitch and tempo"), likeliest first:
+ * ±1 and ±2 semitones, then ±1…6 % tempo. The decoder tolerates about 0.1
+ * semitone of leftover pitch error and needs the tempo undone almost exactly,
+ * so a shift between these steps is not recovered; the RFC's fine grid
+ * (about 140 decodes) is not run here.
+ */
+export function inverseSearchShifts(): RemixWatermarkShift[] {
+  const shifts: RemixWatermarkShift[] = [];
+  for (const semitones of [1, 2]) {
+    shifts.push({ kind: "pitch", amount: semitones }, { kind: "pitch", amount: -semitones });
+  }
+  for (let percent = 1; percent <= 6; percent += 1) {
+    shifts.push({ kind: "tempo", amount: percent }, { kind: "tempo", amount: -percent });
+  }
+  return shifts;
+}
+
+/** The longest stretch of a clip the inverse search works on. */
+export const INVERSE_SEARCH_MAX_SECONDS = 120;
+
+/**
+ * Pure. Undoes `shift` with ffmpeg's `rubberband` filter (already in the
+ * backend image with ffmpeg, so no new binary): the opposite pitch ratio
+ * with tempo kept, or the opposite tempo ratio with pitch kept. The input is
+ * the PCM WAV this process decoded, never the upload.
+ */
+export function buildInverseShiftArgs(
+  wavPath: string,
+  outputPath: string,
+  shift: RemixWatermarkShift,
+): string[] {
+  const ratio =
+    shift.kind === "pitch" ? 2 ** (-shift.amount / 12) : 1 / (1 + shift.amount / 100);
+  return [
+    "-nostdin",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-protocol_whitelist",
+    "file",
+    "-f",
+    "wav",
+    "-i",
+    wavPath,
+    "-t",
+    String(INVERSE_SEARCH_MAX_SECONDS),
+    "-af",
+    `rubberband=${shift.kind}=${ratio.toFixed(6)}`,
+    "-c:a",
+    "pcm_s16le",
+    "-f",
+    "wav",
+    "-y",
+    outputPath,
+  ];
+}
 
 /**
  * One `pattern` line of `audiowmark get`:
@@ -121,6 +188,7 @@ export function buildAudiowmarkGetArgs(
   inputPath: string,
   stage: RemixWatermarkDetectStage,
 ): string[] {
+  // The inverse stage decodes an already un-shifted file, so it is a plain get.
   return ["get", "--key", keyPath, ...(stage === "speed" ? ["--detect-speed"] : []), inputPath];
 }
 
@@ -165,6 +233,8 @@ export type RemixWatermarkCandidate = {
   keyId: string;
   keySlot: RemixWatermarkDetectKey["slot"];
   stage: RemixWatermarkDetectStage;
+  /** #2614: the change that was undone before this decode (inverse stage only). */
+  shift?: RemixWatermarkShift;
   /** How many `pattern` lines carried this payload. */
   occurrences: number;
   decodeError: number | null;
@@ -206,9 +276,15 @@ const DECODE_TIMEOUT_MS = 120_000;
 const GET_TIMEOUT_MS: Record<RemixWatermarkDetectStage, number> = {
   plain: 180_000,
   speed: 600_000,
+  inverse: 180_000,
 };
+const INVERSE_SHIFT_TIMEOUT_MS = 120_000;
 
-export const REMIX_WATERMARK_DETECT_STAGES: RemixWatermarkDetectStage[] = ["plain", "speed"];
+/** The stages that decode the clip as it is. The inverse search runs after them. */
+export const REMIX_WATERMARK_DETECT_STAGES: Array<Exclude<RemixWatermarkDetectStage, "inverse">> = [
+  "plain",
+  "speed",
+];
 
 export class RemixWatermarkDetector {
   constructor(private readonly config: RemixWatermarkDetectConfig) {}
@@ -230,6 +306,39 @@ export class RemixWatermarkDetector {
    * candidate is tied to the key that decoded it.
    */
   async candidates(
+    wavPath: string,
+    stage: RemixWatermarkDetectStage,
+  ): Promise<RemixWatermarkCandidate[]> {
+    return this.decodeWithKeys(wavPath, stage);
+  }
+
+  /**
+   * #2614: undoes one guessed shift on the first
+   * {@link INVERSE_SEARCH_MAX_SECONDS} of the clip and decodes the result
+   * with every key. The caller walks {@link inverseSearchShifts} and stops at
+   * the first match.
+   */
+  async inverseCandidates(
+    wavPath: string,
+    shift: RemixWatermarkShift,
+  ): Promise<RemixWatermarkCandidate[]> {
+    const dir = await mkdtemp(join(tmpdir(), "remix-wmshift-"));
+    try {
+      await chmod(dir, 0o700);
+      const shiftedPath = join(dir, "shifted.wav");
+      await execFileAsync(
+        this.config.ffmpegBinary,
+        buildInverseShiftArgs(wavPath, shiftedPath, shift),
+        { timeout: INVERSE_SHIFT_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
+      );
+      const found = await this.decodeWithKeys(shiftedPath, "inverse");
+      return found.map((candidate) => ({ ...candidate, shift }));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  private async decodeWithKeys(
     wavPath: string,
     stage: RemixWatermarkDetectStage,
   ): Promise<RemixWatermarkCandidate[]> {

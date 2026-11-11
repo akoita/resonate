@@ -12,6 +12,9 @@ import { join } from "path";
 import {
   buildAudiowmarkGetArgs,
   buildDetectDecodeArgs,
+  buildInverseShiftArgs,
+  inverseSearchShifts,
+  INVERSE_SEARCH_MAX_SECONDS,
   candidatesFromPatterns,
   parseAudiowmarkGetOutput,
   readRemixWatermarkDetectConfig,
@@ -183,6 +186,34 @@ describe("RemixWatermarkDetector (stand-in program)", () => {
   });
 });
 
+describe("inverse pitch/tempo search (#2614)", () => {
+  it("walks the coarse grid likeliest first: whole semitones, then 1 to 6 % tempo", () => {
+    const shifts = inverseSearchShifts();
+    expect(shifts.slice(0, 4)).toEqual([
+      { kind: "pitch", amount: 1 },
+      { kind: "pitch", amount: -1 },
+      { kind: "pitch", amount: 2 },
+      { kind: "pitch", amount: -2 },
+    ]);
+    expect(shifts.slice(4).every((shift) => shift.kind === "tempo")).toBe(true);
+    expect(shifts.slice(4).map((shift) => shift.amount)).toEqual([1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6]);
+    expect(shifts).toHaveLength(16);
+  });
+
+  it("undoes the guessed change with the opposite ratio, on a bounded local WAV", () => {
+    const up2 = buildInverseShiftArgs("/in.wav", "/out.wav", { kind: "pitch", amount: 2 });
+    expect(up2[up2.indexOf("-af") + 1]).toBe("rubberband=pitch=0.890899");
+    const faster5 = buildInverseShiftArgs("/in.wav", "/out.wav", { kind: "tempo", amount: 5 });
+    expect(faster5[faster5.indexOf("-af") + 1]).toBe("rubberband=tempo=0.952381");
+    const slower3 = buildInverseShiftArgs("/in.wav", "/out.wav", { kind: "tempo", amount: -3 });
+    expect(slower3[slower3.indexOf("-af") + 1]).toBe("rubberband=tempo=1.030928");
+    expect(up2[up2.indexOf("-protocol_whitelist") + 1]).toBe("file");
+    expect(up2[up2.indexOf("-t") + 1]).toBe(String(INVERSE_SEARCH_MAX_SECONDS));
+    expect(up2.slice(up2.indexOf("-i") - 2, up2.indexOf("-i") + 2)).toEqual(["-f", "wav", "-i", "/in.wav"]);
+    expect(up2[up2.length - 1]).toBe("/out.wav");
+  });
+});
+
 describe("remix_watermark_match evidence", () => {
   it("cannot be submitted by a person, an admin included", () => {
     expect(() =>
@@ -262,6 +293,30 @@ const haveReal =
       expect.objectContaining({ keyId: "k2", keySlot: "retired" }),
     ]);
   }, 120_000);
+
+  it.each([
+    ["a +2 semitone pitch shift", `rubberband=pitch=${2 ** (2 / 12)}`, { kind: "pitch", amount: 2 }],
+    ["a 3 % slower tempo with pitch kept", "atempo=0.97", { kind: "tempo", amount: -3 }],
+  ] as const)("recovers the token after %s only once that change is undone (#2614)", async (_name, filter, shift) => {
+    const attacked = `attacked-${shift.kind}.mp3`;
+    ffmpeg("-i", join(dir, "marked.wav"), "-af", filter, "-b:a", "128k", join(dir, attacked));
+    const d = detector([[ACTIVE, "k2", "active"]]);
+    const wav = join(dir, `${attacked}.decoded.wav`);
+    await d.decodeClip(join(dir, attacked), wav);
+
+    const has = (found: Array<{ payload: string }>) => found.some((candidate) => candidate.payload === TOKEN);
+    expect(has(await d.candidates(wav, "plain"))).toBe(false);
+    expect(has(await d.candidates(wav, "speed"))).toBe(false);
+    const wrong = shift.kind === "pitch" ? { kind: "pitch", amount: 1 } as const : { kind: "tempo", amount: -2 } as const;
+    expect(has(await d.inverseCandidates(wav, wrong))).toBe(false);
+
+    const found = await d.inverseCandidates(wav, shift);
+    expect(found.find((candidate) => candidate.payload === TOKEN)).toMatchObject({
+      keyId: "k2",
+      stage: "inverse",
+      shift,
+    });
+  }, 300_000);
 
   it("refuses a file that is not one of the allowed audio containers", async () => {
     writeFileSync(join(dir, "playlist"), "#EXTM3U\n#EXTINF:1,\n/etc/passwd\n");

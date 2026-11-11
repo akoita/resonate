@@ -25,8 +25,21 @@ const STATUS_LABELS: Record<RemixWatermarkDetection["status"], string> = {
 const FAILURE_LABELS: Record<NonNullable<RemixWatermarkDetection["failureCode"]>, string> = {
   decode_failed: "The file could not be read as audio. Try MP3, WAV, FLAC, OGG or M4A.",
   detector_failed: "The detector did not run. Try again, and tell engineering if it keeps failing.",
+  search_timeout: "The search for a pitch or tempo change ran out of time before it finished. Upload a shorter clip, around 30 to 60 seconds.",
   interrupted: "The check was interrupted before it finished. Upload the clip again.",
 };
+
+/** How the mark was found beyond a plain read (#2614 adds the undone pitch or tempo change). */
+export function describeMatchSearch(match: NonNullable<RemixWatermarkDetection["match"]>): string {
+  if (match.stage === "speed") return ", after a speed search";
+  if (match.stage !== "inverse" || !match.shift) return "";
+  const { kind, amount } = match.shift;
+  const size = Math.abs(amount);
+  if (kind === "pitch") {
+    return `, after undoing a pitch shift of ${size} semitone${size === 1 ? "" : "s"} ${amount > 0 ? "up" : "down"}`;
+  }
+  return `, after undoing a tempo change of ${size}% ${amount > 0 ? "faster" : "slower"}`;
+}
 
 const BASIS_LABELS: Record<string, string> = {
   owner: "the creator's own stem",
@@ -82,7 +95,7 @@ function MatchDetails({ detection }: { detection: RemixWatermarkDetection }) {
         ) : null}
         <Figure
           label="Found with"
-          value={`${match.keySlot === "retired" ? "the retired key" : "the current key"}${match.stage === "speed" ? ", after a speed search" : ""}`}
+          value={`${match.keySlot === "retired" ? "the retired key" : "the current key"}${describeMatchSearch(match)}`}
         />
         <Figure
           label="Detector figures"

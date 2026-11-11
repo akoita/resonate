@@ -1858,10 +1858,14 @@ model RemixWatermarkDetection {
   keyId             String?
   keySlot           String?
   stage             String?
+  // #2614, inverse stage only: the change undone before the decode that
+  // matched. pitch (semitones) | tempo (percent).
+  shiftKind         String?
+  shiftAmount       Float?
   decodeError          Float?
   syncQuality       Float?
   occurrences       Int?
-  // decode_failed | detector_failed | interrupted
+  // decode_failed | detector_failed | search_timeout | interrupted
   failureCode       String?
   // The rights evidence item this result was attached as, if any.
   evidenceId        String?
