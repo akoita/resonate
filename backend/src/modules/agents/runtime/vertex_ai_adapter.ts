@@ -18,6 +18,7 @@ import { describeTempoRange, requestScopeFor } from "../agent_session_request";
 import { requestGuidelines } from "./request_guidelines";
 import { AgentRuntimeUnavailableError } from "./agent_runtime.errors";
 import { boundedReasoning, keepOfferedPicks, OfferedTracks } from "./offered_tracks";
+import { MAX_TOOL_CALLS_PER_ROUND, TOOL_BUDGET_EXHAUSTED, ToolCallBudget } from "./tool_call_budget";
 
 const MAX_TOOL_ROUNDS = 6;
 const TIMEOUT_MS = 30_000;
@@ -64,6 +65,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
 
     const chat = model.startChat({ history: [] });
     const offered = new OfferedTracks();
+    const toolBudget = new ToolCallBudget();
 
     // Initial user message with session context
     const userMessage = this.buildUserMessage(input);
@@ -79,8 +81,16 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
 
       // Execute each function call and collect results
       const functionResponses: Part[] = [];
-      for (const fc of functionCalls) {
+      for (const [index, fc] of functionCalls.entries()) {
         this.logger.debug(`Tool call: ${fc.name}(${JSON.stringify(fc.args)})`);
+        // Every call gets an answer, but one over the per-round or per-run
+        // bound does no work.
+        if (index >= MAX_TOOL_CALLS_PER_ROUND || !toolBudget.take()) {
+          functionResponses.push({
+            functionResponse: { name: fc.name, response: { ...TOOL_BUDGET_EXHAUSTED } },
+          });
+          continue;
+        }
         const toolResult = await executeTool(
           this.tools,
           {

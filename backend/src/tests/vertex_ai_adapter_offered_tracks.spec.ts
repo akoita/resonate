@@ -73,6 +73,51 @@ describe("VertexAiAdapter pick binding", () => {
     expect(result).toMatchObject({ status: "rejected", reason: "llm_no_track_selected" });
   });
 
+  it("answers calls over the per-round bound without running them", async () => {
+    const calls = Array.from({ length: 12 }, (_, i) => ({
+      functionCall: { name: "catalog_search", args: { query: `q${i}` } },
+    }));
+    mockSendMessage
+      .mockResolvedValueOnce({ response: { candidates: [{ content: { parts: calls } }] } })
+      .mockResolvedValueOnce(reply("TRACK: t1 | LICENSE: personal | PRICE: 0\nREASONING: ok"));
+
+    const result = await adapter.run(input);
+
+    expect(run).toHaveBeenCalledTimes(8);
+    const answered = mockSendMessage.mock.calls[1][0] as Array<{ functionResponse: { response: unknown } }>;
+    expect(answered).toHaveLength(12);
+    expect(answered.slice(8).map((part) => part.functionResponse.response)).toEqual(
+      Array(4).fill({ error: "tool_budget_exhausted" }),
+    );
+    expect(result.picks?.[0]?.trackId).toBe("t1");
+  });
+
+  it("stops running tools after the per-run bound across rounds", async () => {
+    const round = () => ({
+      response: {
+        candidates: [
+          {
+            content: {
+              parts: Array.from({ length: 8 }, (_, i) => ({
+                functionCall: { name: "catalog_search", args: { query: `q${i}` } },
+              })),
+            },
+          },
+        ],
+      },
+    });
+    mockSendMessage
+      .mockResolvedValueOnce(round())
+      .mockResolvedValueOnce(round())
+      .mockResolvedValueOnce(round())
+      .mockResolvedValueOnce(round())
+      .mockResolvedValueOnce(reply("TRACK: t1 | LICENSE: personal | PRICE: 0\nREASONING: ok"));
+
+    await adapter.run(input);
+
+    expect(run).toHaveBeenCalledTimes(24);
+  });
+
   it("does not treat ids passed into a ranking tool as offered", async () => {
     run.mockResolvedValue({ items: [{ id: "t7" }] });
     mockSendMessage

@@ -21,6 +21,7 @@ import { ToolRegistry } from "../tools/tool_registry";
 import { getAgentTrackLimit } from "../agent_runtime.config";
 import { createCurationAgent, buildUserMessage } from "./adk_curation_agent";
 import { boundedReasoning, keepOfferedPicks, OfferedTracks } from "./offered_tracks";
+import { ToolCallBudget } from "./tool_call_budget";
 import { requestScopeFor } from "../agent_session_request";
 import { AgentRuntimeUnavailableError } from "./agent_runtime.errors";
 
@@ -63,6 +64,7 @@ export class AdkAdapter implements AgentRuntimeAdapter {
       seedTrackId: input.preferences.seedTrackId,
       requestScope: requestScopeFor(input.preferences),
       offered,
+      toolBudget: new ToolCallBudget(),
     });
     return new InMemoryRunner({ agent, appName: APP_NAME });
   }
