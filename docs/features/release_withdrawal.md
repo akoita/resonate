@@ -94,6 +94,7 @@ their downloads.
 | The source release is withdrawn | `CatalogService.withdrawRelease` | `source_withdrawn` |
 | The source track is quarantined | `FingerprintService.registerFingerprint` | `source_under_review` |
 | The source track is taken down | `DmcaService`, on an upheld report | `source_removed` |
+| The source artist's account is erased | `PersonalDataErasureService.eraseAccount`, after its transaction commits (#2606) | `source_withdrawn` |
 
 `modules/catalog/remix-source-hold.ts` holds the rule. `reconcileRemixSourceHolds`
 takes the sources that changed, finds their published derivatives through
@@ -126,6 +127,14 @@ and the x402 route issues no new challenge and settles no new payment for its
 stems. A payment that was already settled still downloads.
 
 The owner's catalogue shows "On hold" with the cause and no restore button.
+
+Account erasure withdraws the artist's releases inside its own transaction,
+so it runs the reconcile once that transaction has committed and reports the
+number of remixes held as `remixSourceHolds` in the erasure summary and log.
+The erasure is already final at that point: if the reconcile fails, the
+summary carries `null`, an error is logged
+(`privacy.account_erasure.source_hold_reconcile_failed`), and the derivatives
+are held by the next trigger that touches those sources.
 
 ## What actually had to be built
 
@@ -211,10 +220,6 @@ cd web && npx vitest run src/components/library/trackAvailability.test.tsx \
 - **No field collects the artist's note.** The API accepts a `reason`, the
   catalogue displays it, and the listener-facing copy quotes it — but the
   confirmation dialog takes a string only, so nothing gathers one yet.
-- **Source holds do not yet follow account erasure.** Erasing an artist's
-  account withdraws their releases inside the erasure transaction, which does
-  not run the source-hold reconcile. Their published derivatives are held the
-  next time any trigger touches those sources. Tracked in #2606.
 - **A held remix can still be bought where the payment comes first.** The
   buyer-bound smart-account route redeems a transfer that is already on
   chain, and an on-chain marketplace listing is settled by the contract.

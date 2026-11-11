@@ -948,7 +948,9 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "`statusBeforeWithdrawal` — and the two must be kept in step by hand. "
       + "`managementOwnerUserId` is not cleared; if it names the erased person it follows the User "
       + "foreign-key cascade to the rotated, closed id so legacy-owner fallback cannot reauthorize "
-      + "another account.",
+      + "another account. Published remixes of the withdrawn releases are put on a source hold "
+      + "(#2601) once the erasure transaction has committed (#2606): the reconcile writes through the "
+      + "global client, and a failure there is logged without undoing the erasure.",
   },
   {
     model: "ReleaseArtistCredit",
