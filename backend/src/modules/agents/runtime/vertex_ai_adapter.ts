@@ -17,6 +17,7 @@ import { getAgentTrackLimit } from "../agent_runtime.config";
 import { describeTempoRange, requestScopeFor } from "../agent_session_request";
 import { requestGuidelines } from "./request_guidelines";
 import { AgentRuntimeUnavailableError } from "./agent_runtime.errors";
+import { boundedReasoning, keepOfferedPicks, OfferedTracks } from "./offered_tracks";
 
 const MAX_TOOL_ROUNDS = 6;
 const TIMEOUT_MS = 30_000;
@@ -62,6 +63,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
     });
 
     const chat = model.startChat({ history: [] });
+    const offered = new OfferedTracks();
 
     // Initial user message with session context
     const userMessage = this.buildUserMessage(input);
@@ -94,6 +96,11 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
             requestScope: requestScopeFor(input.preferences),
           }
         );
+        // Only the catalog tools offer tracks; a tool that echoes ids the
+        // model passed in (ranking, analytics) does not.
+        if (fc.name === "catalog_search" || fc.name === "semantic_search") {
+          offered.record(toolResult);
+        }
         functionResponses.push({
           functionResponse: {
             name: fc.name,
@@ -108,7 +115,7 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
 
     // Extract the final text response
     const text = response.response.text?.() ?? "";
-    return this.parseResponse(text, input, Date.now() - startMs);
+    return this.parseResponse(text, input, Date.now() - startMs, offered);
   }
 
   private extractFunctionCalls(content: Content): FunctionCall[] {
@@ -195,27 +202,28 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
   private parseResponse(
     text: string,
     input: AgentRuntimeInput,
-    latencyMs: number
+    latencyMs: number,
+    offered: OfferedTracks
   ): AgentRuntimeResult {
     // Parse multiple TRACK lines: "TRACK: <id> | LICENSE: <type> | PRICE: <price>"
     const trackPattern = /TRACK:\s*(.+?)\s*\|\s*LICENSE:\s*(\w+)\s*\|\s*PRICE:\s*\$?([\d.]+)/gi;
-    const picks: LlmTrackPick[] = [];
+    const parsed: LlmTrackPick[] = [];
     const pickLimit = getAgentTrackLimit();
     let match: RegExpExecArray | null;
 
-    while (picks.length < pickLimit && (match = trackPattern.exec(text)) !== null) {
+    while (parsed.length < pickLimit && (match = trackPattern.exec(text)) !== null) {
       const trackId = match[1].trim();
       const licenseType = (match[2].trim().toLowerCase()) as "personal" | "remix" | "commercial";
       const priceUsd = parseFloat(match[3]);
 
       // Listening picks are not budget-limited (ADR-TE-1).
       if (trackId) {
-        picks.push({ trackId, licenseType, priceUsd });
+        parsed.push({ trackId, licenseType, priceUsd });
       }
     }
 
     // Fallback: try the old single-line format for backward compatibility
-    if (picks.length === 0) {
+    if (parsed.length === 0) {
       const trackMatch = text.match(/TRACK:\s*(.+)/i);
       const licenseMatch = text.match(/LICENSE:\s*(.+)/i);
       const priceMatch = text.match(/PRICE:\s*\$?([\d.]+)/i);
@@ -224,12 +232,21 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
       if (trackId) {
         const licenseType = (licenseMatch?.[1]?.trim() ?? "personal") as "personal" | "remix" | "commercial";
         const priceUsd = priceMatch ? parseFloat(priceMatch[1]) : 0;
-        picks.push({ trackId, licenseType, priceUsd });
+        parsed.push({ trackId, licenseType, priceUsd });
       }
     }
 
     const reasoningMatch = text.match(/REASONING:\s*(.+)/i);
-    const reasoning = reasoningMatch?.[1]?.trim() ?? text.slice(0, 200);
+    const reasoning = boundedReasoning(reasoningMatch?.[1] ?? text.slice(0, 200));
+
+    // Only a track this run's tools returned can be a pick.
+    const bound = keepOfferedPicks(parsed, offered);
+    if (bound.dropped > 0) {
+      this.logger.warn(
+        `Vertex reply named ${bound.dropped} track(s) its tools did not return; not served`
+      );
+    }
+    const picks = bound.picks;
 
     if (picks.length === 0) {
       return {

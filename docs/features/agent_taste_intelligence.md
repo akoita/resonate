@@ -1292,6 +1292,14 @@ Still open:
   never by the model (`requiresSeedEvidence`). The guard refuses such a model
   reply as `unverifiable` if one still arrives. In stage C's artist group,
   surviving contradictions fell from 40 to 0.
+- Model picks are bound to the run's tool results: the ADK and Vertex runtimes
+  record every track id their catalog tools (`catalog_search`,
+  `semantic_search`) return in a run (`runtime/offered_tracks.ts`), and a reply
+  may only pick from that set. A reply that names other ids loses them before
+  the guard; a reply left with none is an empty reply and is filled from the
+  deterministic selector. Ids the model passes into a ranking or analytics
+  tool do not count as offered. The model's reasoning line is kept to one
+  bounded line (300 characters, no control characters).
 
 ## "Right now": a session with no filters follows the time of day (#2245)
 
