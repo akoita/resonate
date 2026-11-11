@@ -116,6 +116,10 @@ export const ADMIN_AUDIT_ACTIONS = [
   "community_benefit_rule.operator_managed",
   /** #2497: an operator opened the monthly billing reconciliation report (month, format and section only). */
   "billing.reconciliation_viewed",
+  /** #2575: an admin checked a clip for the remix render watermark, read a result, or attached a match as evidence. */
+  "remix_watermark.detect_started",
+  "remix_watermark.detect_viewed",
+  "remix_watermark.evidence_attached",
 ] as const;
 
 export type AdminAuditAction = (typeof ADMIN_AUDIT_ACTIONS)[number];

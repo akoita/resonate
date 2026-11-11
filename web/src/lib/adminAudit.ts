@@ -95,6 +95,9 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "community_campaign_update.operator_posted", label: "Posted a show campaign update" },
   { value: "community_benefit_rule.operator_managed", label: "Managed an artist's community benefits" },
   { value: "billing.reconciliation_viewed", label: "Opened the billing reconciliation report" },
+  { value: "remix_watermark.detect_started", label: "Checked a clip for the remix mark" },
+  { value: "remix_watermark.detect_viewed", label: "Opened remix mark check results" },
+  { value: "remix_watermark.evidence_attached", label: "Attached a remix mark match as evidence" },
 ];
 
 export const ADMIN_AUDIT_OUTCOME_OPTIONS: ReadonlyArray<{ value: AdminAuditOutcome; label: string }> = [
