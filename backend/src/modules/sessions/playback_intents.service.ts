@@ -1,3 +1,4 @@
+import { PLAYABLE_TRACK_WHERE } from "../catalog/track-availability";
 import { BadRequestException, Inject, Injectable, Optional } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { EventBus } from "../shared/event_bus";
@@ -138,6 +139,8 @@ export class PrismaPlaybackIntentCatalogResolver implements PlaybackIntentCatalo
     const maxTracks = Math.min(Math.max(input.constraints.maxTracks, 1), 10);
     const tracks = await prisma.track.findMany({
       where: {
+        // Only tracks that can be played publicly right now.
+        ...PLAYABLE_TRACK_WHERE,
         ...(input.constraints.explicit === false ? { explicit: false } : {}),
         ...(query
           ? {
