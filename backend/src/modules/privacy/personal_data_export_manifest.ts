@@ -871,6 +871,8 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
   IndexerState: "Per-chain block cursor for the indexer; operator infrastructure with no personal column.",
   CreditTopUpRefund:
     "One dated refund of a credit pack (#2497): amounts, a status code and the Stripe event time, with no column naming a person; the purchase it belongs to is exported as CreditTopUp, which carries the cumulative refund totals.",
+  StripeDispute:
+    "One card dispute reported by Stripe (#2596): Stripe ids, amount, reason code, state and the credits paused or given back, with no column naming a person; the purchase it concerns is exported as CreditTopUp, and the person is told of every change by a notice.",
   SubscriptionInvoice:
     "One paid Artist Pro invoice (#2497): Stripe invoice id, amounts, currency and service period, with no column naming a person; the subscription it belongs to is exported as Subscription, and the invoices themselves are at Stripe, reachable from the Customer Portal.",
   StripeEvent:

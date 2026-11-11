@@ -20,6 +20,7 @@ import { CreditTopUpService } from "../modules/billing/credit_topup.service";
 import type { StripeEvent, StripeGateway, StripeSubscription } from "../modules/billing/stripe_gateway";
 import { StripeWebhookService } from "../modules/billing/stripe_webhook.service";
 import { EntitlementsService } from "../modules/entitlements/entitlements.service";
+import { StripeDisputeService } from "../modules/billing/stripe_dispute.service";
 import { NoticeService } from "../modules/notifications/notice.service";
 import { SUBSCRIPTION_CONSENT_TEXT_VERSION } from "../modules/purchase_consent/purchase_consent.constants";
 import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
@@ -78,7 +79,7 @@ const topUps = new CreditTopUpService(
   gateway,
   new CreditPackConfig({}),
 );
-const webhooks = new StripeWebhookService(config, gateway, topUps);
+const webhooks = new StripeWebhookService(config, gateway, topUps, new StripeDisputeService(new NoticeService(new EventBus(), new AuditService())));
 
 function stripeSub(
   id: string,

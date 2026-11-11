@@ -270,6 +270,7 @@ model CreditTopUp {
   updatedAt               DateTime  @updatedAt
   user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   refunds                 CreditTopUpRefund[]
+  disputes                StripeDispute[]
 
   @@index([userId, status, heldUntil])
   @@index([userId, createdAt])
@@ -304,6 +305,56 @@ model CreditTopUpRefund {
 
   @@unique([creditTopUpId, cumulativeRefundedAmountCents])
   @@index([createdAt])
+}
+
+// One card dispute (chargeback) reported by Stripe (#2596). Keyed by the
+// Stripe dispute id, so every `charge.dispute.*` event of a dispute lands on
+// one row. A dispute over a credit pack pauses the pack's unspent credits
+// while it is open (`heldCents` leaves the balance), gives them back when it
+// is won and keeps them out when it is lost. A dispute over any other payment
+// is recorded (`kind = other`) for the reconciliation report and changes
+// nothing else. No person column and no free text: Stripe ids, codes, amounts
+// and times only.
+model StripeDispute {
+  id                    String       @id @default(uuid())
+  stripeDisputeId       String       @unique
+  stripeChargeId        String?
+  stripePaymentIntentId String?
+  /// credit_topup | other
+  kind                  String
+  creditTopUpId         String?
+  currency              String
+  /// The disputed amount, in the minor unit of `currency`.
+  amountCents           Int
+  /// Stripe's reason code (fraudulent, product_not_received, …).
+  reason                String?      @db.VarChar(64)
+  /// inquiry | open | won | lost
+  status                String
+  /// The purchase status when the hold was decided: held | credited | needs_review | refunded.
+  statusBefore          String?
+  /// The share of the pack's credits the disputed amount covers.
+  disputedCreditsCents  Int          @default(0)
+  /// Credits taken out of the balance while the dispute is open.
+  heldCents             Int          @default(0)
+  /// Credits put back after a won dispute.
+  releasedCents         Int          @default(0)
+  /// When the pause was applied; null for an inquiry or a dispute that closed before it was seen open.
+  holdAppliedAt         DateTime?
+  /// Money Stripe took back for the dispute, the fees it charged (net of fees returned) and money it gave back.
+  withdrawnCents        Int          @default(0)
+  feeCents              Int          @default(0)
+  reinstatedCents       Int          @default(0)
+  openedAt              DateTime
+  closedAt              DateTime?
+  fundsReinstatedAt     DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  creditTopUp           CreditTopUp? @relation(fields: [creditTopUpId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([creditTopUpId, status])
+  @@index([openedAt])
+  @@index([closedAt])
+  @@index([fundsReinstatedAt])
 }
 
 // Artist Pro monthly generation allowance (#2408, docs/rfc/artist-pro.md §5,

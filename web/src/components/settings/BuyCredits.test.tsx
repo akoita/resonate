@@ -253,5 +253,15 @@ describe("BuyCredits (#1422)", () => {
   it("describes each purchase status", () => {
     expect(describeCreditPurchase(purchase())).toBe("Added to your balance");
     expect(describeCreditPurchase(purchase({ status: "held", heldUntil: null }))).toBe("On hold for 14 days");
+    // #2596: a card dispute is shown before the purchase's own status.
+    expect(describeCreditPurchase(purchase({ dispute: { status: "open", pausedCents: 300 } }))).toBe(
+      "Payment disputed with your bank: $3.00 of credits paused",
+    );
+    expect(describeCreditPurchase(purchase({ status: "held", dispute: { status: "open", pausedCents: 1000 } }))).toBe(
+      "Payment disputed with your bank: on hold until the dispute is closed",
+    );
+    expect(describeCreditPurchase(purchase({ dispute: { status: "lost", pausedCents: 300 } }))).toBe(
+      "Refunded by your bank: $3.00 of credits removed",
+    );
   });
 });

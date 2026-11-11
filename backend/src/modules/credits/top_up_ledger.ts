@@ -8,6 +8,10 @@
  * - `reverseTopUpInTx`: a `reversal` row with reason `top_up_refund`, taking
  *   back at most what is left in the balance (never below zero: credits
  *   already spent stay spent).
+ * - A card dispute (#2596, `billing/stripe_dispute.service.ts`) uses the same
+ *   two functions with its own reasons: `top_up_dispute_hold` (a `reversal`)
+ *   while the dispute is open, `top_up_dispute_release` (a `grant`) when it is
+ *   won. A held purchase is not released while a dispute on it is open.
  * - `releaseDueTopUpHolds`: the lazy release of "wait" purchases whose 14-day
  *   hold has ended. Called on every balance read and before every debit, so a
  *   held pack is spendable the moment its hold ends without a scheduler. Each
@@ -27,6 +31,10 @@ import { prisma } from "../../db/prisma";
 export const TOP_UP_REASON = "top_up";
 /** Ledger reason of the reversal that follows a Stripe refund. */
 export const TOP_UP_REFUND_REASON = "top_up_refund";
+/** Ledger reason of the reversal that pauses credits while a card dispute is open (#2596). */
+export const TOP_UP_DISPUTE_HOLD_REASON = "top_up_dispute_hold";
+/** Ledger reason of the grant that gives paused credits back after a won dispute (#2596). */
+export const TOP_UP_DISPUTE_RELEASE_REASON = "top_up_dispute_release";
 /** Ledger type of that reversal: not a `debit`, so spend-by-action never counts it. */
 export const TOP_UP_REVERSAL_TYPE = "reversal";
 
@@ -37,7 +45,7 @@ const logger = new Logger("TopUpLedger");
 /** Add bought credits to the balance, inside the caller's transaction. */
 export async function creditTopUpInTx(
   tx: Prisma.TransactionClient,
-  input: { userId: string; amountCents: number; paymentRef: string | null },
+  input: { userId: string; amountCents: number; paymentRef: string | null; reason?: string },
 ): Promise<{ balanceAfterCents: number; transactionId: string }> {
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
     throw new Error("A top-up credits a positive whole number of cents");
@@ -52,7 +60,7 @@ export async function creditTopUpInTx(
       userId: input.userId,
       type: "grant",
       amountCents: input.amountCents,
-      reason: TOP_UP_REASON,
+      reason: input.reason ?? TOP_UP_REASON,
       paymentRef: input.paymentRef,
       balanceAfterCents: account.balanceCents,
     },
@@ -67,7 +75,7 @@ export async function creditTopUpInTx(
  */
 export async function reverseTopUpInTx(
   tx: Prisma.TransactionClient,
-  input: { userId: string; wantedCents: number; paymentRef: string | null },
+  input: { userId: string; wantedCents: number; paymentRef: string | null; reason?: string },
 ): Promise<{ reversedCents: number; balanceAfterCents: number }> {
   // Lock the account row so a concurrent debit cannot spend what is being taken back.
   const rows = await tx.$queryRaw<Array<{ balanceCents: number }>>`
@@ -84,7 +92,7 @@ export async function reverseTopUpInTx(
       userId: input.userId,
       type: TOP_UP_REVERSAL_TYPE,
       amountCents: take,
-      reason: TOP_UP_REFUND_REASON,
+      reason: input.reason ?? TOP_UP_REFUND_REASON,
       paymentRef: input.paymentRef,
       balanceAfterCents: account.balanceCents,
     },
@@ -105,7 +113,14 @@ export async function releaseHeldTopUp(
   return prisma.$transaction(async (tx) => {
     const row = await tx.creditTopUp.findUnique({ where: { id: topUpId } });
     if (!row || row.status !== "held") return null;
-    const amount = Math.max(0, row.creditsCents - row.refundedCreditsCents);
+    // #2596: a pack under an open card dispute stays held; a lost dispute removes its share for good.
+    const disputes = await tx.stripeDispute.findMany({
+      where: { creditTopUpId: row.id, status: { in: ["open", "lost"] } },
+      select: { status: true, disputedCreditsCents: true },
+    });
+    if (disputes.some((dispute) => dispute.status === "open")) return null;
+    const chargedBack = disputes.reduce((sum, dispute) => sum + dispute.disputedCreditsCents, 0);
+    const amount = Math.max(0, row.creditsCents - row.refundedCreditsCents - chargedBack);
     const claimed = await tx.creditTopUp.updateMany({
       where: { id: row.id, status: "held", refundedCreditsCents: row.refundedCreditsCents },
       data: { status: "credited", creditedAt: now, releaseBasis: basis, creditedCents: amount },

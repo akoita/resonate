@@ -117,6 +117,7 @@ export const SECTION_LABELS: Record<BillingReconciliationSection, string> = {
   allowance: "Artist Pro allowance",
   purchases: "Credit pack purchases",
   refunds: "Credit pack refunds",
+  disputes: "Card disputes",
   needs_review: "Needs review",
   subscription_invoices: "Subscription invoices",
 };

@@ -100,7 +100,8 @@ describe("ledgerReasonLabel", () => {
 describe("sectionToCsv", () => {
   const report = {
     creditPacks: { purchases: [], refunds: [], needsReview: [] },
-    heldPurchases: { openingCents: 1, purchasedCents: 2, creditedCents: 3, refundWithdrawnCents: 4, closingCents: 5, computedClosingCents: 5, balanced: true },
+    disputes: [],
+    heldPurchases: { openingCents: 1, purchasedCents: 2, creditedCents: 3, refundWithdrawnCents: 4, disputeWithdrawnCents: 0, closingCents: 5, computedClosingCents: 5, balanced: true },
     creditBalance: {
       openingCents: 10,
       grants: [{ label: "top_up", count: 1, cents: 100 }],
@@ -111,6 +112,8 @@ describe("sectionToCsv", () => {
       jobRefunds: { count: 0, cents: 0 },
       jobRefundsByReason: [],
       topUpRefundReversals: { count: 0, cents: 0 },
+      disputeHolds: { count: 0, cents: 0 },
+      disputeReleases: { count: 0, cents: 0 },
       unclassified: { count: 0 },
       closingCents: 80,
       computedClosingCents: 80,
@@ -125,6 +128,8 @@ describe("sectionToCsv", () => {
         creditPackRefunds: { count: 0, amountCents: 0 },
         needsReview: { count: 0, priceCents: 0, chargedCents: 0, chargedUnknownCount: 0 },
         subscriptionInvoices: { count: 0, amountPaidCents: 0 },
+        disputesOpened: { count: 0, withdrawnCents: 0, feeCents: 0 },
+        disputesReinstated: { count: 0, amountCents: 0 },
         netCollectedCents: 600,
       },
     ],
@@ -150,6 +155,6 @@ describe("sectionToCsv", () => {
 
   it("flattens control totals to one row per currency", () => {
     const lines = sectionToCsv(report, "control_totals").split("\r\n");
-    expect(lines[1]).toBe("usd,1,500,600,0,0,0,0,0,0,0,0,0,600");
+    expect(lines[1]).toBe("usd,1,500,600,0,0,0,0,0,0,0,0,0,600,0,0,0,0,0");
   });
 });

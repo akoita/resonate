@@ -23,6 +23,7 @@ export type StripeSubscription = Stripe.Subscription;
 export type StripeInvoice = Stripe.Invoice;
 export type StripeCheckoutSession = Stripe.Checkout.Session;
 export type StripeCharge = Stripe.Charge;
+export type StripeDisputeObject = Stripe.Dispute;
 
 export interface StripeGateway {
   createCustomer(

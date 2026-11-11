@@ -341,6 +341,17 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "alongside. Amounts, a status code and the Stripe event time only.",
   },
   {
+    model: "StripeDispute",
+    disposition: "retain",
+    reason:
+      "A billing record (#2596): one card dispute reported by Stripe (dispute, charge and payment intent ids, amount, "
+      + "reason code, state, credits paused and given back, fees), kept for the monthly billing reconciliation and for "
+      + "as long as accounting and tax rules require.",
+    note:
+      "Has no person column and no free text: a dispute over a credit pack is reached only through its CreditTopUp, "
+      + "which is retained alongside; any other dispute names no account at all.",
+  },
+  {
     model: "SubscriptionInvoice",
     disposition: "retain",
     reason:
@@ -1133,6 +1144,8 @@ export const ERASURE_RULES_BY_MODEL: Readonly<Record<string, ErasureRule>> = Obj
 export const RETAINED_BUT_NOT_EXPORTED: Readonly<Record<string, string>> = {
   CreditTopUpRefund:
     "Retained as a billing record (#2497), but not exported: it has no column naming the person and is reached only through its CreditTopUp, which is exported; it adds no personal data (amounts, a status code and the Stripe event time).",
+  StripeDispute:
+    "Retained as a billing record (#2596), but not exported: it has no column naming the person and is reached only through its CreditTopUp, which is exported; the dispute itself was raised by the person with their bank.",
   SubscriptionInvoice:
     "Retained as a billing record (#2497), but not exported: it has no column naming the person and is reached only through its Subscription, which is exported; invoices themselves are at Stripe, reachable from the Customer Portal.",
   ArtistClaimDecisionEvent:
