@@ -33,6 +33,12 @@ See `docs/features/user_manual.md` for the full authoring and screenshot guide.
 Use `window.confirm()` sparingly; prefer the shared `ConfirmDialog` component
 for consistent user experience.
 
+## Text renders as text
+
+Catalog, user and model text renders as React children only. `npm run lint`
+fails on `dangerouslySetInnerHTML`, `innerHTML`/`outerHTML`, and a markdown
+renderer imported outside `src/components/legal/` (`eslint.config.mjs`).
+
 ## Animation and idle-cost budget
 
 People leave Resonate open for hours, so an idle tab must stay cheap (#2436).
