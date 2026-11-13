@@ -11,6 +11,7 @@ import { CreditPackConfig } from "./credit_packs";
 import { CreditTopUpController } from "./credit_topup.controller";
 import { CreditTopUpService } from "./credit_topup.service";
 import { StripeWebhookController } from "./stripe_webhook.controller";
+import { StripeDisputeService } from "./stripe_dispute.service";
 import { StripeWebhookService } from "./stripe_webhook.service";
 
 /**
@@ -29,6 +30,7 @@ import { StripeWebhookService } from "./stripe_webhook.service";
     StripeWebhookService,
     { provide: CreditPackConfig, useFactory: () => new CreditPackConfig() },
     CreditTopUpService,
+    StripeDisputeService,
     BillingReconciliationService,
   ],
 })

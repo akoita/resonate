@@ -8756,6 +8756,7 @@ export function attachRemixWatermarkEvidence(
 export const BILLING_RECONCILIATION_SECTIONS = [
   "purchases",
   "refunds",
+  "disputes",
   "needs_review",
   "held_purchases",
   "credit_balance",
@@ -8798,6 +8799,32 @@ export type BillingRefundRow = {
   backfilled: boolean;
 };
 
+/** One card dispute (chargeback) reported by Stripe (#2596). */
+export type BillingDisputeRow = {
+  disputeId: string;
+  stripeDisputeId: string;
+  stripePaymentIntentId: string | null;
+  /** "credit_topup", or "other" for any other payment. */
+  kind: string;
+  creditTopUpId: string | null;
+  accountId: string | null;
+  currency: string;
+  amountCents: number;
+  reason: string | null;
+  withdrawnCents: number;
+  feeCents: number;
+  reinstatedCents: number;
+  disputedCreditsCents: number;
+  heldCreditsCents: number;
+  releasedCreditsCents: number;
+  statusBefore: string | null;
+  openedAt: string;
+  closedAt: string | null;
+  fundsReinstatedAt: string | null;
+  /** "inquiry", "open", "won" or "lost"; can still change after the month. */
+  currentStatus: string;
+};
+
 export type BillingInvoiceRow = {
   stripeInvoiceId: string;
   subscriptionId: string;
@@ -8828,6 +8855,10 @@ export type BillingCurrencyControlTotals = {
   creditPackRefunds: { count: number; amountCents: number };
   needsReview: BillingChargedTotals;
   subscriptionInvoices: { count: number; amountPaidCents: number };
+  /** Disputes opened in the month: money taken back by Stripe and its dispute fees (#2596). */
+  disputesOpened: { count: number; withdrawnCents: number; feeCents: number };
+  /** Disputes whose funds came back in the month. */
+  disputesReinstated: { count: number; amountCents: number };
   netCollectedCents: number;
 };
 
@@ -8845,12 +8876,14 @@ export type BillingReconciliationReport = {
     refunds: BillingRefundRow[];
     needsReview: BillingPurchaseRow[];
   };
+  disputes: BillingDisputeRow[];
   heldPurchases: {
     unit: "credit_cents";
     openingCents: number;
     purchasedCents: number;
     creditedCents: number;
     refundWithdrawnCents: number;
+    disputeWithdrawnCents: number;
     closingCents: number;
     computedClosingCents: number;
     balanced: boolean;
@@ -8866,6 +8899,9 @@ export type BillingReconciliationReport = {
     jobRefunds: BillingCountCents;
     jobRefundsByReason: BillingLabelledTotal[];
     topUpRefundReversals: BillingCountCents;
+    /** Credits paused for open card disputes, and paused credits given back (#2596). */
+    disputeHolds: BillingCountCents;
+    disputeReleases: BillingCountCents;
     unclassified: { count: number };
     closingCents: number;
     computedClosingCents: number;
@@ -9103,6 +9139,8 @@ export type CreditPurchase = {
   receiptRef: string | null;
   checkoutSessionId: string;
   paidAt: string;
+  /** A card dispute on this payment (#2596): open while the bank decides, lost when it refunded the buyer. */
+  dispute?: { status: "open" | "lost"; pausedCents: number } | null;
 };
 
 export type CreditTopUpState = {

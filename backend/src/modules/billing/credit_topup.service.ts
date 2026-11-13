@@ -85,6 +85,7 @@ export const CREDIT_TOPUP_ERROR_CODES = {
   unknownPack: "unknown_credit_pack",
   currencyUnavailable: "currency_unavailable",
   notHeld: "credit_purchase_not_held",
+  disputed: "credit_purchase_disputed",
   notFound: "credit_purchase_not_found",
 } as const;
 
@@ -118,6 +119,11 @@ export type CreditPurchaseView = {
   receiptRef: string | null;
   checkoutSessionId: string;
   paidAt: string;
+  /**
+   * A card dispute on this payment (#2596), or null: `open` while the bank
+   * decides (credits paused), `lost` when the bank refunded the buyer.
+   */
+  dispute: { status: "open" | "lost"; pausedCents: number } | null;
 };
 
 export type CreditTopUpState = {
@@ -176,7 +182,11 @@ function purchaseLabel(packId: string, currency: string): string {
   return creditPackLabel(pack, isBillingCurrency(currency) ? currency : DEFAULT_BILLING_CURRENCY);
 }
 
-function toPurchaseView(row: CreditTopUp): CreditPurchaseView {
+type DisputeSummary = { status: string; heldCents: number; disputedCreditsCents: number; statusBefore: string | null };
+
+function toPurchaseView(row: CreditTopUp & { disputes?: DisputeSummary[] }): CreditPurchaseView {
+  const disputes = (row.disputes ?? []).filter((dispute) => dispute.status === "open" || dispute.status === "lost");
+  const shown = disputes.find((dispute) => dispute.status === "open") ?? disputes[0] ?? null;
   return {
     id: row.id,
     packId: row.packId,
@@ -194,6 +204,12 @@ function toPurchaseView(row: CreditTopUp): CreditPurchaseView {
     receiptRef: row.stripePaymentIntentId,
     checkoutSessionId: row.stripeCheckoutSessionId,
     paidAt: row.paidAt.toISOString(),
+    dispute: shown
+      ? {
+          status: shown.status as "open" | "lost",
+          pausedCents: shown.statusBefore === "held" ? shown.disputedCreditsCents : shown.heldCents,
+        }
+      : null,
   };
 }
 
@@ -249,10 +265,24 @@ export class CreditTopUpService {
     await releaseDueTopUpHolds(userId, now);
     const [contact, purchases, held] = await Promise.all([
       prisma.contactEmail.findUnique({ where: { userId }, select: { status: true } }),
-      prisma.creditTopUp.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: PURCHASE_LIST_LIMIT }),
+      prisma.creditTopUp.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: PURCHASE_LIST_LIMIT,
+        include: {
+          disputes: {
+            select: { status: true, heldCents: true, disputedCreditsCents: true, statusBefore: true },
+            orderBy: { openedAt: "desc" },
+          },
+        },
+      }),
       prisma.creditTopUp.findMany({
         where: { userId, status: "held" },
-        select: { creditsCents: true, refundedCreditsCents: true },
+        select: {
+          creditsCents: true,
+          refundedCreditsCents: true,
+          disputes: { where: { status: "lost" }, select: { disputedCreditsCents: true } },
+        },
       }),
     ]);
     return {
@@ -267,7 +297,10 @@ export class CreditTopUpService {
         isDefault: pack.id === DEFAULT_CREDIT_PACK_ID,
       })),
       defaultPackId: DEFAULT_CREDIT_PACK_ID,
-      heldCents: held.reduce((sum, row) => sum + Math.max(0, row.creditsCents - row.refundedCreditsCents), 0),
+      heldCents: held.reduce((sum, row) => {
+        const chargedBack = row.disputes.reduce((total, dispute) => total + dispute.disputedCreditsCents, 0);
+        return sum + Math.max(0, row.creditsCents - row.refundedCreditsCents - chargedBack);
+      }, 0),
       purchases: purchases.map(toPurchaseView),
       consent: PURCHASE_CONSENT_WORDING,
     };
@@ -508,6 +541,14 @@ export class CreditTopUpService {
       throw new ConflictException({
         code: CREDIT_TOPUP_ERROR_CODES.notHeld,
         message: "These credits are not on hold any more.",
+      });
+    }
+    // #2596: a purchase under an open card dispute stays on hold until the bank decides.
+    const disputed = await prisma.stripeDispute.count({ where: { creditTopUpId: row.id, status: "open" } });
+    if (disputed > 0) {
+      throw new ConflictException({
+        code: CREDIT_TOPUP_ERROR_CODES.disputed,
+        message: "This payment is disputed with your bank, so its credits stay on hold until the dispute is closed.",
       });
     }
     const pack = findCreditPack(row.packId);

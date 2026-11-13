@@ -1,11 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
-import { TOP_UP_REASON } from "../credits/top_up_ledger";
+import { TOP_UP_DISPUTE_RELEASE_REASON, TOP_UP_REASON } from "../credits/top_up_ledger";
 import {
   BillingReconciliationReport,
   ChargedTotals,
   CountCents,
   CurrencyControlTotals,
+  DISPUTE_HOLD_REVERSAL_REASON,
+  DisputeRow,
   InvoiceRow,
   KNOWN_GRANT_REASONS,
   LabelledTotal,
@@ -43,7 +45,7 @@ export class BillingReconciliationService {
     const { start, end } = period;
     const range = { gte: start, lt: end };
 
-    const [purchaseRows, needsReviewRows, refundRows, invoiceRows] = await Promise.all([
+    const [purchaseRows, needsReviewRows, refundRows, invoiceRows, disputeRows] = await Promise.all([
       prisma.creditTopUp.findMany({
         where: { paidAt: range, status: { not: "needs_review" } },
         orderBy: [{ paidAt: "asc" }, { id: "asc" }],
@@ -63,6 +65,11 @@ export class BillingReconciliationService {
         where: { paidAt: range },
         orderBy: [{ paidAt: "asc" }, { id: "asc" }],
         include: { subscription: { select: { userId: true } } },
+      }),
+      prisma.stripeDispute.findMany({
+        where: { OR: [{ openedAt: range }, { closedAt: range }, { fundsReinstatedAt: range }] },
+        orderBy: [{ openedAt: "asc" }, { id: "asc" }],
+        include: { creditTopUp: { select: { userId: true } } },
       }),
     ]);
 
@@ -114,6 +121,29 @@ export class BillingReconciliationService {
       paidAt: i.paidAt.toISOString(),
     }));
 
+    const disputes: DisputeRow[] = disputeRows.map((d) => ({
+      disputeId: d.id,
+      stripeDisputeId: d.stripeDisputeId,
+      stripePaymentIntentId: d.stripePaymentIntentId,
+      kind: d.kind,
+      creditTopUpId: d.creditTopUpId,
+      accountId: d.creditTopUp?.userId ?? null,
+      currency: d.currency,
+      amountCents: d.amountCents,
+      reason: d.reason,
+      withdrawnCents: d.withdrawnCents,
+      feeCents: d.feeCents,
+      reinstatedCents: d.reinstatedCents,
+      disputedCreditsCents: d.disputedCreditsCents,
+      heldCreditsCents: d.heldCents,
+      releasedCreditsCents: d.releasedCents,
+      statusBefore: d.statusBefore,
+      openedAt: d.openedAt.toISOString(),
+      closedAt: d.closedAt ? d.closedAt.toISOString() : null,
+      fundsReinstatedAt: d.fundsReinstatedAt ? d.fundsReinstatedAt.toISOString() : null,
+      currentStatus: d.status,
+    }));
+
     const [heldOpening, heldClosing, heldFlows, creditBalance, allowance, integrity] = await Promise.all([
       this.heldTotals(EPOCH, start),
       this.heldTotals(EPOCH, end),
@@ -122,9 +152,11 @@ export class BillingReconciliationService {
       this.allowance(start, end, now),
       this.integrity(),
     ]);
-    const heldOpeningCents = heldOpening.purchased - heldOpening.withdrawn - heldOpening.credited;
-    const heldClosingCents = heldClosing.purchased - heldClosing.withdrawn - heldClosing.credited;
-    const heldComputed = heldOpeningCents + heldFlows.purchased - heldFlows.credited - heldFlows.withdrawn;
+    const heldAt = (t: typeof heldOpening) => t.purchased - t.withdrawn - t.chargedBack - t.credited;
+    const heldOpeningCents = heldAt(heldOpening);
+    const heldClosingCents = heldAt(heldClosing);
+    const heldComputed =
+      heldOpeningCents + heldFlows.purchased - heldFlows.credited - heldFlows.withdrawn - heldFlows.chargedBack;
 
     return {
       reportVersion: REPORT_VERSION,
@@ -134,12 +166,14 @@ export class BillingReconciliationService {
       complete: period.complete,
       generatedAt: now.toISOString(),
       creditPacks: { purchases, refunds, needsReview },
+      disputes,
       heldPurchases: {
         unit: "credit_cents",
         openingCents: heldOpeningCents,
         purchasedCents: heldFlows.purchased,
         creditedCents: heldFlows.credited,
         refundWithdrawnCents: heldFlows.withdrawn,
+        disputeWithdrawnCents: heldFlows.chargedBack,
         closingCents: heldClosingCents,
         computedClosingCents: heldComputed,
         balanced: heldComputed === heldClosingCents,
@@ -147,18 +181,24 @@ export class BillingReconciliationService {
       creditBalance,
       allowance,
       subscriptionInvoices,
-      controlTotals: this.controlTotals(purchases, needsReview, refunds, subscriptionInvoices),
+      controlTotals: this.controlTotals(purchases, needsReview, refunds, subscriptionInvoices, disputes, start, end),
       integrity,
     };
   }
 
   /**
-   * Packs paid, held-refund withdrawals and top-up ledger grants over
-   * `[from, to)`. Held = purchased - withdrawn - credited at an instant.
+   * Packs paid, held-refund withdrawals, held credits removed by a lost card
+   * dispute (#2596) and top-up ledger grants over `[from, to)`.
+   * Held = purchased - withdrawn - chargedBack - credited at an instant.
    * Needs-review packs are never credited, so they are out of the roll-forward.
    */
-  private async heldTotals(from: Date, to: Date): Promise<{ purchased: number; withdrawn: number; credited: number }> {
-    const rows = await prisma.$queryRaw<Array<{ purchased: bigint; withdrawn: bigint; credited: bigint }>>`
+  private async heldTotals(
+    from: Date,
+    to: Date,
+  ): Promise<{ purchased: number; withdrawn: number; chargedBack: number; credited: number }> {
+    const rows = await prisma.$queryRaw<
+      Array<{ purchased: bigint; withdrawn: bigint; chargedBack: bigint; credited: bigint }>
+    >`
       SELECT
         (SELECT COALESCE(SUM(p."creditsCents"), 0) FROM "CreditTopUp" p
           WHERE p."status" <> 'needs_review' AND p."paidAt" >= ${from} AND p."paidAt" < ${to})::bigint AS purchased,
@@ -166,13 +206,22 @@ export class BillingReconciliationService {
           JOIN "CreditTopUp" p ON p."id" = r."creditTopUpId"
           WHERE p."status" <> 'needs_review' AND r."statusBefore" = 'held'
             AND r."createdAt" >= ${from} AND r."createdAt" < ${to})::bigint AS withdrawn,
+        (SELECT COALESCE(SUM(d."disputedCreditsCents"), 0) FROM "StripeDispute" d
+          JOIN "CreditTopUp" p ON p."id" = d."creditTopUpId"
+          WHERE p."status" <> 'needs_review' AND d."status" = 'lost' AND d."statusBefore" = 'held'
+            AND d."closedAt" >= ${from} AND d."closedAt" < ${to})::bigint AS "chargedBack",
         (SELECT COALESCE(SUM(t."amountCents"), 0) FROM "GenerationCreditTransaction" t
           WHERE t."type" = 'grant' AND t."reason" = ${TOP_UP_REASON}
             AND t."createdAt" >= ${from} AND t."createdAt" < ${to}
             AND EXISTS (SELECT 1 FROM "CreditTopUp" p
               WHERE p."stripePaymentIntentId" = t."paymentRef" AND p."status" <> 'needs_review'))::bigint AS credited`;
     const row = rows[0];
-    return { purchased: num(row?.purchased), withdrawn: num(row?.withdrawn), credited: num(row?.credited) };
+    return {
+      purchased: num(row?.purchased),
+      withdrawn: num(row?.withdrawn),
+      chargedBack: num(row?.chargedBack),
+      credited: num(row?.credited),
+    };
   }
 
   /**
@@ -216,6 +265,7 @@ export class BillingReconciliationService {
     const spends = new Map<string, LabelledTotal>();
     const jobRefunds = new Map<string, LabelledTotal>();
     const reversals: CountCents = { count: 0, cents: 0 };
+    const disputeHolds: CountCents = { count: 0, cents: 0 };
     let unclassified = 0;
     const add = (map: Map<string, LabelledTotal>, label: string, count: number, cents: number) => {
       const entry = map.get(label) ?? { label, count: 0, cents: 0 };
@@ -232,8 +282,9 @@ export class BillingReconciliationService {
       else if (g.type === "debit") add(spends, label, count, balancePart);
       else if (g.type === "refund") add(jobRefunds, label, count, balancePart);
       else if (g.type === "reversal") {
-        reversals.count += count;
-        reversals.cents += amount;
+        const bucket = g.key === DISPUTE_HOLD_REVERSAL_REASON ? disputeHolds : reversals;
+        bucket.count += count;
+        bucket.cents += amount;
       } else unclassified += count;
     }
     const sorted = (map: Map<string, LabelledTotal>) => [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
@@ -248,19 +299,25 @@ export class BillingReconciliationService {
     const topUpGrantsCents = grantList.find((g) => g.label === "top_up")?.cents ?? 0;
     const spendTotal = totalOf(spendList);
     const refundTotal = totalOf(refundList);
-    const computed = opening + grantTotal - spendTotal.cents + refundTotal.cents - reversals.cents;
+    const release = grantList.find((g) => g.label === TOP_UP_DISPUTE_RELEASE_REASON);
+    const disputeReleases: CountCents = { count: release?.count ?? 0, cents: release?.cents ?? 0 };
+    const computed =
+      opening + grantTotal - spendTotal.cents + refundTotal.cents - reversals.cents - disputeHolds.cents;
 
     return {
       unit: "credit_cents",
       openingCents: opening,
       grants: grantList,
       topUpGrantsCents,
-      freeGrantsCents: grantTotal - topUpGrantsCents,
+      // Paused credits given back were bought, not given: they are neither a new top-up nor a free grant.
+      freeGrantsCents: grantTotal - topUpGrantsCents - disputeReleases.cents,
       spends: spendTotal,
       spendsByReason: spendList,
       jobRefunds: refundTotal,
       jobRefundsByReason: refundList,
       topUpRefundReversals: reversals,
+      disputeHolds,
+      disputeReleases,
       unclassified: { count: unclassified },
       closingCents: closing,
       computedClosingCents: computed,
@@ -312,6 +369,9 @@ export class BillingReconciliationService {
     needsReview: PurchaseRow[],
     refunds: RefundRow[],
     invoices: InvoiceRow[],
+    disputes: DisputeRow[],
+    start: Date,
+    end: Date,
   ): CurrencyControlTotals[] {
     const byCurrency = new Map<string, CurrencyControlTotals>();
     const empty = (): ChargedTotals => ({ count: 0, priceCents: 0, chargedCents: 0, chargedUnknownCount: 0 });
@@ -325,6 +385,8 @@ export class BillingReconciliationService {
           creditPackRefunds: { count: 0, amountCents: 0 },
           needsReview: empty(),
           subscriptionInvoices: { count: 0, amountPaidCents: 0 },
+          disputesOpened: { count: 0, withdrawnCents: 0, feeCents: 0 },
+          disputesReinstated: { count: 0, amountCents: 0 },
           netCollectedCents: 0,
         };
         byCurrency.set(key, e);
@@ -349,12 +411,31 @@ export class BillingReconciliationService {
       e.subscriptionInvoices.count += 1;
       e.subscriptionInvoices.amountPaidCents += i.amountPaidCents;
     }
+    const inMonth = (iso: string | null) => {
+      if (!iso) return false;
+      const at = new Date(iso).getTime();
+      return at >= start.getTime() && at < end.getTime();
+    };
+    for (const d of disputes) {
+      const e = entry(d.currency);
+      if (inMonth(d.openedAt)) {
+        e.disputesOpened.count += 1;
+        e.disputesOpened.withdrawnCents += d.withdrawnCents;
+        e.disputesOpened.feeCents += d.feeCents;
+      }
+      if (inMonth(d.fundsReinstatedAt)) {
+        e.disputesReinstated.count += 1;
+        e.disputesReinstated.amountCents += d.reinstatedCents;
+      }
+    }
     for (const e of byCurrency.values()) {
       e.netCollectedCents =
         e.creditPackPurchases.chargedCents +
         e.needsReview.chargedCents +
         e.subscriptionInvoices.amountPaidCents -
-        e.creditPackRefunds.amountCents;
+        e.creditPackRefunds.amountCents -
+        e.disputesOpened.withdrawnCents +
+        e.disputesReinstated.amountCents;
     }
     return [...byCurrency.values()].sort((a, b) => a.currency.localeCompare(b.currency));
   }

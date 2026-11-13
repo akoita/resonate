@@ -186,6 +186,7 @@ describe("BillingReconciliationService (integration)", () => {
       purchasedCents: 1300,
       creditedCents: 2500,
       refundWithdrawnCents: 80,
+      disputeWithdrawnCents: 0,
       closingCents: 720,
       computedClosingCents: 720,
       balanced: true,
@@ -298,6 +299,8 @@ describe("BillingReconciliationService (integration)", () => {
         creditPackRefunds: { count: 0, amountCents: 0 },
         needsReview: { count: 1, priceCents: 1000, chargedCents: 1200, chargedUnknownCount: 0 },
         subscriptionInvoices: { count: 1, amountPaidCents: 12000 },
+        disputesOpened: { count: 0, withdrawnCents: 0, feeCents: 0 },
+        disputesReinstated: { count: 0, amountCents: 0 },
         netCollectedCents: 13200,
       },
       {
@@ -306,6 +309,8 @@ describe("BillingReconciliationService (integration)", () => {
         creditPackRefunds: { count: 2, amountCents: 300 },
         needsReview: { count: 0, priceCents: 0, chargedCents: 0, chargedUnknownCount: 0 },
         subscriptionInvoices: { count: 1, amountPaidCents: 1200 },
+        disputesOpened: { count: 0, withdrawnCents: 0, feeCents: 0 },
+        disputesReinstated: { count: 0, amountCents: 0 },
         netCollectedCents: 2300,
       },
     ]);
@@ -408,6 +413,8 @@ describe("BillingReconciliationService (integration)", () => {
         creditPackRefunds: { count: 1, amountCents: 500 },
         needsReview: { count: 0, priceCents: 0, chargedCents: 0, chargedUnknownCount: 0 },
         subscriptionInvoices: { count: 0, amountPaidCents: 0 },
+        disputesOpened: { count: 0, withdrawnCents: 0, feeCents: 0 },
+        disputesReinstated: { count: 0, amountCents: 0 },
         netCollectedCents: 500,
       },
       {
@@ -416,6 +423,8 @@ describe("BillingReconciliationService (integration)", () => {
         creditPackRefunds: { count: 0, amountCents: 0 },
         needsReview: { count: 0, priceCents: 0, chargedCents: 0, chargedUnknownCount: 0 },
         subscriptionInvoices: { count: 0, amountPaidCents: 0 },
+        disputesOpened: { count: 0, withdrawnCents: 0, feeCents: 0 },
+        disputesReinstated: { count: 0, amountCents: 0 },
         netCollectedCents: 1080,
       },
     ]);

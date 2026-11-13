@@ -86,6 +86,15 @@ function formatDate(iso: string | null | undefined): string | null {
 
 /** One purchase's status, in the buyer's words. */
 export function describeCreditPurchase(purchase: CreditPurchase): string {
+  // #2596: a card dispute comes first, whatever the purchase's own status.
+  if (purchase.dispute?.status === "open") {
+    return purchase.status === "held"
+      ? "Payment disputed with your bank: on hold until the dispute is closed"
+      : `Payment disputed with your bank: ${formatCents(purchase.dispute.pausedCents)} of credits paused`;
+  }
+  if (purchase.dispute?.status === "lost") {
+    return `Refunded by your bank: ${formatCents(purchase.dispute.pausedCents)} of credits removed`;
+  }
   if (purchase.status === "held") {
     const date = formatDate(purchase.heldUntil);
     return date ? `On hold until ${date}` : "On hold for 14 days";
@@ -295,7 +304,11 @@ export function BuyCreditsView({
                     ) : null}
                   </div>
                 ) : (
-                  <Button variant="ghost" onClick={() => onAskRelease?.(purchase.id)} disabled={busy || Boolean(releaseId)}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => onAskRelease?.(purchase.id)}
+                    disabled={busy || Boolean(releaseId) || purchase.dispute?.status === "open"}
+                  >
                     Deliver now
                   </Button>
                 )}
@@ -507,6 +520,8 @@ export function BuyCreditsSection({
             ? "The delivery terms changed. Read them again and confirm."
             : code === "credit_purchase_not_held"
               ? "These credits are not on hold any more."
+              : code === "credit_purchase_disputed"
+                ? "This payment is disputed with your bank, so its credits stay on hold until the dispute is closed."
               : "Could not add the credits. Nothing changed; try again.",
       });
       setReleaseAcknowledged(false);
