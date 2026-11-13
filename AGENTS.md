@@ -95,6 +95,8 @@ Use these project skills:
   `codex-utilities@agent-toolkit`; never create or reassign milestone scope
   before explicit approval.
 - Any security request: `.agents/skills/auditing-resonate-security/SKILL.md`
+- Building or reworking browser UI under `web/`:
+  `.agents/skills/building-resonate-web-ui/SKILL.md`
 
 Skill architecture and runtime setup are documented in
 `docs/engineering/agent-skills.md`.
