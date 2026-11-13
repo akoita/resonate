@@ -55,6 +55,11 @@ validation commands. A concise task plan is sufficient; use `.agents/plans/`
 when multi-slice work needs durable tracking. Historical plans are context, not
 instructions for unrelated tasks.
 
+For browser UI work under `web/` (components, overlays, layout, animation,
+forms, media controls, installable-app behavior, performance, accessibility),
+read [building-resonate-web-ui](../building-resonate-web-ui/SKILL.md) before
+writing code and look up the matching guides.
+
 Apply the business-model and documentation rules linked from `AGENTS.md` when
 relevant. Proceed with authorized local work; ask only about missing decisions
 that materially affect scope or correctness. Complete a reviewable result
