@@ -50,6 +50,11 @@ export interface StripeGateway {
     id: string,
     params: Pick<Stripe.SubscriptionUpdateParams, "pause_collection" | "cancel_at_period_end">,
   ): Promise<StripeSubscription>;
+  /**
+   * The invoice a payment intent paid, or null when it paid none (#2596: a
+   * card dispute names only the payment intent).
+   */
+  findInvoiceIdForPaymentIntent(paymentIntentId: string): Promise<string | null>;
   /** Update the customer's billing email (#2430). */
   updateCustomerEmail(id: string, email: string): Promise<void>;
   /** Verifies the `Stripe-Signature` header over the raw body; throws when it does not match. */
@@ -86,6 +91,14 @@ export function createStripeGateway(config: BillingConfig): StripeGateway | null
     },
     updateSubscription(id, params) {
       return stripe.subscriptions.update(id, params);
+    },
+    async findInvoiceIdForPaymentIntent(paymentIntentId) {
+      const page = await stripe.invoicePayments.list({
+        payment: { type: "payment_intent", payment_intent: paymentIntentId },
+        limit: 1,
+      });
+      const invoice = page.data[0]?.invoice;
+      return typeof invoice === "string" ? invoice : invoice?.id ?? null;
     },
     async updateCustomerEmail(id, email) {
       await stripe.customers.update(id, { email });

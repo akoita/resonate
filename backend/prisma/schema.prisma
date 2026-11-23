@@ -10,112 +10,112 @@ datasource db {
 }
 
 model User {
-  id                          String                        @id @default(uuid())
-  email                       String                        @unique
-  createdAt                   DateTime                      @default(now())
+  id                                  String                              @id @default(uuid())
+  email                               String                              @unique
+  createdAt                           DateTime                            @default(now())
   // #1771 slice 3. Account closure and erasure anonymize in place rather than
   // deleting this row: 103 foreign keys point at `id`, and a person's financial
   // and audit history has to survive under the retention the privacy policy
   // states. `closedAt` is set when the closure completes; `erasedAt` when the
   // erasure pass that rotated `id` and scrubbed the free text finished. Both
   // null on a live account.
-  closedAt                    DateTime?
-  erasedAt                    DateTime?
+  closedAt                            DateTime?
+  erasedAt                            DateTime?
   // #2147 operator account state, enforced server-side for every mutating
   // route (see `AccountStatusInterceptor`). `suspended` ends at
   // `accountStatusUntil` when set (lazy expiry on read), else stays until an
   // operator lifts it; `closed` is an operator closure. `accountStatusChangedBy`
   // is the acting operator's user id (no relation); the free-text note an
   // operator gives lives only in the audit record.
-  accountStatus               AccountStatus                 @default(active)
-  accountStatusReason         AccountStatusReason?
-  accountStatusUntil          DateTime?
-  accountStatusChangedAt      DateTime?
-  accountStatusChangedBy      String?
-  artist                      Artist?
-  artistClaimsSubmitted       ArtistClaimRequest[]           @relation("ArtistClaimRequestClaimant")
-  artistClaimsReviewed        ArtistClaimRequest[]           @relation("ArtistClaimRequestReviewer")
-  agentConfig                 AgentConfig?
-  agentSignals                AgentSignal[]
-  agentPickNotes              AgentPickNote[]
-  purchaseConsents            PurchaseConsent[]
-  communityBadges             CommunityBadge[]
-  communityMemberships        CommunityMembership[]
-  communityCohortMemberships  CommunityCohortMembership[]
-  communityMessages           CommunityMessage[]
-  communityProfile            CommunityProfile?
-  communityRoles              CommunityRole[]
-  communityModerationReports  CommunityModerationReport[]
-  communityVisibilitySettings CommunityVisibilitySettings?
-  communityBenefitRedemptions CommunityBenefitRedemption[]
-  punchlineCollectibles       PunchlineCollectible[]
-  punchlineUnlockGrants       PunchlineUnlockGrant[]
-  recommendationProfile       RecommendationProfile?
-  tasteMemorySettings         ListenerTasteMemorySettings?
-  tasteSignalControls         ListenerTasteSignalControl[]
-  crates                      Crate[]
-  crateItems                  CrateItem[]
-  crateRequests               CrateRequest[]
-  crateQuotes                 CrateQuote[]
-  crateQuoteLines             CrateQuoteLine[]
-  crateWatchMatches           CrateWatchMatch[]
-  folders                     Folder[]
-  libraryTracks               LibraryTrack[]
-  playlists                   Playlist[]
-  savedPlaylists              SavedPlaylist[]
-  sessions                    Session[]
-  wallet                      Wallet?
-  passkeyIdentities           PasskeyIdentity[]
-  sessionKeys                 SessionKey[]
-  showCampaignEvents          ShowCampaignEvent[]           @relation("ShowCampaignEventActor")
-  showCampaignDisputes        ShowCampaignDispute[]         @relation("ShowCampaignDisputeInitiator")
-  showPledges                 ShowPledge[]
-  showPledgeDemandContexts    ShowPledgeDemandContext[]
-  artistFollows               ArtistFollow[]
-  stemQualityRatings          StemQualityRating[]
-  remixProjects               RemixProject[]
-  remixPartTakes              RemixPartTake[]
-  remixWatermarks             RemixRenderWatermark[]
-  reputationFeedbackSubmitted AgentReputationFeedback[]     @relation("AgentReputationFeedbackSubmitter")
-  generationCreditAccount     GenerationCreditAccount?
-  generationCreditTxns        GenerationCreditTransaction[]
-  generationCreditRequests    GenerationCreditRequest[]
-  creditTopUps                CreditTopUp[]
-  generationAllowanceGrants   GenerationAllowanceGrant[]
-  entitlementGrants           EntitlementGrant[]
-  subscription                Subscription?
-  generationJobOutcomes       GenerationJobOutcome[]
-  generationCostRecords       GenerationCostRecord[]
-  analyticsConsent            AnalyticsConsent?
-  analyticsConsentWithdrawals AnalyticsConsentWithdrawal[]
-  demandObservations          DemandObservation[]
-  firstListenerExposures      FirstListenerExposure[]
-  accountClosureRequests      AccountClosureRequest[]
-  artistClaimDecisionEvents   ArtistClaimDecisionEvent[]  @relation("ArtistClaimDecisionEventActor")
-  managementOwnedArtists       Artist[]                       @relation("ArtistManagementOwner")
-  managementOwnedReleases      Release[]                      @relation("ReleaseManagementOwner")
-  managementGrantsReceived     ManagementGrant[]              @relation("ManagementGrantGrantee")
-  managementGrantsSent         ManagementGrant[]              @relation("ManagementGrantInviter")
-  managementTransfersProposed  ManagementTransfer[]           @relation("ManagementTransferProposer")
-  managementTransfersReceived  ManagementTransfer[]           @relation("ManagementTransferRecipient")
+  accountStatus                       AccountStatus                       @default(active)
+  accountStatusReason                 AccountStatusReason?
+  accountStatusUntil                  DateTime?
+  accountStatusChangedAt              DateTime?
+  accountStatusChangedBy              String?
+  artist                              Artist?
+  artistClaimsSubmitted               ArtistClaimRequest[]                @relation("ArtistClaimRequestClaimant")
+  artistClaimsReviewed                ArtistClaimRequest[]                @relation("ArtistClaimRequestReviewer")
+  agentConfig                         AgentConfig?
+  agentSignals                        AgentSignal[]
+  agentPickNotes                      AgentPickNote[]
+  purchaseConsents                    PurchaseConsent[]
+  communityBadges                     CommunityBadge[]
+  communityMemberships                CommunityMembership[]
+  communityCohortMemberships          CommunityCohortMembership[]
+  communityMessages                   CommunityMessage[]
+  communityProfile                    CommunityProfile?
+  communityRoles                      CommunityRole[]
+  communityModerationReports          CommunityModerationReport[]
+  communityVisibilitySettings         CommunityVisibilitySettings?
+  communityBenefitRedemptions         CommunityBenefitRedemption[]
+  punchlineCollectibles               PunchlineCollectible[]
+  punchlineUnlockGrants               PunchlineUnlockGrant[]
+  recommendationProfile               RecommendationProfile?
+  tasteMemorySettings                 ListenerTasteMemorySettings?
+  tasteSignalControls                 ListenerTasteSignalControl[]
+  crates                              Crate[]
+  crateItems                          CrateItem[]
+  crateRequests                       CrateRequest[]
+  crateQuotes                         CrateQuote[]
+  crateQuoteLines                     CrateQuoteLine[]
+  crateWatchMatches                   CrateWatchMatch[]
+  folders                             Folder[]
+  libraryTracks                       LibraryTrack[]
+  playlists                           Playlist[]
+  savedPlaylists                      SavedPlaylist[]
+  sessions                            Session[]
+  wallet                              Wallet?
+  passkeyIdentities                   PasskeyIdentity[]
+  sessionKeys                         SessionKey[]
+  showCampaignEvents                  ShowCampaignEvent[]                 @relation("ShowCampaignEventActor")
+  showCampaignDisputes                ShowCampaignDispute[]               @relation("ShowCampaignDisputeInitiator")
+  showPledges                         ShowPledge[]
+  showPledgeDemandContexts            ShowPledgeDemandContext[]
+  artistFollows                       ArtistFollow[]
+  stemQualityRatings                  StemQualityRating[]
+  remixProjects                       RemixProject[]
+  remixPartTakes                      RemixPartTake[]
+  remixWatermarks                     RemixRenderWatermark[]
+  reputationFeedbackSubmitted         AgentReputationFeedback[]           @relation("AgentReputationFeedbackSubmitter")
+  generationCreditAccount             GenerationCreditAccount?
+  generationCreditTxns                GenerationCreditTransaction[]
+  generationCreditRequests            GenerationCreditRequest[]
+  creditTopUps                        CreditTopUp[]
+  generationAllowanceGrants           GenerationAllowanceGrant[]
+  entitlementGrants                   EntitlementGrant[]
+  subscription                        Subscription?
+  generationJobOutcomes               GenerationJobOutcome[]
+  generationCostRecords               GenerationCostRecord[]
+  analyticsConsent                    AnalyticsConsent?
+  analyticsConsentWithdrawals         AnalyticsConsentWithdrawal[]
+  demandObservations                  DemandObservation[]
+  firstListenerExposures              FirstListenerExposure[]
+  accountClosureRequests              AccountClosureRequest[]
+  artistClaimDecisionEvents           ArtistClaimDecisionEvent[]          @relation("ArtistClaimDecisionEventActor")
+  managementOwnedArtists              Artist[]                            @relation("ArtistManagementOwner")
+  managementOwnedReleases             Release[]                           @relation("ReleaseManagementOwner")
+  managementGrantsReceived            ManagementGrant[]                   @relation("ManagementGrantGrantee")
+  managementGrantsSent                ManagementGrant[]                   @relation("ManagementGrantInviter")
+  managementTransfersProposed         ManagementTransfer[]                @relation("ManagementTransferProposer")
+  managementTransfersReceived         ManagementTransfer[]                @relation("ManagementTransferRecipient")
   managementRecoveryRequestsSubmitted ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryRequester")
   managementRecoveryRequestsReviewed  ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryReviewer")
-  noticesReceived             Notice[]                      @relation("NoticeRecipient")
-  noticeReads                 NoticeRead[]
-  contactEmail                ContactEmail?
-  emailDeliveries             EmailDelivery[]
+  noticesReceived                     Notice[]                            @relation("NoticeRecipient")
+  noticeReads                         NoticeRead[]
+  contactEmail                        ContactEmail?
+  emailDeliveries                     EmailDelivery[]
   // #2166 operational activity for account administration (legitimate interest):
   // the last sign-in and the last authenticated request, the latter written at
   // most about once an hour per person (`UserActivityService`). Shown to
   // operators to the day only; cleared on erasure.
-  lastSignInAt                DateTime?
-  lastActiveAt                DateTime?
+  lastSignInAt                        DateTime?
+  lastActiveAt                        DateTime?
   // #2169: per-account limit on confirmation emails sent to typed-in addresses.
   // Kept on the user, not on `ContactEmail`, so removing and re-adding the
   // address does not reset it. Cleared on erasure.
-  confirmationSendCount       Int       @default(0)
-  confirmationWindowStartedAt DateTime?
-  lastConfirmationSentAt      DateTime?
+  confirmationSendCount               Int                                 @default(0)
+  confirmationWindowStartedAt         DateTime?
+  lastConfirmationSentAt              DateTime?
 
   @@index([lastActiveAt])
   @@index([lastSignInAt])
@@ -234,17 +234,17 @@ model GenerationCreditTransaction {
 // Bought credits carry no expiry (the RFC promises at least 24 months).
 // A billing record: kept on erasure for accounting, holds no card data.
 model CreditTopUp {
-  id                      String    @id @default(uuid())
+  id                      String              @id @default(uuid())
   userId                  String
   packId                  String
   /// What the pack cost, in cents of `currency` (the catalogue price: before tax in USD, VAT included in EUR; #2496).
   priceCents              Int
   /// The currency paid: usd or eur (another value only on a needs_review row).
-  currency                String    @default("usd")
+  currency                String              @default("usd")
   /// Generation credits the pack buys, in USD cents, at face value in either currency.
   creditsCents            Int
-  stripeCheckoutSessionId String    @unique
-  stripePaymentIntentId   String?   @unique
+  stripeCheckoutSessionId String              @unique
+  stripePaymentIntentId   String?             @unique
   /// The `credit_topup` PurchaseConsent recorded before the Checkout Session.
   consentId               String?
   /// deliver_now | wait (no consent found counts as wait).
@@ -255,20 +255,20 @@ model CreditTopUp {
   /// consent (deliver now at checkout) | hold_elapsed | deliver_now_later.
   releaseBasis            String?
   /// Credits added to the ledger by this purchase.
-  creditedCents           Int       @default(0)
+  creditedCents           Int                 @default(0)
   /// Cumulative amount refunded at Stripe (`charge.amount_refunded`), in cents.
-  refundedAmountCents     Int       @default(0)
+  refundedAmountCents     Int                 @default(0)
   /// The share of the credits the refunds withdraw.
-  refundedCreditsCents    Int       @default(0)
+  refundedCreditsCents    Int                 @default(0)
   /// Credits actually taken back from the balance for those refunds.
-  reversedCents           Int       @default(0)
+  reversedCents           Int                 @default(0)
   /// #2497: what the buyer was charged, tax included (`session.amount_total`),
   /// in the minor unit of `currency`. Null on purchases recorded before #2497.
   amountTotalCents        Int?
   paidAt                  DateTime
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   refunds                 CreditTopUpRefund[]
   disputes                StripeDispute[]
 
@@ -316,42 +316,46 @@ model CreditTopUpRefund {
 // nothing else. No person column and no free text: Stripe ids, codes, amounts
 // and times only.
 model StripeDispute {
-  id                    String       @id @default(uuid())
-  stripeDisputeId       String       @unique
+  id                    String               @id @default(uuid())
+  stripeDisputeId       String               @unique
   stripeChargeId        String?
   stripePaymentIntentId String?
-  /// credit_topup | other
+  /// credit_topup | subscription_invoice | other
   kind                  String
   creditTopUpId         String?
+  /// #2596: the Artist Pro invoice the disputed payment paid, when it is one.
+  subscriptionInvoiceId String?
   currency              String
   /// The disputed amount, in the minor unit of `currency`.
   amountCents           Int
   /// Stripe's reason code (fraudulent, product_not_received, …).
-  reason                String?      @db.VarChar(64)
+  reason                String?              @db.VarChar(64)
   /// inquiry | open | won | lost
   status                String
   /// The purchase status when the hold was decided: held | credited | needs_review | refunded.
   statusBefore          String?
   /// The share of the pack's credits the disputed amount covers.
-  disputedCreditsCents  Int          @default(0)
+  disputedCreditsCents  Int                  @default(0)
   /// Credits taken out of the balance while the dispute is open.
-  heldCents             Int          @default(0)
+  heldCents             Int                  @default(0)
   /// Credits put back after a won dispute.
-  releasedCents         Int          @default(0)
+  releasedCents         Int                  @default(0)
   /// When the pause was applied; null for an inquiry or a dispute that closed before it was seen open.
   holdAppliedAt         DateTime?
   /// Money Stripe took back for the dispute, the fees it charged (net of fees returned) and money it gave back.
-  withdrawnCents        Int          @default(0)
-  feeCents              Int          @default(0)
-  reinstatedCents       Int          @default(0)
+  withdrawnCents        Int                  @default(0)
+  feeCents              Int                  @default(0)
+  reinstatedCents       Int                  @default(0)
   openedAt              DateTime
   closedAt              DateTime?
   fundsReinstatedAt     DateTime?
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
-  creditTopUp           CreditTopUp? @relation(fields: [creditTopUpId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  creditTopUp           CreditTopUp?         @relation(fields: [creditTopUpId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  subscriptionInvoice   SubscriptionInvoice? @relation(fields: [subscriptionInvoiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([creditTopUpId, status])
+  @@index([subscriptionInvoiceId, status])
   @@index([openedAt])
   @@index([closedAt])
   @@index([fundsReinstatedAt])
@@ -454,18 +458,18 @@ enum EntitlementGrantSource {
 // overwrites a newer state. A billing record: kept on erasure for accounting
 // (the row keeps no card data; Stripe holds the payment details).
 model Subscription {
-  id                   String                @id @default(uuid())
-  userId               String                @unique
-  provider             SubscriptionProvider  @default(stripe)
-  stripeCustomerId     String                @unique
+  id                   String                     @id @default(uuid())
+  userId               String                     @unique
+  provider             SubscriptionProvider       @default(stripe)
+  stripeCustomerId     String                     @unique
   /// Null until the checkout completes.
-  stripeSubscriptionId String?               @unique
-  plan                 SubscriptionPlan      @default(pro)
+  stripeSubscriptionId String?                    @unique
+  plan                 SubscriptionPlan           @default(pro)
   interval             SubscriptionInterval
-  status               SubscriptionStatus    @default(incomplete)
+  status               SubscriptionStatus         @default(incomplete)
   currentPeriodStart   DateTime?
   currentPeriodEnd     DateTime?
-  cancelAtPeriodEnd    Boolean               @default(false)
+  cancelAtPeriodEnd    Boolean                    @default(false)
   /// When the subscription first went past due; the 7-day grace runs from here.
   pastDueSince         DateTime?
   /// `created` of the last Stripe event applied to this row.
@@ -477,17 +481,21 @@ model Subscription {
   /// #2430: when Stripe confirmed the cancellation. Erasure does not run before this is set.
   endConfirmedAt       DateTime?
   /// #2430: cancellation attempts made, and the last failure as a short code (never a message or a payload).
-  endAttempts          Int                   @default(0)
-  endLastError         String?               @db.VarChar(64)
+  endAttempts          Int                        @default(0)
+  endLastError         String?                    @db.VarChar(64)
   /// #2430: when Stripe confirmed that collection is paused for an account suspension; null while collecting.
   collectionPausedAt   DateTime?
   /// #2430: the self-service closure request whose period-end cancellation was set at Stripe.
   closureRequestId     String?
   /// #2430: the confirmed contact address changed and the Stripe customer email is not updated yet.
-  billingEmailStale    Boolean               @default(false)
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  billingEmailStale    Boolean                    @default(false)
+  /// #2596: while set and in the future, no Pro: the paid period of an invoice
+  /// under an open or lost card dispute grants nothing. Recomputed from the
+  /// disputes on every dispute event.
+  disputeHoldUntil     DateTime?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  user                 User                       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   allowanceGrants      GenerationAllowanceGrant[]
   invoices             SubscriptionInvoice[]
 
@@ -523,6 +531,7 @@ model SubscriptionInvoice {
   paidAt                  DateTime
   createdAt               DateTime             @default(now())
   subscription            Subscription         @relation(fields: [subscriptionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  disputes                StripeDispute[]
 
   @@index([paidAt])
   @@index([subscriptionId, paidAt])
@@ -627,25 +636,25 @@ model GenerationCostRecord {
 }
 
 model Wallet {
-  id               String  @id @default(uuid())
-  userId           String  @unique
-  address          String
-  chainId          Int
-  balanceUsd       Float   @default(0)
-  monthlyCapUsd    Float   @default(0)
-  spentUsd         Float   @default(0)
-  accountType      String  @default("local")
-  provider         String  @default("local")
-  ownerAddress     String?
-  entryPoint       String?
-  factory          String?
-  paymaster        String?
-  bundler          String?
-  salt             String?
-  deploymentTxHash String?
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  address           String
+  chainId           Int
+  balanceUsd        Float     @default(0)
+  monthlyCapUsd     Float     @default(0)
+  spentUsd          Float     @default(0)
+  accountType       String    @default("local")
+  provider          String    @default("local")
+  ownerAddress      String?
+  entryPoint        String?
+  factory           String?
+  paymaster         String?
+  bundler           String?
+  salt              String?
+  deploymentTxHash  String?
   /// Set when sign-in (/auth/verify) wrote `address`; refresh never overwrites a verified address (#2023).
   addressVerifiedAt DateTime?
-  user             User    @relation(fields: [userId], references: [id])
+  user              User      @relation(fields: [userId], references: [id])
 }
 
 model CommunityProfile {
@@ -1019,7 +1028,7 @@ model Artist {
   managementOwner           User?                         @relation("ArtistManagementOwner", fields: [managementOwnerUserId], references: [id], onDelete: Restrict)
   releases                  Release[]
   releaseCredits            ReleaseArtistCredit[]
-  claimRequests              ArtistClaimRequest[]
+  claimRequests             ArtistClaimRequest[]
   creatorTrust              CreatorTrust?
   rightsUpgradeRequests     ReleaseRightsUpgradeRequest[]
   showCampaigns             ShowCampaign[]
@@ -1104,20 +1113,20 @@ enum ManagementTransferRecoveryStatus {
 }
 
 model ArtistClaimRequest {
-  id             String                    @id @default(uuid())
+  id             String                     @id @default(uuid())
   artistId       String
   claimantUserId String
   // Required when submitted; nullable only so account erasure can scrub it.
-  evidence       String?                   @db.Text
-  status         ArtistClaimRequestStatus  @default(pending)
+  evidence       String?                    @db.Text
+  status         ArtistClaimRequestStatus   @default(pending)
   reviewerUserId String?
-  reviewNote     String?                   @db.Text
+  reviewNote     String?                    @db.Text
   reviewedAt     DateTime?
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
-  artist         Artist                    @relation(fields: [artistId], references: [id], onDelete: Cascade)
-  claimant       User                      @relation("ArtistClaimRequestClaimant", fields: [claimantUserId], references: [id], onDelete: Cascade)
-  reviewer       User?                     @relation("ArtistClaimRequestReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  artist         Artist                     @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  claimant       User                       @relation("ArtistClaimRequestClaimant", fields: [claimantUserId], references: [id], onDelete: Cascade)
+  reviewer       User?                      @relation("ArtistClaimRequestReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
   decisionEvents ArtistClaimDecisionEvent[]
 
   @@index([claimantUserId, createdAt])
@@ -1125,71 +1134,71 @@ model ArtistClaimRequest {
 }
 
 model ArtistClaimDecisionEvent {
-  id          String               @id @default(uuid())
+  id          String              @id @default(uuid())
   claimId     String
   actorUserId String?
   decision    ArtistClaimDecision
-  note        String?              @db.Text
-  createdAt   DateTime             @default(now())
-  claim       ArtistClaimRequest   @relation(fields: [claimId], references: [id], onDelete: Cascade)
-  actor       User?                @relation("ArtistClaimDecisionEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  note        String?             @db.Text
+  createdAt   DateTime            @default(now())
+  claim       ArtistClaimRequest  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  actor       User?               @relation("ArtistClaimDecisionEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([claimId, createdAt])
   @@index([actorUserId])
 }
 
 model Release {
-  id                     String                        @id @default(uuid())
-  artistId               String
-  managementOwnerUserId  String?
-  title                  String
-  status                 String                        @default("processing")
-  processingError        String?                       @db.Text
+  id                          String                        @id @default(uuid())
+  artistId                    String
+  managementOwnerUserId       String?
+  title                       String
+  status                      String                        @default("processing")
+  processingError             String?                       @db.Text
   // #1793 withdrawal: a withdrawn release keeps existing (purchases, library and
   // playlist references survive); only its streaming licence is suspended.
-  withdrawnAt            DateTime?
-  withdrawalReason       String?                       @db.Text
-  statusBeforeWithdrawal String?
+  withdrawnAt                 DateTime?
+  withdrawalReason            String?                       @db.Text
+  statusBeforeWithdrawal      String?
   // #2601 source hold: set when the platform, not the owner, withdrew a
   // published remix because its source stopped being remixable
   // (source_consent_revoked, source_withdrawn, source_under_review,
   // source_removed). Null for an owner's own withdrawal. Cleared, and the
   // release restored, when the cause is lifted.
-  sourceHoldReason       String?
-  type                   String                        @default("single")
-  primaryArtist          String?
-  featuredArtists        String?
-  genre                  String?
-  moods                  String[]                      @default([])
-  label                  String?
-  releaseDate            DateTime?
-  explicit               Boolean                       @default(false)
-  createdAt              DateTime                      @default(now())
-  artworkUrl             String?
-  artworkData            Bytes?
-  artworkMimeType        String?
-  artworkRevision        Int                           @default(1)
-  attestation            String?                       @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
-  attestationSignature   String?                       @db.Text // Wallet signature of the attestation
-  rightsRoute            String?
-  rightsFlags            Json?
-  rightsReason           String?                       @db.Text
-  rightsPolicyVersion    String?
-  rightsSourceType       String?
-  rightsEvaluatedAt      DateTime?
+  sourceHoldReason            String?
+  type                        String                        @default("single")
+  primaryArtist               String?
+  featuredArtists             String?
+  genre                       String?
+  moods                       String[]                      @default([])
+  label                       String?
+  releaseDate                 DateTime?
+  explicit                    Boolean                       @default(false)
+  createdAt                   DateTime                      @default(now())
+  artworkUrl                  String?
+  artworkData                 Bytes?
+  artworkMimeType             String?
+  artworkRevision             Int                           @default(1)
+  attestation                 String?                       @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
+  attestationSignature        String?                       @db.Text // Wallet signature of the attestation
+  rightsRoute                 String?
+  rightsFlags                 Json?
+  rightsReason                String?                       @db.Text
+  rightsPolicyVersion         String?
+  rightsSourceType            String?
+  rightsEvaluatedAt           DateTime?
   /// Monotonic first-listener placement budget; retained when listener rows are erased.
-  firstListenerPlacementsUsed Int                     @default(0)
-  artist                 Artist                        @relation(fields: [artistId], references: [id])
-  managementOwner        User?                         @relation("ReleaseManagementOwner", fields: [managementOwnerUserId], references: [id], onDelete: Restrict)
-  artistCredits          ReleaseArtistCredit[]
-  tracks                 Track[]
-  managementGrants       ManagementGrant[]
-  rightsUpgradeRequests  ReleaseRightsUpgradeRequest[]
-  rightsReassessments    RightsRouteReassessment[]
-  firstListenerExposures FirstListenerExposure[]
-  publishedRemixProject  RemixProject?                 @relation("RemixProjectPublishedRelease")
-  sceneScoutCityDemand   SceneScoutCityDemand[]
-  sourceShowCampaigns    ShowCampaign[]                @relation("ShowCampaignSourceRelease")
+  firstListenerPlacementsUsed Int                           @default(0)
+  artist                      Artist                        @relation(fields: [artistId], references: [id])
+  managementOwner             User?                         @relation("ReleaseManagementOwner", fields: [managementOwnerUserId], references: [id], onDelete: Restrict)
+  artistCredits               ReleaseArtistCredit[]
+  tracks                      Track[]
+  managementGrants            ManagementGrant[]
+  rightsUpgradeRequests       ReleaseRightsUpgradeRequest[]
+  rightsReassessments         RightsRouteReassessment[]
+  firstListenerExposures      FirstListenerExposure[]
+  publishedRemixProject       RemixProject?                 @relation("RemixProjectPublishedRelease")
+  sceneScoutCityDemand        SceneScoutCityDemand[]
+  sourceShowCampaigns         ShowCampaign[]                @relation("ShowCampaignSourceRelease")
 
   @@index([rightsRoute])
   @@index([artistId])
@@ -1222,19 +1231,19 @@ model ManagementGrant {
 }
 
 model ManagementTransfer {
-  id              String                  @id @default(uuid())
-  proposerUserId  String
-  recipientUserId String
-  resourceType    ManagementResourceType
-  resourceIds     String[]
-  status          ManagementTransferStatus @default(pending)
-  expiresAt       DateTime?
-  acceptedAt      DateTime?
-  cancelledAt     DateTime?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  proposer        User                    @relation("ManagementTransferProposer", fields: [proposerUserId], references: [id], onDelete: Restrict)
-  recipient       User                    @relation("ManagementTransferRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  id               String                              @id @default(uuid())
+  proposerUserId   String
+  recipientUserId  String
+  resourceType     ManagementResourceType
+  resourceIds      String[]
+  status           ManagementTransferStatus            @default(pending)
+  expiresAt        DateTime?
+  acceptedAt       DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime                            @default(now())
+  updatedAt        DateTime                            @updatedAt
+  proposer         User                                @relation("ManagementTransferProposer", fields: [proposerUserId], references: [id], onDelete: Restrict)
+  recipient        User                                @relation("ManagementTransferRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
   recoveryRequests ManagementTransferRecoveryRequest[]
 
   @@index([proposerUserId, status, createdAt])
@@ -1257,7 +1266,7 @@ model ManagementTransferRecoveryRequest {
   createdAt       DateTime                         @default(now())
   reviewedAt      DateTime?
   updatedAt       DateTime                         @updatedAt
-  transfer        ManagementTransfer              @relation(fields: [transferId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  transfer        ManagementTransfer               @relation(fields: [transferId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   requester       User                             @relation("ManagementTransferRecoveryRequester", fields: [requesterUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   reviewer        User?                            @relation("ManagementTransferRecoveryReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
@@ -1268,20 +1277,20 @@ model ManagementTransferRecoveryRequest {
 }
 
 model ReleaseArtistCredit {
-  id             String   @id @default(uuid())
-  releaseId      String
-  artistId       String
-  role           String
-  displayName    String
-  identityStatus String   @default("inferred") // selected, created, inferred, ambiguous, reviewed
-  identityReviewedAt DateTime?
+  id                     String    @id @default(uuid())
+  releaseId              String
+  artistId               String
+  role                   String
+  displayName            String
+  identityStatus         String    @default("inferred") // selected, created, inferred, ambiguous, reviewed
+  identityReviewedAt     DateTime?
   identityReviewerUserId String?
-  identityReviewNote String? @db.Text
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  release        Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
-  artist         Artist   @relation(fields: [artistId], references: [id])
+  identityReviewNote     String?   @db.Text
+  sortOrder              Int       @default(0)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  release                Release   @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  artist                 Artist    @relation(fields: [artistId], references: [id])
 
   @@unique([releaseId, role, artistId, sortOrder])
   @@index([artistId, role])
@@ -1290,50 +1299,50 @@ model ReleaseArtistCredit {
 }
 
 model Track {
-  id                   String            @id @default(uuid())
-  title                String
-  isrc                 String?
-  explicit             Boolean           @default(false)
-  createdAt            DateTime          @default(now())
-  position             Int               @default(1)
-  releaseId            String
-  artist               String?
-  processingStatus     String            @default("pending") // pending, processing, complete, failed
-  processingError      String?           @db.Text
-  activeAudioRevision  String?
-  pendingAudioRevision String?
-  audioReplacementStatus String?
-  audioReplacementError String?          @db.Text
-  pendingAudioFingerprint String?        @db.Text
-  pendingAudioFingerprintHash String?
+  id                              String            @id @default(uuid())
+  title                           String
+  isrc                            String?
+  explicit                        Boolean           @default(false)
+  createdAt                       DateTime          @default(now())
+  position                        Int               @default(1)
+  releaseId                       String
+  artist                          String?
+  processingStatus                String            @default("pending") // pending, processing, complete, failed
+  processingError                 String?           @db.Text
+  activeAudioRevision             String?
+  pendingAudioRevision            String?
+  audioReplacementStatus          String?
+  audioReplacementError           String?           @db.Text
+  pendingAudioFingerprint         String?           @db.Text
+  pendingAudioFingerprintHash     String?
   pendingAudioFingerprintDuration Float?
-  processingStartedAt  DateTime?
-  lastProgressAt       DateTime?
-  contentStatus        String            @default("clean") // clean, quarantined, dmca_removed
-  generationMetadata   Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
-  aiDisclosureLevel    AiDisclosureLevel @default(UNDECLARED)
-  aiContributionFacets String[]          @default([])
-  aiDisclosureSource   String            @default("migration")
-  aiDisclosureVersion  String?
-  aiDeclaredAt         DateTime?
-  licenses             License[]
-  agentSignals         AgentSignal[]
-  stems                Stem[]
-  embedding            TrackEmbedding?
-  descriptor           TrackDescriptor?
-  crateItems           CrateItem[]
-  fingerprint          AudioFingerprint?
-  dmcaReports          DmcaReport[]
-  release              Release           @relation(fields: [releaseId], references: [id])
-  remixProjects        RemixProject[]
+  processingStartedAt             DateTime?
+  lastProgressAt                  DateTime?
+  contentStatus                   String            @default("clean") // clean, quarantined, dmca_removed
+  generationMetadata              Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
+  aiDisclosureLevel               AiDisclosureLevel @default(UNDECLARED)
+  aiContributionFacets            String[]          @default([])
+  aiDisclosureSource              String            @default("migration")
+  aiDisclosureVersion             String?
+  aiDeclaredAt                    DateTime?
+  licenses                        License[]
+  agentSignals                    AgentSignal[]
+  stems                           Stem[]
+  embedding                       TrackEmbedding?
+  descriptor                      TrackDescriptor?
+  crateItems                      CrateItem[]
+  fingerprint                     AudioFingerprint?
+  dmcaReports                     DmcaReport[]
+  release                         Release           @relation(fields: [releaseId], references: [id])
+  remixProjects                   RemixProject[]
   // Mashups (#2558): projects that use this track as their second source.
-  secondaryRemixProjects RemixProject[] @relation("RemixProjectSecondarySource")
-  punchlineDrops       PunchlineDrop[]
-  rightsRoute          String?
-  rightsFlags          Json?
-  rightsReason         String?           @db.Text
-  rightsPolicyVersion  String?
-  rightsEvaluatedAt    DateTime?
+  secondaryRemixProjects          RemixProject[]    @relation("RemixProjectSecondarySource")
+  punchlineDrops                  PunchlineDrop[]
+  rightsRoute                     String?
+  rightsFlags                     Json?
+  rightsReason                    String?           @db.Text
+  rightsPolicyVersion             String?
+  rightsEvaluatedAt               DateTime?
 
   @@index([rightsRoute])
   @@index([aiDisclosureLevel])
@@ -1394,44 +1403,44 @@ model TrackDescriptor {
 }
 
 model Stem {
-  id                 String              @id @default(uuid())
-  trackId            String
-  audioRevision      String?
-  isCurrent          Boolean             @default(true)
-  type               String
-  uri                String
-  ipnftId            String?
-  checksum           String?
-  artist             String?
-  artworkUrl         String?
-  title              String?
-  data               Bytes?
-  mimeType           String?
-  durationSeconds    Float?
+  id                        String              @id @default(uuid())
+  trackId                   String
+  audioRevision             String?
+  isCurrent                 Boolean             @default(true)
+  type                      String
+  uri                       String
+  ipnftId                   String?
+  checksum                  String?
+  artist                    String?
+  artworkUrl                String?
+  title                     String?
+  data                      Bytes?
+  mimeType                  String?
+  durationSeconds           Float?
   // Where the audio of a stem comes from (#1976, ADR-TE-7): `separated` by the
   // ingestion worker from the uploaded mix, or `official`, uploaded by the
   // artist. Null for the full-mix rows (`original`, remix `master`), which are
   // not stems a buyer licenses. `separationModel` names the model of a
   // separated stem (for example `demucs-htdemucs-6s`); null otherwise.
-  source             StemSource?
-  separationModel    String?
+  source                    StemSource?
+  separationModel           String?
   // Measured musical features (tempo/key/beats/energy) extracted by the
   // demucs worker (#1184). The JSON carries its own schemaVersion.
-  audioFeatures      Json?
+  audioFeatures             Json?
   // Audio-feature backfill failures (#2012): last failed attempt and the
   // failure count; both reset when features are written.
   audioFeaturesFailedAt     DateTime?
-  audioFeaturesFailureCount Int       @default(0)
-  encryptionMetadata String?
-  isEncrypted        Boolean             @default(false)
-  storageProvider    String              @default("local")
-  track              Track               @relation(fields: [trackId], references: [id])
-  listings           StemListing[]
-  nftMint            StemNftMint?
-  pricing            StemPricing?
-  qualityRatings     StemQualityRating[]
-  remixProjectStems  RemixProjectStem[]
-  x402Settlements    X402Settlement[]
+  audioFeaturesFailureCount Int                 @default(0)
+  encryptionMetadata        String?
+  isEncrypted               Boolean             @default(false)
+  storageProvider           String              @default("local")
+  track                     Track               @relation(fields: [trackId], references: [id])
+  listings                  StemListing[]
+  nftMint                   StemNftMint?
+  pricing                   StemPricing?
+  qualityRatings            StemQualityRating[]
+  remixProjectStems         RemixProjectStem[]
+  x402Settlements           X402Settlement[]
 
   @@index([trackId, isCurrent])
   @@index([source])
@@ -1739,62 +1748,62 @@ model X402Settlement {
 }
 
 model RemixProject {
-  id                 String             @id @default(uuid())
-  creatorUserId      String
-  sourceTrackId      String
-  title              String
-  status             String             @default("draft") // draft, archived, published
-  mode               String             @default("stem_mix") // stem_mix, variation, extension
-  licenseType        LicenseType        @default(remix)
-  licenseId          String?
-  prompt             String?            @db.Text
-  generationProvider String?
-  generationJobId    String?
-  generationMetadata Json?
-  attribution        String?            @db.Text
-  exportPolicy       Json?
+  id                     String             @id @default(uuid())
+  creatorUserId          String
+  sourceTrackId          String
+  title                  String
+  status                 String             @default("draft") // draft, archived, published
+  mode                   String             @default("stem_mix") // stem_mix, variation, extension
+  licenseType            LicenseType        @default(remix)
+  licenseId              String?
+  prompt                 String?            @db.Text
+  generationProvider     String?
+  generationJobId        String?
+  generationMetadata     Json?
+  attribution            String?            @db.Text
+  exportPolicy           Json?
   // Variation AI target (#1882): { kind: "add_layer" | "replace_stem",
   // stemId: string | null }; null means the whole-track default.
-  aiTarget           Json?
+  aiTarget               Json?
   // Shared effects recipe (#1897): remix-fx/v1 { schemaVersion, master?,
   // stems? }; null means untouched (no effects applied at render time).
-  effects            Json?
+  effects                Json?
   // Structure blocks (#1899): remix-structure/v1 { schemaVersion, blocks:
   // [{ section, fadeIn?, fadeOut? }] }; null means the original order.
-  structure          Json?
+  structure              Json?
   // Beat maker (#1902): remix-beat/v1 { schemaVersion, kit, pattern, swing,
   // gainDb, blocks }; null means no beat.
-  beat               Json?
+  beat                   Json?
   // AI part lanes (#1901): remix-parts/v1 { schemaVersion, parts: [{ id,
   // role, takeId, gainDb?, muted?, blocks? }] }; null means no parts.
-  parts              Json?
+  parts                  Json?
   // Grid correction (#2539): remix-grid-override/v1 { schemaVersion,
   // tempoBpm, firstBeatSec }; null means the measured grid. Never rewrites
   // the stems' measured audio features.
-  gridOverride       Json?
+  gridOverride           Json?
   // Cue and loop points (#2540): remix-cues/v1 { schemaVersion, intro,
   // outro } with { startBar, bars, repeats } in timeline bars; null = none.
-  cues               Json?
+  cues                   Json?
   // Automation lanes (#2541): remix-automation/v1 { schemaVersion, stems:
   // { [stemId]: { level?, filter? } } } with { bar, value } points; null = none.
-  automation         Json?
+  automation             Json?
   // Mashups (#2558): a second source track B, conformed to the leading
   // source A (`sourceTrackId`); null for a single-source project. B's stems
   // are checked against B's own rights (docs/rfc/remix-mashups.md).
   secondarySourceTrackId String?
   // remix-mashup/v1 { schemaVersion, secondary: { tempoRatio, semitones,
   // offsetBars, firstBeatSec? } }; null = B unconformed, or no B.
-  mashup             Json?
-  policyVersion      String
-  publishedReleaseId String?            @unique
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  creator            User               @relation(fields: [creatorUserId], references: [id])
-  sourceTrack        Track              @relation(fields: [sourceTrackId], references: [id])
-  secondarySourceTrack Track?           @relation("RemixProjectSecondarySource", fields: [secondarySourceTrackId], references: [id], onDelete: SetNull)
-  publishedRelease   Release?           @relation("RemixProjectPublishedRelease", fields: [publishedReleaseId], references: [id])
-  stems              RemixProjectStem[]
-  partTakes          RemixPartTake[]
+  mashup                 Json?
+  policyVersion          String
+  publishedReleaseId     String?            @unique
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  creator                User               @relation(fields: [creatorUserId], references: [id])
+  sourceTrack            Track              @relation(fields: [sourceTrackId], references: [id])
+  secondarySourceTrack   Track?             @relation("RemixProjectSecondarySource", fields: [secondarySourceTrackId], references: [id], onDelete: SetNull)
+  publishedRelease       Release?           @relation("RemixProjectPublishedRelease", fields: [publishedReleaseId], references: [id])
+  stems                  RemixProjectStem[]
+  partTakes              RemixPartTake[]
 
   @@index([creatorUserId, createdAt])
   @@index([sourceTrackId])
@@ -1859,9 +1868,9 @@ model RemixProjectStem {
 // up here. The token never encodes a person. On account erasure the row is
 // kept and the owner pseudonymised through the `userId` cascade.
 model RemixRenderWatermark {
-  id                     String   @id @default(uuid())
+  id                     String                    @id @default(uuid())
   // 32 lowercase hex characters (the audiowmark payload).
-  token                  String   @unique
+  token                  String                    @unique
   remixProjectId         String
   // The queued generation job and the render job that produced the audio.
   generationJobId        String
@@ -1881,8 +1890,8 @@ model RemixRenderWatermark {
   schemeVersion          String
   strength               Float
   keyId                  String
-  createdAt              DateTime @default(now())
-  user                   User     @relation(fields: [userId], references: [id])
+  createdAt              DateTime                  @default(now())
+  user                   User                      @relation(fields: [userId], references: [id])
   detections             RemixWatermarkDetection[]
 
   @@index([remixProjectId])
@@ -1913,7 +1922,7 @@ model RemixWatermarkDetection {
   // matched. pitch (semitones) | tempo (percent).
   shiftKind         String?
   shiftAmount       Float?
-  decodeError          Float?
+  decodeError       Float?
   syncQuality       Float?
   occurrences       Int?
   // decode_failed | detector_failed | search_timeout | interrupted
@@ -2106,15 +2115,15 @@ model ListenerTasteMemorySettings {
 }
 
 model ListenerTasteSignalControl {
-  id         String   @id @default(uuid())
-  userId     String
-  signalType String
-  value      String
-  action     String   @default("hidden")
-  source     String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String                      @id @default(uuid())
+  userId        String
+  signalType    String
+  value         String
+  action        String                      @default("hidden")
+  source        String?
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  user          User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// #2006/#2003: query vector of a written `note` control, so the note can seed
   /// embedding discovery. Deleted with the control; absent when embeddings are off.
   noteEmbedding ListenerTasteNoteEmbedding?
@@ -2360,14 +2369,14 @@ model AgentTransaction {
 }
 
 model License {
-  id              String  @id @default(uuid())
+  id              String         @id @default(uuid())
   sessionId       String
   trackId         String
   type            String
   priceUsd        Float
   durationSeconds Int
-  session         Session @relation(fields: [sessionId], references: [id])
-  track           Track   @relation(fields: [trackId], references: [id])
+  session         Session        @relation(fields: [sessionId], references: [id])
+  track           Track          @relation(fields: [trackId], references: [id])
   /// #2299: why the DJ queued this pick; absent on picks recorded before it.
   pickNote        AgentPickNote?
 }
@@ -2554,8 +2563,8 @@ model LibraryTrack {
   producer    String?
 
   // Local source fields
-  sourcePath String?
-  fileSize   Int?
+  sourcePath   String?
+  fileSize     Int?
   // Name of the library folder the file was found in (a name, never a full
   // path). Lets another device offer to add the same folder.
   sourceFolder String?
@@ -2998,16 +3007,16 @@ model ShowPledge {
 /// Short-lived, user-linked city context for privacy-gated pledge demand.
 /// Financial pledge records remain durable and do not carry this geography.
 model ShowPledgeDemandContext {
-  id                    String     @id @default(uuid()) @db.Uuid
-  pledgeId              String     @unique
-  userId                String
-  countryCode           String     @db.Char(2)
-  citySlug              String     @db.VarChar(80)
-  consentPolicyVersion  String
-  declaredAt            DateTime
-  expiresAt             DateTime
-  pledge                ShowPledge @relation(fields: [pledgeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id                   String     @id @default(uuid()) @db.Uuid
+  pledgeId             String     @unique
+  userId               String
+  countryCode          String     @db.Char(2)
+  citySlug             String     @db.VarChar(80)
+  consentPolicyVersion String
+  declaredAt           DateTime
+  expiresAt            DateTime
+  pledge               ShowPledge @relation(fields: [pledgeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -3526,33 +3535,33 @@ model NotificationPreference {
 /// `Notification` table because that table's read routes are keyed by a public
 /// wallet address and cannot hold content visible to one person only.
 model Notice {
-  id              String       @id @default(uuid())
+  id               String          @id @default(uuid())
   /// policy | terms | incident | moderation | account | refund
-  category        String
-  title           String
-  body            String       @db.Text
+  category         String
+  title            String
+  body             String          @db.Text
   /// Optional in-app path the notice leads to (e.g. `/help/platform-notices`).
-  link            String?
+  link             String?
   /// `all` | `role:<role>` | `user`
-  audience        String
-  recipientUserId String?
+  audience         String
+  recipientUserId  String?
   /// Idempotency key for system-originated notices (moderation: one per
   /// report). Unique per recipient; null for operator sends.
-  dedupeKey       String?
+  dedupeKey        String?
   /// When the policy/terms change takes effect. Informational; not a filter.
-  effectiveAt     DateTime?
+  effectiveAt      DateTime?
   /// Broadcasts stop being listed after this instant.
-  expiresAt       DateTime?
+  expiresAt        DateTime?
   /// Who sent it: the operator's user id, or a `system:<source>` actor.
-  createdBy       String
-  createdAt       DateTime     @default(now())
+  createdBy        String
+  createdAt        DateTime        @default(now())
   /// #2169: when the email job expanded this notice into `EmailDelivery` rows.
   /// Null = not yet fanned out. Notices that existed before email was added are
   /// stamped by the migration so history is never emailed.
   emailFannedOutAt DateTime?
-  recipient       User?        @relation("NoticeRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
-  reads           NoticeRead[]
-  emailDeliveries EmailDelivery[]
+  recipient        User?           @relation("NoticeRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  reads            NoticeRead[]
+  emailDeliveries  EmailDelivery[]
 
   @@unique([dedupeKey, recipientUserId])
   @@index([audience, createdAt])
@@ -3794,7 +3803,7 @@ model TrackPopularity {
   plays           Int
   uniqueListeners Int
   saves           Int
-  purchases        Int      @default(0)
+  purchases       Int      @default(0)
   computedAt      DateTime @default(now())
 
   @@unique([trackId, window, genre])
@@ -3810,7 +3819,7 @@ model ArtistEngagement {
   plays           Int
   uniqueListeners Int
   saves           Int
-  purchases        Int      @default(0)
+  purchases       Int      @default(0)
   computedAt      DateTime @default(now())
 
   @@unique([artistId, window, genre])
@@ -3869,24 +3878,24 @@ model SceneScoutCityDemand {
 /// or session; prompt text, session ids, requester counts and candidate dumps
 /// are never stored here. Current consent is checked on every write and read.
 model DemandObservation {
-  id               String   @id @default(uuid())
-  userId           String
-  sourceType       String   @db.VarChar(16)
-  sourceKey        String   @db.Char(64)
-  targetArtistId   String
+  id                   String    @id @default(uuid())
+  userId               String
+  sourceType           String    @db.VarChar(16)
+  sourceKey            String    @db.Char(64)
+  targetArtistId       String
   /// Track id for a track target, artist id for artist/genre targets.
-  targetId         String
-  targetType       String   @db.VarChar(16)
+  targetId             String
+  targetType           String    @db.VarChar(16)
   /// A current playable track used to revalidate non-track near-match targets.
-  evidenceTrackId  String?
-  kind             String   @db.VarChar(24)
-  value            String   @db.VarChar(64)
-  consentDecidedAt DateTime
+  evidenceTrackId      String?
+  kind                 String    @db.VarChar(24)
+  value                String    @db.VarChar(64)
+  consentDecidedAt     DateTime
   tastePolicyUpdatedAt DateTime?
-  observedAt       DateTime
-  expiresAt        DateTime
-  createdAt        DateTime @default(now())
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  observedAt           DateTime
+  expiresAt            DateTime
+  createdAt            DateTime  @default(now())
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([userId, sourceKey, targetType, targetId, kind, value], map: "DemandObservation_source_target_category_key")
   @@index([targetArtistId, expiresAt, observedAt])
@@ -3898,17 +3907,17 @@ model DemandObservation {
 /// references only. Requester, source, session and observation identifiers are
 /// intentionally absent. Artist deletion cascades; account erasure detaches.
 model DemandSignal {
-  id                  String   @id @default(uuid())
-  artistId            String
-  targetType          String   @db.VarChar(16)
-  targetId            String
-  kind                String   @db.VarChar(24)
-  value               String   @db.VarChar(64)
-  windowDays          Int
-  distinctRequesters  Int
-  requestCount        Int
-  computedAt          DateTime @default(now())
-  artist              Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id                 String   @id @default(uuid())
+  artistId           String
+  targetType         String   @db.VarChar(16)
+  targetId           String
+  kind               String   @db.VarChar(24)
+  value              String   @db.VarChar(64)
+  windowDays         Int
+  distinctRequesters Int
+  requestCount       Int
+  computedAt         DateTime @default(now())
+  artist             Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([artistId, targetType, targetId, kind, value, windowDays], map: "DemandSignal_artist_target_category_window_key")
   @@index([artistId, computedAt])

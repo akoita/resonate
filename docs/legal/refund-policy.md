@@ -239,11 +239,13 @@ may pause the plan or the credits it paid for while the dispute is open. If the
 bank refunds you, we remove what that payment bought. Please write to us first;
 a refund through us is faster for you.
 
-> **Built for credit packs** ([#2596](https://github.com/akoita/resonate/issues/2596)):
-> the unused credits of a disputed credit pack are paused while the dispute is
+> **Built** ([#2596](https://github.com/akoita/resonate/issues/2596)): the
+> unused credits of a disputed credit pack are paused while the dispute is
 > open, removed if the bank refunds the payment and given back if it does not.
-> **Not built yet for Artist Pro:** a disputed subscription payment is recorded
-> for the operator but does not pause the plan.
+> For Artist Pro, the period the disputed payment paid for does not include
+> Pro while the dispute is open, stays without Pro if the bank refunds you,
+> and gets Pro back if it does not. Your subscription is not cancelled by a
+> dispute: cancel it in Manage billing if you no longer want it.
 
 ## What we cannot reverse
 

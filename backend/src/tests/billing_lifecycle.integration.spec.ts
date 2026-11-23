@@ -93,6 +93,7 @@ const gateway = {
   }),
   updateSubscription: jest.fn(async (id: string) => remote.get(id)!),
   updateCustomerEmail: jest.fn(async () => undefined),
+  findInvoiceIdForPaymentIntent: jest.fn(async () => null),
   constructEvent: jest.fn(),
 } satisfies StripeGateway;
 
