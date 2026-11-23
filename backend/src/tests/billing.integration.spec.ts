@@ -69,6 +69,7 @@ const gateway = {
   cancelSubscription: jest.fn(),
   updateSubscription: jest.fn(),
   updateCustomerEmail: jest.fn(),
+  findInvoiceIdForPaymentIntent: jest.fn(async () => null),
 } satisfies StripeGateway;
 
 const billing = new BillingService(config, consents, gateway, entitlements);

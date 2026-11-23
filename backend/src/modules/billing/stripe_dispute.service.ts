@@ -21,8 +21,22 @@
  *   is only asking and no money has moved, so nothing is paused. The row is
  *   recorded and becomes open if the inquiry turns into a dispute.
  *
- * A dispute over any other payment (an Artist Pro invoice) is recorded for
- * the reconciliation report and changes nothing else yet.
+ * For an **Artist Pro invoice** (the payment intent paid a recorded
+ * `SubscriptionInvoice`, found through Stripe's invoice payments):
+ * - **Open:** the period that invoice paid for grants no Pro
+ *   (`Subscription.disputeHoldUntil` = its period end; see
+ *   `entitlements/subscription_plan.ts`), so neither the Pro gates nor the
+ *   monthly allowance count it.
+ * - **Lost:** the bank refunded that period, so it stays without Pro until it
+ *   ends. The subscription itself is not cancelled: the next period is charged
+ *   and grants Pro as usual, unless the person cancels in Manage billing.
+ * - **Won:** the hold is lifted and Pro comes back for the rest of the period.
+ * - **Inquiry:** nothing is paused, as for a credit pack.
+ * The hold is recomputed from every open or lost dispute of the subscription
+ * at each event, so two disputes never undo each other.
+ *
+ * A dispute over any other payment is recorded for the reconciliation report
+ * and changes nothing else.
  *
  * Idempotent and order-safe: one `StripeDispute` row per Stripe dispute id,
  * locked while an event is applied. `won` and `lost` are final: a late or
@@ -33,8 +47,8 @@
  * payload.
  */
 
-import { Injectable } from "@nestjs/common";
-import { Prisma, type CreditTopUp, type StripeDispute } from "@prisma/client";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { Prisma, type CreditTopUp, type StripeDispute, type SubscriptionInvoice } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import {
   TOP_UP_DISPUTE_HOLD_REASON,
@@ -47,7 +61,7 @@ import { writeStructuredLog } from "../shared/structured_logging";
 import { formatMoney } from "./billing_currency";
 import { creditPackLabel, findCreditPack, formatUsd } from "./credit_packs";
 import { DEFAULT_BILLING_CURRENCY, isBillingCurrency } from "./billing_currency";
-import type { StripeDisputeObject } from "./stripe_gateway";
+import { STRIPE_GATEWAY, type StripeDisputeObject, type StripeGateway } from "./stripe_gateway";
 
 export const HANDLED_DISPUTE_EVENTS = [
   "charge.dispute.created",
@@ -79,6 +93,11 @@ function isUniqueViolation(error: unknown): boolean {
 
 function log(level: "info" | "warn" | "error", event: string, fields: Record<string, unknown>) {
   writeStructuredLog({ level, event, message: event, ...fields });
+}
+
+/** A day in UTC, written out (`3 March 2026`), for notices. */
+function formatDay(date: Date): string {
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 /** Our state for a Stripe dispute status. Anything unknown counts as open: the bank has the money. */
@@ -125,9 +144,42 @@ export function disputedCreditsShare(input: { creditsCents: number; disputedCent
 
 type Transition = "opened" | "won" | "lost" | null;
 
+type DisputedInvoice = Pick<SubscriptionInvoice, "id" | "subscriptionId" | "periodStart" | "periodEnd">;
+
+/**
+ * The latest end among the periods still under an open or lost dispute, or
+ * null when none is: the subscription grants no Pro before it.
+ */
+export function disputeHoldUntilFrom(disputes: Array<{ status: string; periodEnd: Date }>): Date | null {
+  let until: Date | null = null;
+  for (const dispute of disputes) {
+    if (dispute.status !== "open" && dispute.status !== "lost") continue;
+    if (!until || dispute.periodEnd.getTime() > until.getTime()) until = dispute.periodEnd;
+  }
+  return until;
+}
+
 @Injectable()
 export class StripeDisputeService {
-  constructor(private readonly notices: NoticeService) {}
+  constructor(
+    private readonly notices: NoticeService,
+    @Optional() @Inject(STRIPE_GATEWAY) private readonly gateway: StripeGateway | null = null,
+  ) {}
+
+  /**
+   * The recorded Artist Pro invoice a payment intent paid. Stripe is asked
+   * only when the dispute is not already tied to something; a failed call
+   * throws, so the webhook answers 500 and Stripe redelivers the event.
+   */
+  private async findDisputedInvoice(paymentIntentId: string): Promise<DisputedInvoice | null> {
+    if (!this.gateway) return null;
+    const stripeInvoiceId = await this.gateway.findInvoiceIdForPaymentIntent(paymentIntentId);
+    if (!stripeInvoiceId) return null;
+    return prisma.subscriptionInvoice.findUnique({
+      where: { stripeInvoiceId },
+      select: { id: true, subscriptionId: true, periodStart: true, periodEnd: true },
+    });
+  }
 
   /** Apply one `charge.dispute.*` event. Returns a short outcome code for the webhook log. */
   async apply(dispute: StripeDisputeObject, eventCreatedAt: Date = new Date()): Promise<string> {
@@ -139,6 +191,14 @@ export class StripeDisputeService {
     const topUp = paymentIntentId
       ? await prisma.creditTopUp.findUnique({ where: { stripePaymentIntentId: paymentIntentId } })
       : null;
+    const known = await prisma.stripeDispute.findUnique({
+      where: { stripeDisputeId },
+      select: { kind: true },
+    });
+    const invoice =
+      !topUp && paymentIntentId && (!known || known.kind === "other")
+        ? await this.findDisputedInvoice(paymentIntentId)
+        : null;
     const target = disputeStateFrom(dispute.status);
     const openedAt =
       typeof dispute.created === "number" && dispute.created > 0 ? new Date(dispute.created * 1000) : eventCreatedAt;
@@ -149,8 +209,9 @@ export class StripeDisputeService {
           stripeDisputeId,
           stripeChargeId: idOf(dispute.charge),
           stripePaymentIntentId: paymentIntentId,
-          kind: topUp ? "credit_topup" : "other",
+          kind: topUp ? "credit_topup" : invoice ? "subscription_invoice" : "other",
           creditTopUpId: topUp?.id ?? null,
+          subscriptionInvoiceId: invoice?.id ?? null,
           currency: dispute.currency.toLowerCase(),
           amountCents: Math.max(0, Math.trunc(dispute.amount)),
           reason: typeof dispute.reason === "string" && SAFE_CODE.test(dispute.reason) ? dispute.reason : null,
@@ -178,6 +239,12 @@ export class StripeDisputeService {
           : {}),
       };
       if (money.reinstatedCents > 0 && !row.fundsReinstatedAt) data.fundsReinstatedAt = eventCreatedAt;
+      // A dispute recorded before its invoice could be found is tied to it on a later event.
+      if (invoice && row.kind === "other" && !row.subscriptionInvoiceId) {
+        data.kind = "subscription_invoice";
+        data.subscriptionInvoice = { connect: { id: invoice.id } };
+      }
+      const invoiceId = row.subscriptionInvoiceId ?? (invoice && row.kind === "other" ? invoice.id : null);
 
       let transition: Transition = null;
       let pack: CreditTopUp | null = null;
@@ -237,12 +304,48 @@ export class StripeDisputeService {
           if (before !== "held" && before !== "credited") transition = null;
         }
       }
+
+      let disputedInvoice: DisputedInvoice | null = null;
+      if (invoiceId) {
+        disputedInvoice = await tx.subscriptionInvoice.findUnique({
+          where: { id: invoiceId },
+          select: { id: true, subscriptionId: true, periodStart: true, periodEnd: true },
+        });
+      }
+      if (disputedInvoice) {
+        const status = (data.status as string | undefined) ?? row.status;
+        const changed = data.status !== undefined;
+        if ((status === "open" || status === "lost") && !row.holdAppliedAt) {
+          // First time this dispute pauses the period (open, or lost without ever being seen open).
+          data.holdAppliedAt = eventCreatedAt;
+          transition = status === "open" ? "opened" : "lost";
+        } else if (changed && row.holdAppliedAt && (status === "won" || status === "lost")) {
+          transition = status;
+        }
+      }
+
       const updated = await tx.stripeDispute.update({ where: { id: row.id }, data });
-      return { row: updated, transition, pack };
+      let holdUntil: Date | null = null;
+      if (disputedInvoice) {
+        // Lock the subscription and recompute its hold from all of its disputes.
+        await tx.$queryRaw`SELECT "id" FROM "Subscription" WHERE "id" = ${disputedInvoice.subscriptionId} FOR UPDATE`;
+        const disputes = await tx.stripeDispute.findMany({
+          where: { subscriptionInvoice: { subscriptionId: disputedInvoice.subscriptionId } },
+          select: { status: true, subscriptionInvoice: { select: { periodEnd: true } } },
+        });
+        holdUntil = disputeHoldUntilFrom(
+          disputes.flatMap((d) => (d.subscriptionInvoice ? [{ status: d.status, periodEnd: d.subscriptionInvoice.periodEnd }] : [])),
+        );
+        await tx.subscription.update({
+          where: { id: disputedInvoice.subscriptionId },
+          data: { disputeHoldUntil: holdUntil },
+        });
+      }
+      return { row: updated, transition, pack, disputedInvoice, holdUntil };
     });
     if (!result) return "ignored_unparseable";
 
-    const { row, transition, pack } = result;
+    const { row, transition, pack, disputedInvoice } = result;
     log("info", "billing.dispute_applied", {
       disputeRowId: row.id,
       kind: row.kind,
@@ -252,8 +355,65 @@ export class StripeDisputeService {
       releasedCents: row.releasedCents,
     });
     if (transition && pack) await this.notify(row, pack, transition);
+    if (disputedInvoice) {
+      if (transition) await this.notifyPro(row, disputedInvoice, transition);
+      return transition ? `pro_${transition}` : `skipped_${row.status}`;
+    }
     if (row.kind !== "credit_topup") return `recorded_${row.status}`;
     return transition ? `credits_${transition}` : `skipped_${row.status}`;
+  }
+
+  /** The `refund` notice for one change of a dispute over an Artist Pro invoice. */
+  private async notifyPro(
+    row: StripeDispute,
+    invoice: DisputedInvoice,
+    transition: Exclude<Transition, null>,
+  ): Promise<void> {
+    const subscription = await prisma.subscription.findUnique({
+      where: { id: invoice.subscriptionId },
+      select: { userId: true },
+    });
+    if (!subscription) return;
+    const amount = formatMoney(row.amountCents, row.currency);
+    const period = `${formatDay(invoice.periodStart)} to ${formatDay(invoice.periodEnd)}`;
+    const writeToUs =
+      " If you did not mean to dispute this payment, or you would rather have a refund from us, write to us at the " +
+      "contact address in our refund policy: a refund through us is faster for you.";
+
+    let title: string;
+    let body: string;
+    if (transition === "opened") {
+      title = "Payment disputed: Artist Pro paused";
+      body =
+        `Your bank told us that your Artist Pro payment (${amount}, for ${period}) is disputed. While the dispute ` +
+        "is open, that period does not include Artist Pro and its monthly generation allowance. If the bank " +
+        "refunds you, we remove what that payment bought; if it does not, Artist Pro comes back." +
+        writeToUs;
+    } else if (transition === "won") {
+      title = "Payment dispute closed: Artist Pro restored";
+      body =
+        `The dispute over your Artist Pro payment (${amount}, for ${period}) is closed and the payment stands. ` +
+        "Artist Pro is back for the rest of that period.";
+    } else {
+      title = "Payment dispute closed: Artist Pro removed for that period";
+      body =
+        `Your bank refunded your Artist Pro payment (${amount}), so we removed what that payment bought: ` +
+        `the period from ${period} does not include Artist Pro. Your subscription is not cancelled: the next ` +
+        "period is charged and includes Artist Pro as usual, unless you cancel it in Manage billing. " +
+        "If you think this is a mistake, write to us at the contact address in our refund policy.";
+    }
+    try {
+      await this.notices.sendTargeted(
+        { userIds: [subscription.userId], category: DISPUTE_NOTICE_CATEGORY, title, body, link: DISPUTE_NOTICE_LINK },
+        DISPUTE_NOTICE_ACTOR,
+        { dedupeKey: `stripe-dispute:${row.id}:${transition}` },
+      );
+    } catch (error) {
+      log("error", "billing.dispute_notice_failed", {
+        disputeRowId: row.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** The `refund` notice for one change of a dispute over a credit pack. */

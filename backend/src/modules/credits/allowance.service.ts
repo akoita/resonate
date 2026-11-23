@@ -32,7 +32,7 @@ import { ConfigService } from "@nestjs/config";
 import type { GenerationAllowanceGrant, Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import type { StripeInvoice } from "../billing/stripe_gateway";
-import { planFromSubscription } from "../entitlements/subscription_plan";
+import { SUBSCRIPTION_PLAN_SELECT, planFromSubscription } from "../entitlements/subscription_plan";
 import { writeStructuredLog } from "../shared/structured_logging";
 import {
   ARTIST_PRO_MONTHLY_ALLOWANCE_ENV,
@@ -88,7 +88,7 @@ export async function findLiveGrant(db: Db, userId: string, now: Date): Promise<
       periodStart: true,
       expiresAt: true,
       subscription: {
-        select: { status: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, pastDueSince: true, updatedAt: true },
+        select: SUBSCRIPTION_PLAN_SELECT,
       },
     },
   });

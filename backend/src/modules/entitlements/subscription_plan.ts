@@ -13,6 +13,9 @@
  * - `canceled` with `cancelAtPeriodEnd`: `pro` until the period end.
  * - anything else (`incomplete`, `incomplete_expired`, `unpaid`, `paused`, an
  *   immediate cancellation): `free`.
+ * - whatever the status, `free` while `disputeHoldUntil` is in the future
+ *   (#2596): the paid period of an invoice under an open or lost card dispute
+ *   grants no Pro.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -32,7 +35,19 @@ export type SubscriptionPlanInput = {
   cancelAtPeriodEnd: boolean;
   pastDueSince: Date | null;
   updatedAt?: Date | null;
+  /** #2596: no Pro before this time (a disputed invoice's period end). */
+  disputeHoldUntil?: Date | null;
 };
+
+/** The fields {@link planFromSubscription} reads, for a Prisma `select`. */
+export const SUBSCRIPTION_PLAN_SELECT = {
+  status: true,
+  currentPeriodEnd: true,
+  cancelAtPeriodEnd: true,
+  pastDueSince: true,
+  updatedAt: true,
+  disputeHoldUntil: true,
+} as const;
 
 /** When the past-due grace ends, or null when the row is not past due. */
 export function pastDueGraceEndsAt(sub: SubscriptionPlanInput): Date | null {
@@ -52,6 +67,7 @@ function pro(validUntil: Date | null): PlanResolution {
 export function planFromSubscription(sub: SubscriptionPlanInput | null | undefined, now: Date): PlanResolution {
   if (!sub) return FREE_PLAN;
   const t = now.getTime();
+  if (sub.disputeHoldUntil && sub.disputeHoldUntil.getTime() > t) return FREE_PLAN;
   const end = sub.currentPeriodEnd;
   switch (sub.status) {
     case "active":
@@ -82,7 +98,7 @@ export class SubscriptionPlanService {
     if (!userId) return FREE_PLAN;
     const subscription = await prisma.subscription.findUnique({
       where: { userId },
-      select: { status: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, pastDueSince: true, updatedAt: true },
+      select: SUBSCRIPTION_PLAN_SELECT,
     });
     return planFromSubscription(subscription, now);
   }

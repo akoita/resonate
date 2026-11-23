@@ -378,15 +378,37 @@ For a **credit pack** (the dispute's payment intent is a `CreditTopUp`):
   write to the operator. An inquiry that simply closes sends nothing.
 - **Usage & Billing** shows the purchase as disputed (`dispute` on each
   purchase of `GET /billing/credits`).
-- **Any other payment** (an Artist Pro invoice): the dispute is recorded with
-  `kind: other` for the reconciliation report and changes nothing else.
-  Pausing the plan for a disputed invoice is the remaining part of #2596.
+For an **Artist Pro invoice** (the payment intent paid a recorded
+`SubscriptionInvoice`; Stripe's invoice payments name the invoice, through
+`StripeGateway.findInvoiceIdForPaymentIntent`), the row has
+`kind: subscription_invoice` and `subscriptionInvoiceId`:
+
+| Dispute state | Effect |
+| --- | --- |
+| `open` | The period that invoice paid for grants no Pro: `Subscription.disputeHoldUntil` is set to its period end, and `planFromSubscription` answers `free` while it is in the future, so the Pro gates and the monthly allowance both stop |
+| `lost` | The bank refunded that period, so it stays without Pro until it ends. The subscription is **not** cancelled: the next period is charged and grants Pro as usual unless the person cancels in Manage billing |
+| `won` | The hold is lifted and Pro is back for the rest of the period |
+| `inquiry` | Nothing is paused |
+
+- The hold is recomputed at every event from all open or lost disputes of the
+  subscription (latest period end wins), under a row lock, so two disputes
+  never undo each other.
+- A dispute that arrives before Stripe can name its invoice is recorded as
+  `other` and tied to the invoice on a later event of the same dispute.
+- One `refund` notice when Pro is paused, restored or removed for the period,
+  with the amount, the period and how to write to the operator.
+- **Usage & Billing** shows "A card dispute has paused Artist Pro" with the
+  date (`disputeHoldUntil` on `GET /billing/subscription`).
+- The reconciliation report lists the invoice (`stripeInvoiceId`) and the
+  account for these disputes.
+- **Any other payment** is recorded with `kind: other` for the reconciliation
+  report and changes nothing else.
 
 `StripeDispute` holds Stripe ids, codes, amounts and times only: no person
 column and no free text. It is retained on erasure as a billing record and
-reached through its `CreditTopUp`.
+reached through its `CreditTopUp` or `SubscriptionInvoice`.
 
-Tests: `stripe_dispute.integration.spec.ts`.
+Tests: `stripe_dispute.integration.spec.ts`, `stripe_dispute_pro.integration.spec.ts`.
 
 ### Data
 

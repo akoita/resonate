@@ -320,9 +320,11 @@ model StripeDispute {
   stripeDisputeId       String       @unique
   stripeChargeId        String?
   stripePaymentIntentId String?
-  /// credit_topup | other
+  /// credit_topup | subscription_invoice | other
   kind                  String
   creditTopUpId         String?
+  /// #2596: the Artist Pro invoice the disputed payment paid, when it is one.
+  subscriptionInvoiceId String?
   currency              String
   /// The disputed amount, in the minor unit of `currency`.
   amountCents           Int
@@ -350,8 +352,10 @@ model StripeDispute {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
   creditTopUp           CreditTopUp? @relation(fields: [creditTopUpId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  subscriptionInvoice   SubscriptionInvoice? @relation(fields: [subscriptionInvoiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([creditTopUpId, status])
+  @@index([subscriptionInvoiceId, status])
   @@index([openedAt])
   @@index([closedAt])
   @@index([fundsReinstatedAt])
@@ -485,6 +489,10 @@ model Subscription {
   closureRequestId     String?
   /// #2430: the confirmed contact address changed and the Stripe customer email is not updated yet.
   billingEmailStale    Boolean               @default(false)
+  /// #2596: while set and in the future, no Pro: the paid period of an invoice
+  /// under an open or lost card dispute grants nothing. Recomputed from the
+  /// disputes on every dispute event.
+  disputeHoldUntil     DateTime?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -523,6 +531,7 @@ model SubscriptionInvoice {
   paidAt                  DateTime
   createdAt               DateTime             @default(now())
   subscription            Subscription         @relation(fields: [subscriptionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  disputes                StripeDispute[]
 
   @@index([paidAt])
   @@index([subscriptionId, paidAt])

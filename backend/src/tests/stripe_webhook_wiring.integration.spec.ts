@@ -50,6 +50,7 @@ const gateway = {
   cancelSubscription: jest.fn(),
   updateSubscription: jest.fn(),
   updateCustomerEmail: jest.fn(),
+  findInvoiceIdForPaymentIntent: jest.fn(async () => null),
 } satisfies StripeGateway;
 
 let eventSeq = 0;

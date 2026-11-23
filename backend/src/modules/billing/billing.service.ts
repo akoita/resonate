@@ -77,6 +77,8 @@ export type BillingSubscriptionView = {
   pastDueSince: string | null;
   /** When Pro ends if the card is not updated (past due only). */
   graceEndsAt: string | null;
+  /** #2596: a card dispute pauses Pro until then (null when none, or once it has passed). */
+  disputeHoldUntil: string | null;
 };
 
 export type BillingState = {
@@ -144,6 +146,10 @@ export class BillingService {
               cancelAtPeriodEnd: row.cancelAtPeriodEnd,
               pastDueSince: row.pastDueSince?.toISOString() ?? null,
               graceEndsAt: graceEnd?.toISOString() ?? null,
+              disputeHoldUntil:
+                row.disputeHoldUntil && row.disputeHoldUntil.getTime() > now.getTime()
+                  ? row.disputeHoldUntil.toISOString()
+                  : null,
             }
           : null,
       consent: SUBSCRIPTION_CONSENT_WORDING,
