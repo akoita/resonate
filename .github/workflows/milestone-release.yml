@@ -1,0 +1,104 @@
+name: Milestone Release
+
+# Publishes the changelog-only GitHub Release that closes a sprint milestone
+# (docs/operations/release_process.md, "Close A Milestone"). Every closed
+# milestone gets one unless the owner agrees an exception. The notes are
+# reviewed in a PR first, at docs/sprints/releases/milestone-<number>.md, and
+# the release is tagged `milestone-<number>-<slug>` at the dispatched main SHA.
+# No software artifact, image or deployment is produced.
+
+on:
+  workflow_dispatch:
+    inputs:
+      milestone_number:
+        description: GitHub milestone number (for example 55).
+        required: true
+        type: string
+      slug:
+        description: Tag slug, lowercase words joined by hyphens (for example vision-sprint-57-fair-before-we-charge).
+        required: true
+        type: string
+      title:
+        description: Release title (for example "Vision Sprint 57 — Fair before we charge").
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: milestone-release-${{ inputs.milestone_number }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish milestone release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+    steps:
+      - name: Validate inputs
+        env:
+          MILESTONE: ${{ inputs.milestone_number }}
+          SLUG: ${{ inputs.slug }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "${REF}" != "refs/heads/main" ]]; then
+            echo "::error::Dispatch this workflow on main."
+            exit 1
+          fi
+          if [[ ! "${MILESTONE}" =~ ^[1-9][0-9]{0,5}$ ]]; then
+            echo "::error::milestone_number must be a positive integer."
+            exit 1
+          fi
+          if [[ ! "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+){0,15}$ ]]; then
+            echo "::error::slug must be lowercase words joined by hyphens."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the milestone and the notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MILESTONE: ${{ inputs.milestone_number }}
+          SLUG: ${{ inputs.slug }}
+        run: |
+          set -euo pipefail
+          notes="docs/sprints/releases/milestone-${MILESTONE}.md"
+          if [[ ! -s "${notes}" ]]; then
+            echo "::error::${notes} is missing on main. Merge the release notes in the closure PR first."
+            exit 1
+          fi
+          open_issues="$(gh api "repos/${GITHUB_REPOSITORY}/milestones/${MILESTONE}" --jq '.open_issues')"
+          if [[ "${open_issues}" != "0" ]]; then
+            echo "::error::Milestone ${MILESTONE} still has ${open_issues} open issue(s)."
+            exit 1
+          fi
+          tag="milestone-${MILESTONE}-${SLUG}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "::error::Tag ${tag} already exists."
+            exit 1
+          fi
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MILESTONE: ${{ inputs.milestone_number }}
+          SLUG: ${{ inputs.slug }}
+          TITLE: ${{ inputs.title }}
+        run: |
+          set -euo pipefail
+          tag="milestone-${MILESTONE}-${SLUG}"
+          gh release create "${tag}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "${TITLE}" \
+            --notes-file "docs/sprints/releases/milestone-${MILESTONE}.md" \
+            --latest=false
+          gh api "repos/${GITHUB_REPOSITORY}/milestones/${MILESTONE}" -X PATCH -f state=closed --jq '.state' >/dev/null
+          echo "Published ${tag} at ${GITHUB_SHA}: $(gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" --json url --jq .url)" >> "${GITHUB_STEP_SUMMARY}"
