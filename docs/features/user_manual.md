@@ -233,8 +233,11 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
 
 - **UI routes:** `/help`, `/help/[slug]`
 - **Entry points:** sidebar `User Guide`, top-bar `?` button, About dialog. The
-  About dialog identifies non-production environments and links support/help;
-  it does not publish maintainer identity or exact build provenance.
+  About dialog identifies non-production environments and links support/help.
+  On non-production builds it also shows the app version and commit and the
+  commit the server reports, to tell which build is running when something
+  looks wrong; production does not publish maintainer identity or exact build
+  provenance.
 - **Code:** `web/src/app/help/`, `web/src/components/help/`,
   `web/tests/fixtures/remix-studio-mock.mjs` (shared studio mock),
   `web/tests/fixtures/guide-seed-mock.mjs` (sample Shows and Marketplace backend),

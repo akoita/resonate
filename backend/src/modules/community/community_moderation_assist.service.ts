@@ -1,5 +1,11 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from "@google/generative-ai";
+import {
+  DECISION_CLIENT,
+  modelStrategyFrom,
+  type DecisionClient,
+  type DecisionFailureReason,
+} from "../shared/decision/decision_client";
 
 const DEFAULT_MODEL_TIMEOUT_MS = 6_000;
 const MIN_MODEL_TIMEOUT_MS = 1_000;
@@ -36,6 +42,30 @@ const MODERATION_ASSIST_REASON_CODE_SET = new Set<string>(MODERATION_ASSIST_REAS
 const MODERATION_ASSIST_LEVELS = ["low", "medium", "high"] as const;
 const MODERATION_ASSIST_LEVEL_SET = new Set<string>(MODERATION_ASSIST_LEVELS);
 
+/**
+ * Decision triage (#2584). The category is one of the language signals the
+ * deterministic assist already reports, or `other`; nothing new is invented.
+ */
+const DECISION_TRIAGE_CATEGORIES = ["safety", "privacy", "spam", "other"] as const;
+type DecisionTriageCategory = (typeof DECISION_TRIAGE_CATEGORIES)[number];
+const DECISION_CATEGORY_REASON_CODE: Record<DecisionTriageCategory, string | null> = {
+  safety: "safety_language_signal",
+  privacy: "privacy_language_signal",
+  spam: "spam_language_signal",
+  other: null,
+};
+/** Below this confidence an answer is not trusted and the report needs review. */
+const DECISION_MIN_CONFIDENCE = 0.8;
+const DECISION_SEVERITY_RANGE = { min: 0, max: 1 } as const;
+const DECISION_SEVERITY_CANDIDATE_ID = "report";
+const DECISION_QUESTION_NEEDS_REVIEW =
+  "Does this reported community message need a human moderator to look at it before the report is closed? " +
+  "Answer true unless the report is plainly unfounded.";
+const DECISION_QUESTION_CATEGORY =
+  "Which single category best describes the concern in this community report?";
+const DECISION_QUESTION_SEVERITY =
+  "How severe is the concern in this community report, from 0 (trivial) to 1 (urgent harm or exposure of private data)?";
+
 const MODEL_RESPONSE_SCHEMA: ResponseSchema = {
   type: SchemaType.OBJECT,
   properties: {
@@ -54,7 +84,7 @@ const MODEL_RESPONSE_SCHEMA: ResponseSchema = {
   required: ["summary", "severity", "likelihood", "reasonCodes", "reviewFocus"],
 };
 
-export type CommunityModerationAssistStrategy = "deterministic" | "model-assisted";
+export type CommunityModerationAssistStrategy = "deterministic" | "model-assisted" | "decision";
 export type CommunityModerationAssistLevel = (typeof MODERATION_ASSIST_LEVELS)[number];
 
 export type CommunityModerationAssistInput = {
@@ -98,6 +128,12 @@ export type CommunityModerationAssist = {
   strategy: CommunityModerationAssistStrategy;
   model?: string;
   fallbackReason?: string;
+  /**
+   * Decision strategy only. `false` is a hint that the report looks
+   * unfounded; it changes nothing by itself and the report stays in the
+   * queue. Any failure, low confidence or unusable answer leaves it `true`.
+   */
+  needsReview?: boolean;
   advisory: {
     noAutoEnforcement: true;
     copy: string;
@@ -124,6 +160,8 @@ export class CommunityModerationAssistService {
   private activeModelCalls = 0;
   private readonly modelWaiters: Array<() => void> = [];
 
+  constructor(@Optional() @Inject(DECISION_CLIENT) private readonly decisions?: DecisionClient) {}
+
   maxModelAssistsPerQueue() {
     const parsed = Number(process.env.COMMUNITY_MODERATION_ASSIST_MAX_MODEL_REPORTS);
     if (!Number.isFinite(parsed)) return DEFAULT_MAX_MODEL_ASSISTS_PER_QUEUE;
@@ -135,7 +173,15 @@ export class CommunityModerationAssistService {
     options: { allowModel?: boolean } = {},
   ): Promise<CommunityModerationAssist> {
     const deterministic = this.deterministicAssist(input);
-    if (this.strategy() !== "model-assisted") {
+    const strategy = this.strategy();
+    if (strategy === "decision") {
+      // Capped reports are not triaged, so they are not called safe either.
+      if (options.allowModel === false) {
+        return { ...deterministic, fallbackReason: "model_assist_queue_cap", needsReview: true };
+      }
+      return this.decisionAssist(input, deterministic);
+    }
+    if (strategy !== "model-assisted") {
       return deterministic;
     }
     if (options.allowModel === false) {
@@ -171,6 +217,66 @@ export class CommunityModerationAssistService {
       strategy: "deterministic",
       advisory: moderationAssistAdvisory(),
     };
+  }
+
+  /**
+   * Triage on decision calls: three bounded questions, no prose. The summary
+   * and review focus stay the deterministic ones, so no model text reaches
+   * the admin. Fails closed: whatever goes wrong, the report needs review.
+   */
+  private async decisionAssist(
+    input: CommunityModerationAssistInput,
+    deterministic: CommunityModerationAssist,
+  ): Promise<CommunityModerationAssist> {
+    const failClosed = (reason: DecisionFailureReason | "unavailable" | "error"): CommunityModerationAssist => ({
+      ...deterministic,
+      fallbackReason: `decision_${reason}`,
+      needsReview: true,
+    });
+    const client = this.decisions;
+    if (!client) return failClosed("unavailable");
+
+    try {
+      const context = this.boundedContext(input, deterministic);
+      const [review, category, severity] = await Promise.all([
+        client.predicate({ question: DECISION_QUESTION_NEEDS_REVIEW, input: context }),
+        client.choice({
+          question: DECISION_QUESTION_CATEGORY,
+          input: context,
+          options: DECISION_TRIAGE_CATEGORIES,
+        }),
+        client.score({
+          question: DECISION_QUESTION_SEVERITY,
+          input: {},
+          candidates: [{ id: DECISION_SEVERITY_CANDIDATE_ID, data: context }],
+          range: DECISION_SEVERITY_RANGE,
+        }),
+      ]);
+      if (!review.ok) return failClosed(review.reason);
+      if (!category.ok) return failClosed(category.reason);
+      if (!severity.ok) return failClosed(severity.reason);
+      const score = severity.value.scores.find((entry) => entry.id === DECISION_SEVERITY_CANDIDATE_ID)?.score;
+      if (score === undefined) return failClosed("invalid_output");
+
+      const reasonCodes = [...deterministic.reasonCodes];
+      if (category.value.confidence >= DECISION_MIN_CONFIDENCE) {
+        const code = DECISION_CATEGORY_REASON_CODE[category.value.selected[0] as DecisionTriageCategory];
+        if (code && !reasonCodes.includes(code)) reasonCodes.push(code);
+      }
+      // A decision can raise the severity the signals gave, never lower it.
+      const decided = levelFromScore(score);
+      return {
+        ...deterministic,
+        severity: levelRank(decided) > levelRank(deterministic.severity) ? decided : deterministic.severity,
+        reasonCodes,
+        strategy: "decision",
+        // Only a confident "no" clears the hint; everything else needs review.
+        needsReview: !(review.value.answer === false && review.value.confidence >= DECISION_MIN_CONFIDENCE),
+      };
+    } catch (error) {
+      this.logger.warn(`Decision moderation triage failed; needs review: ${this.describeError(error)}`);
+      return failClosed("error");
+    }
   }
 
   private async summarizeWithModel(
@@ -351,7 +457,15 @@ export class CommunityModerationAssistService {
   }
 
   private userPrompt(input: CommunityModerationAssistInput, deterministic: CommunityModerationAssist): string {
-    return JSON.stringify({
+    return JSON.stringify(this.boundedContext(input, deterministic));
+  }
+
+  /** The redacted, size-bounded report context a model may read. */
+  private boundedContext(
+    input: CommunityModerationAssistInput,
+    deterministic: CommunityModerationAssist,
+  ): Record<string, unknown> {
+    return {
       report: {
         reason: redactForModel(input.reason, 200),
       },
@@ -383,13 +497,11 @@ export class CommunityModerationAssistService {
         noAutoEnforcement: true,
         humanAdminMustConfirmActions: true,
       },
-    });
+    };
   }
 
   private strategy(): CommunityModerationAssistStrategy {
-    const normalized = process.env.COMMUNITY_MODERATION_ASSIST_STRATEGY?.trim().toLowerCase();
-    if (normalized === "model-assisted" || normalized === "model_assisted") return "model-assisted";
-    return "deterministic";
+    return modelStrategyFrom(process.env.COMMUNITY_MODERATION_ASSIST_STRATEGY);
   }
 
   private modelName(): string {
@@ -460,6 +572,16 @@ function parseLevel(value: unknown): CommunityModerationAssistLevel | null {
   return typeof value === "string" && MODERATION_ASSIST_LEVEL_SET.has(value)
     ? value as CommunityModerationAssistLevel
     : null;
+}
+
+function levelRank(level: CommunityModerationAssistLevel): number {
+  return MODERATION_ASSIST_LEVELS.indexOf(level);
+}
+
+function levelFromScore(score: number): CommunityModerationAssistLevel {
+  if (score >= 0.67) return "high";
+  if (score >= 0.34) return "medium";
+  return "low";
 }
 
 function safeModelText(value: string, maxLength: number) {

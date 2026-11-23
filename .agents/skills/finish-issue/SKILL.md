@@ -136,6 +136,9 @@ Frontend defaults:
   framework config, package/dependency files, environment handling, API helper
   types, or shared frontend build inputs changed. Otherwise defer production
   build validation to CI/CD.
+- When guides from [building-resonate-web-ui](../building-resonate-web-ui/SKILL.md)
+  shaped the change, re-check the result against them and add its one-line
+  `Web guidance:` note to the PR body.
 - Run full `cd web && npm run test:unit` when shared frontend helpers,
   analytics/event contracts, auth/session handling, or broad UI state behavior
   changed, or when the developer explicitly asks.

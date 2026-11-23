@@ -77,6 +77,14 @@ the uploader's manager identity out of public rankings.
   `PATCH /catalog/credits/:creditId/identity`. The credit becomes `reviewed`;
   review time, reviewer ID, and note stay private. Release credit edits replace
   the credit and require a new review if the association becomes ambiguous again.
+- Same-name profiles that were created from a credit name alone and that
+  nobody has claimed are treated as one artist: a credit by that name reuses the
+  oldest such profile and is `inferred`, and no further duplicate is created. A
+  name stays `ambiguous` (operator review) when a manager account or a claimed
+  profile shares it, or when its unclaimed profiles carry different reference
+  identifiers; the credit then still reuses the oldest unclaimed profile. A
+  migration repointed existing ambiguous credits that meet the one-artist rule;
+  the duplicate profile rows are kept.
 - `refresh()` writes only resolved credited IDs to `ArtistEngagement.artistId`.
   Ambiguous credits remain visible on tracks but do not acquire someone else's
   engagement. Old name-keyed serving rows are cleared by the migration and
@@ -127,8 +135,12 @@ history. Scope labels use **My Library** for private groupings and **Resonate
 Catalog/Profile** for public resources. Public and Library artist pages expose
 the same Play all and Queue artist pattern when tracks are available.
 
-[#1450](https://github.com/akoita/resonate/issues/1450)'s warehouse marts MUST
-adopt the same credited ID key so the serving contract stays consistent.
+[#1450](https://github.com/akoita/resonate/issues/1450)'s warehouse marts use
+the same credited ID key so the serving contract stays consistent. They take a
+track's ids from its most recent stamped engagement event, so a corrected credit
+re-credits earlier listens once the track is played again
+([#2638](https://github.com/akoita/resonate/issues/2638); see
+[Discovery popularity](discovery_popularity.md)).
 
 ## Creation-time laundering (and the fix)
 

@@ -12,6 +12,8 @@ import type { AgentRuntimeInput } from "./agent_runtime.adapter";
 import { getAgentTrackLimit } from "../agent_runtime.config";
 import { describeTempoRange, keepItemsOnRequest, requestScopeFor, type AgentRequestScope } from "../agent_session_request";
 import { requestGuidelines } from "./request_guidelines";
+import type { OfferedTracks } from "./offered_tracks";
+import { TOOL_BUDGET_EXHAUSTED, type ToolCallBudget } from "./tool_call_budget";
 
 // ---------------------------------------------------------------------------
 // Tool definitions — each delegates to the existing ToolRegistry
@@ -35,6 +37,10 @@ export interface CurationAgentOptions {
    * left out of keyword search.
    */
   requestScope?: AgentRequestScope;
+  /** Collects the track ids the catalog tools return in this run. */
+  offered?: OfferedTracks;
+  /** Bounds the tool calls of this run; a call over the bound does no work. */
+  toolBudget?: ToolCallBudget;
 }
 
 function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): FunctionTool[] {
@@ -58,15 +64,18 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         .describe("Maximum number of results to return (1-50, default 20)"),
     }),
     execute: async (args) => {
+      if (options.toolBudget && !options.toolBudget.take()) return TOOL_BUDGET_EXHAUSTED;
       const scope = options.requestScope;
       const result = await tools.get("catalog.search").run({
         ...args,
         allowExplicit,
         ...(scope ? { excludeTrackIds: options.recentTrackIds ?? [] } : {}),
       });
-      return scope && Array.isArray(result.items)
+      const shown = scope && Array.isArray(result.items)
         ? { ...result, items: keepItemsOnRequest(result.items as any[], scope) }
         : result;
+      options.offered?.record(shown);
+      return shown;
     },
   });
 
@@ -90,6 +99,7 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         .describe("Maximum number of results to return (1-50, default 20)"),
     }),
     execute: async (args) => {
+      if (options.toolBudget && !options.toolBudget.take()) return TOOL_BUDGET_EXHAUSTED;
       const result = await tools.get("catalog.semantic_search").run({
         ...args,
         allowExplicit,
@@ -97,9 +107,11 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         ...(options.seedTrackId ? { seedTrackId: options.seedTrackId } : {}),
       });
       // Neighbours of a "More like this" seed are the request; a described session's are filtered.
-      return options.requestScope && !options.seedTrackId && Array.isArray(result.items)
+      const shown = options.requestScope && !options.seedTrackId && Array.isArray(result.items)
         ? { ...result, items: keepItemsOnRequest(result.items as any[], options.requestScope) }
         : result;
+      options.offered?.record(shown);
+      return shown;
     },
   });
 
@@ -118,6 +130,7 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         .describe("Whether to apply volume discount (default false)"),
     }),
     execute: async (args) => {
+      if (options.toolBudget && !options.toolBudget.take()) return TOOL_BUDGET_EXHAUSTED;
       const result = await tools.get("pricing.quote").run(args);
       return result;
     },
@@ -134,6 +147,7 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         .describe("The track ID to look up analytics for"),
     }),
     execute: async (args) => {
+      if (options.toolBudget && !options.toolBudget.take()) return TOOL_BUDGET_EXHAUSTED;
       const result = await tools.get("analytics.signal").run(args);
       return result;
     },
@@ -154,6 +168,7 @@ function buildTools(tools: ToolRegistry, options: CurationAgentOptions = {}): Fu
         .describe("Array of track IDs to rank"),
     }),
     execute: async (args) => {
+      if (options.toolBudget && !options.toolBudget.take()) return TOOL_BUDGET_EXHAUSTED;
       const result = await tools.get("embeddings.similarity").run(args);
       return result;
     },

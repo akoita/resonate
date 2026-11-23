@@ -22,17 +22,16 @@ export class LighthouseStorageProvider extends StorageProvider {
     constructor(private readonly configService: ConfigService) {
         super();
         this.apiKey = this.configService.get<string>('LIGHTHOUSE_API_KEY') || '';
+        if (!this.apiKey) {
+            this.logger.error('LIGHTHOUSE_API_KEY is not configured: uploads through this provider will fail');
+        }
     }
 
     async upload(data: Buffer, filename: string, mimeType: string): Promise<StorageResult> {
         if (!this.apiKey) {
-            this.logger.warn('LIGHTHOUSE_API_KEY not configured. Falling back to local storage behavior (mock).');
-            const cid = `mock-cid-${Date.now()}`;
-            return {
-                uri: `ipfs://${cid}`,
-                provider: 'ipfs',
-                cid,
-            };
+            // No key means nothing can be stored. Failing here keeps a row from
+            // pointing at a CID that was never pinned (#380).
+            throw new Error('LIGHTHOUSE_API_KEY is not configured; the IPFS storage provider cannot upload');
         }
 
         try {
@@ -53,9 +52,10 @@ export class LighthouseStorageProvider extends StorageProvider {
 
     async delete(uri: string): Promise<void> {
         const resolved = this.resolveStorageUri(uri);
-        // Lighthouse doesn't support easy deletion for public CIDs (immutable), 
-        // but you can "unpin" if using their API specifically for pinning.
-        this.logger.log(`Unpinning/Deletion requested for ${resolved.cid} (Not implemented in mock/basic SDK flow)`);
+        // By design a no-op: content on public IPFS is addressed by its hash and
+        // cannot be recalled once other nodes hold it, so nothing here claims a
+        // file was deleted. The uri is still validated.
+        this.logger.log(`Delete requested for ${resolved.cid}; public IPFS content is not removed`);
     }
 
     async download(uri: string): Promise<Buffer | null> {

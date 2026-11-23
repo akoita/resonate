@@ -412,16 +412,17 @@ describe("EventsGateway", () => {
     gateway.onModuleDestroy();
   });
 
-  it("keeps unrelated public marketplace handlers available", () => {
-    const { gateway, emit } = createGateway();
-    const client = createClient();
-
-    gateway.handleNotifyListingCreated(client, { tokenId: "77", seller: "0xseller" });
-
-    expect(emit).toHaveBeenCalledWith("marketplace.listing_created", expect.objectContaining({
-      tokenId: "77",
-      seller: "0xseller",
-    }));
+  it("has no client message that broadcasts a marketplace listing", () => {
+    // Listing broadcasts come from the server only (the listing intent route
+    // and the indexer); a socket cannot ask for one.
+    const { gateway } = createGateway();
+    const handlers = Object.getOwnPropertyNames(EventsGateway.prototype)
+      .map((name) => Object.getOwnPropertyDescriptor(EventsGateway.prototype, name)?.value)
+      .filter((value): value is object => typeof value === "function")
+      .map((handler) => Reflect.getMetadata("message", handler))
+      .filter((message): message is string => typeof message === "string");
+    expect(handlers.length).toBeGreaterThan(0);
+    expect(handlers.filter((message) => message.startsWith("marketplace"))).toEqual([]);
     gateway.onModuleDestroy();
   });
 

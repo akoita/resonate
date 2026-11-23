@@ -817,6 +817,56 @@ describe('CatalogService (integration)', () => {
     ]);
   });
 
+  it('treats unclaimed same-name credit profiles as one artist', async () => {
+    const twinName = `${TEST_PREFIX}Unclaimed Twin Artist`;
+    const twinIds = [`${TEST_PREFIX}unclaimed_twin_a`, `${TEST_PREFIX}unclaimed_twin_b`];
+    const splitName = `${TEST_PREFIX}Split Reference Artist`;
+    const splitIds = [`${TEST_PREFIX}split_reference_a`, `${TEST_PREFIX}split_reference_b`];
+    await prisma.artist.createMany({
+      data: [
+        ...twinIds.map((id, index) => ({
+          id,
+          displayName: index === 0 ? twinName : twinName.toLowerCase(),
+          profileType: 'public_artist',
+          claimStatus: 'unclaimed',
+          // The oldest profile is the second row, so order is by age, not id.
+          createdAt: new Date(Date.UTC(2026, 0, 2 - index)),
+        })),
+        ...splitIds.map((id, index) => ({
+          id,
+          displayName: splitName,
+          profileType: 'public_artist',
+          claimStatus: 'unclaimed',
+          musicbrainzArtistId: `00000000-0000-4000-8000-00000000000${index}`,
+          createdAt: new Date(Date.UTC(2026, 0, 1 + index)),
+        })),
+      ],
+    });
+
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Unclaimed Twin Credits',
+      artistCredits: [
+        { role: 'main', displayName: twinName, sortOrder: 0 },
+        { role: 'featured', displayName: splitName, sortOrder: 1 },
+      ],
+    });
+    const credits = await prisma.releaseArtistCredit.findMany({
+      where: { releaseId: created.id },
+      orderBy: { sortOrder: 'asc' },
+      select: { artistId: true, identityStatus: true },
+    });
+    expect(credits).toEqual([
+      { artistId: twinIds[1], identityStatus: 'inferred' },
+      // Two reference identifiers under one name are two artists: review needed.
+      { artistId: splitIds[0], identityStatus: 'ambiguous' },
+    ]);
+    // No third profile is created for either name.
+    expect(await prisma.artist.count({
+      where: { displayName: { in: [twinName, twinName.toLowerCase(), splitName] } },
+    })).toBe(4);
+  });
+
   it('records release credit identity provenance without changing artist ownership', async () => {
     const uniqueName = `${TEST_PREFIX}Unique Credit Artist`;
     const duplicateName = `${TEST_PREFIX}Twin Credit Artist`;
@@ -841,7 +891,9 @@ describe('CatalogService (integration)', () => {
         id,
         displayName: index === 0 ? duplicateName : duplicateName.toLowerCase(),
         profileType: 'public_artist',
-        claimStatus: 'unclaimed',
+        // A claimed twin is evidence the name may belong to two people.
+        claimStatus: index === 0 ? 'unclaimed' : 'claimed',
+        createdAt: new Date(Date.UTC(2026, 0, 1 + index)),
       })),
     });
     const selectedArtist = await prisma.artist.create({
@@ -891,9 +943,13 @@ describe('CatalogService (integration)', () => {
       where: { id: ambiguousCredit.artistId },
       select: { id: true, displayName: true, profileType: true, claimStatus: true, userId: true },
     });
-    expect(duplicateArtistIds).not.toContain(ambiguousArtist.id);
+    // The credit reuses the existing unclaimed profile instead of adding a third.
+    expect(ambiguousArtist.id).toBe(duplicateArtistIds[0]);
+    expect(await prisma.artist.count({
+      where: { displayName: { equals: duplicateName, mode: 'insensitive' } },
+    })).toBe(2);
     expect(ambiguousArtist).toMatchObject({
-      displayName: duplicateName.toUpperCase(),
+      displayName: duplicateName,
       profileType: 'public_artist',
       claimStatus: 'unclaimed',
       userId: null,

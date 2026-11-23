@@ -6,10 +6,26 @@ import Link from "next/link";
 import {
   APP_NAME,
   APP_TAGLINE,
+  APP_VERSION,
+  COMMIT_SHA,
   ISSUES_URL,
+  describeBuildStamp,
   getEnvironment,
   isProduction,
 } from "../../lib/buildInfo";
+import { fetchAppEnvironment } from "../../lib/appEnvironment";
+
+type BuildStamp = NonNullable<ReturnType<typeof describeBuildStamp>>;
+
+function BuildStampValue({ stamp }: { stamp: BuildStamp }) {
+  return stamp.href ? (
+    <a className="about-link about-build" href={stamp.href} target="_blank" rel="noopener noreferrer">
+      {stamp.label}
+    </a>
+  ) : (
+    <span className="about-build">{stamp.label}</span>
+  );
+}
 
 interface AboutModalProps {
   isOpen: boolean;
@@ -22,6 +38,22 @@ interface AboutModalProps {
 export function AboutModal({ isOpen, onClose }: AboutModalProps) {
   const [mounted, setMounted] = useState(false);
   const [animating, setAnimating] = useState(false);
+  // What the server is running, read when the box opens. The app build is
+  // baked in at build time; the two can differ, which is worth seeing when
+  // something looks stale. Non-production only: production does not publish
+  // exact build provenance in the UI.
+  const [serverVersion, setServerVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || isProduction()) return;
+    let cancelled = false;
+    void fetchAppEnvironment().then((stamp) => {
+      if (!cancelled) setServerVersion(stamp?.appVersion ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration guard
   useEffect(() => setMounted(true), []);
@@ -44,6 +76,9 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
 
   const env = getEnvironment();
   const showEnvBadge = !isProduction();
+  const appBuild = showEnvBadge ? describeBuildStamp(COMMIT_SHA) : null;
+  const appVersion = showEnvBadge ? APP_VERSION : "";
+  const serverBuild = showEnvBadge ? describeBuildStamp(serverVersion) : null;
 
   const sheet = (
     <div
@@ -89,6 +124,14 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
           text-decoration: none;
           font-size: 13px;
           transition: color 0.15s ease;
+        }
+        .about-build {
+          font-size: 13px;
+          font-variant-numeric: tabular-nums;
+          color: rgba(255, 255, 255, 0.85);
+        }
+        .about-link.about-build {
+          color: var(--ds-primary, #d4bbff);
         }
         .about-link:hover {
           color: #fff;
@@ -211,6 +254,24 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
           </p>
 
           <div style={{ display: "flex", flexDirection: "column" }}>
+            {appVersion || appBuild ? (
+              <div className="about-row">
+                <span className="about-label">Version</span>
+                <span className="about-build" data-testid="about-app-version">
+                  {appVersion ? `v${appVersion}` : null}
+                  {appVersion && appBuild ? " · " : null}
+                  {appBuild ? <BuildStampValue stamp={appBuild} /> : null}
+                </span>
+              </div>
+            ) : null}
+            {serverBuild ? (
+              <div className="about-row">
+                <span className="about-label">Server</span>
+                <span data-testid="about-server-version">
+                  <BuildStampValue stamp={serverBuild} />
+                </span>
+              </div>
+            ) : null}
             <div className="about-row">
               <span className="about-label">User guide</span>
               <Link className="about-link" href="/help" onClick={onClose}>

@@ -33,6 +33,22 @@ See `docs/features/user_manual.md` for the full authoring and screenshot guide.
 Use `window.confirm()` sparingly; prefer the shared `ConfirmDialog` component
 for consistent user experience.
 
+## Web platform guidance
+
+Before building or reworking a component, overlay, layout, animation, form,
+media control, installable-app behavior, or a performance or accessibility
+fix, read `.agents/skills/building-resonate-web-ui/SKILL.md`. It looks the
+pattern up in a maintained corpus of current web-platform guides (pinned
+version, usage reporting off) and lists where the rules in this file take
+precedence. Prefer a native element or API over a hand-rolled one or a new
+dependency, with a fallback for browsers that lack it.
+
+## Text renders as text
+
+Catalog, user and model text renders as React children only. `npm run lint`
+fails on `dangerouslySetInnerHTML`, `innerHTML`/`outerHTML`, and a markdown
+renderer imported outside `src/components/legal/` (`eslint.config.mjs`).
+
 ## Animation and idle-cost budget
 
 People leave Resonate open for hours, so an idle tab must stay cheap (#2436).

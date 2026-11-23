@@ -12,6 +12,10 @@
   type-check every field. DTOs check **types only** (value rules, ownership and
   state checks stay in the services) and must reject nothing the service already
   accepts. The `@Body()` type must be the class itself.
+- Size bounds are type-level too: the AI DJ session and agent-config DTOs cap
+  term lists at 32 items of 64 characters and short labels at 100 characters
+  (`backend/src/modules/shared/request_bounds.ts`), so an oversized body is a
+  `400` before any service work.
 - Where a handler or service already checks presence and answers with its own
   message, the DTO field is `@IsOptional()` plus a type check, so that answer is
   unchanged. Fields the service coerces on purpose (`BigInt()`, `Math.max()`,

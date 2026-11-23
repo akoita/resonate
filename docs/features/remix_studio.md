@@ -1514,10 +1514,49 @@ from the JWT, never the request body.
   ships a render with no generated audio unwatermarked; a render that
   contains generated audio fails instead (#2602, below). On account erasure
   the row is kept and the owner pseudonymised (owner decision, 2026-11-04).
-  Detection is #2575. The backend image carries the audiowmark binary, built
-  from the pinned release and checked by the `Backend Image Smoke` workflow
-  whenever `backend/Dockerfile` changes; the key secret and its wiring are
-  the deploy half, resonate-iac#333.
+  Detection is the next item (#2575). The backend image carries the
+  audiowmark binary, built from the pinned release and checked by the
+  `Backend Image Smoke` workflow whenever `backend/Dockerfile` changes; the
+  key secret and its wiring are the deploy half, resonate-iac#333.
+- Watermark detection (#2575, slice 3 of #2566): an admin uploads a clip at
+  `/admin/remix-mark-check` (`POST /admin/remix-watermark/detections`,
+  multipart `clip`, up to 50 MB; the first 10 minutes are searched). The
+  check is a `RemixWatermarkDetection` row and a background run in the
+  backend process: ffmpeg decodes the clip (local file only, audio
+  containers only), then `audiowmark get` runs with the active key and the
+  retired key (`REMIX_WATERMARK_RETIRED_KEY` + `REMIX_WATERMARK_RETIRED_KEY_ID`),
+  plain first and with `--detect-speed` if nothing matched. If that finds
+  nothing either, an inverse search (#2614) undoes a guessed change with
+  ffmpeg's `rubberband` filter on the first 120 seconds and decodes again:
+  ±1 and ±2 semitones of pitch, then ±1 to 6 % of tempo with pitch kept, 16
+  tries, stopping at the first match. A match found this way records the
+  change that was undone (`shiftKind`, `shiftAmount`). The search has 15
+  minutes; running out is `failed` / `search_timeout`, never "no match".
+  A shift between those steps is not recovered. Only a decoded
+  payload equal to a stored token, decoded with the key that render was
+  embedded with, is a match; the decoder prints candidates on unmarked
+  audio too. `GET /admin/remix-watermark/detections/:id` returns the status
+  (`pending`, `processing`, `matched`, `no_match`, `failed`), and for a
+  match the token row without the token: project, generation and render job
+  ids, owner account id, source track(s), stems with licence basis, key
+  slot, stage, and audiowmark's own sync quality and decode error figures.
+  The clip is deleted after the run; the row keeps its SHA-256 and size.
+  `POST /admin/remix-watermark/detections/:id/evidence` attaches a match to
+  a dispute, release or track as a `remix_watermark_match` evidence item
+  (`ops`, `system_generated`), carrying the render reference and figures but
+  neither the token nor the owner id. That kind cannot be submitted through
+  the evidence routes. Every result, the evidence item and the User Guide
+  say that a match shows which render the audio came from, not who uploaded
+  it elsewhere, and that it is read with the licence record and the
+  project's `remix.exported` events. All four routes are admin only and
+  audited (`remix_watermark.detect_started`, `.detect_viewed`,
+  `.evidence_attached`). An operator script,
+  `npm run remix:watermark-false-positives -- --catalog <n>` (or `--list
+  <file>`, `--depth plain|speed|full`), runs the same detector over catalog
+  full mixes that are not remix releases and reports any payload equal to a
+  stored token; it reads only and exits 1 on a hit (#2614). Not yet: the
+  RFC's fine pitch/tempo grid, and the result of that run on 1,000+ catalog
+  tracks, which needs an environment with the catalog and the key.
 - Watermark disclosure (#2574, slice 4 of #2566): when the current draft's
   render metadata says `watermark.status: "embedded"`, the Drafts panel shows
   a note above Publish and Export: the draft carries an inaudible mark, every

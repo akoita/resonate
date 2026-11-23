@@ -4,6 +4,8 @@ import { useState, useCallback } from 'react';
 import { API_BASE } from '../lib/api';
 
 interface SynthIdResult {
+  /** False when the service did not answer: the result is then "not checked", not "no watermark". */
+  checked: boolean;
   isAiGenerated: boolean;
   confidence: number;
   provider?: string;
@@ -62,7 +64,13 @@ export function useSynthIdVerification(token?: string | null): UseSynthIdVerific
         return null;
       }
 
+      if (data.result.checked === false) {
+        setError('SynthID verification could not be completed');
+        return null;
+      }
+
       const synthResult: SynthIdResult = {
+        checked: true,
         isAiGenerated: data.result.isAiGenerated,
         confidence: data.result.confidence,
         provider: data.result.provider,
@@ -107,7 +115,13 @@ export function useSynthIdVerification(token?: string | null): UseSynthIdVerific
         return null;
       }
 
+      if (data.result.checked === false) {
+        setError('SynthID verification could not be completed');
+        return null;
+      }
+
       const synthResult: SynthIdResult = {
+        checked: true,
         isAiGenerated: data.result.isAiGenerated,
         confidence: data.result.confidence,
         provider: data.result.provider,

@@ -33,7 +33,17 @@ export const RIGHTS_EVIDENCE_KINDS = [
   "legal_notice",
   "narrative_statement",
   "internal_review_note",
+  "remix_watermark_match",
 ] as const satisfies readonly RightsEvidenceKind[];
+
+/**
+ * Kinds only the platform records. `remix_watermark_match` is written by the
+ * admin remix watermark check (#2575), never submitted by a person: an item of
+ * this kind must mean a detector actually matched a render.
+ */
+export const SYSTEM_RECORDED_EVIDENCE_KINDS: ReadonlySet<RightsEvidenceKind> = new Set([
+  "remix_watermark_match",
+]);
 
 export const RIGHTS_EVIDENCE_STRENGTHS = [
   "low",
@@ -75,6 +85,7 @@ const DEFAULT_STRENGTH_BY_KIND: Record<RightsEvidenceKind, RightsEvidenceStrengt
   legal_notice: "medium",
   narrative_statement: "low",
   internal_review_note: "medium",
+  remix_watermark_match: "high",
 };
 
 export type RightsEvidenceDraftInput = {
@@ -209,6 +220,9 @@ function normalizeEvidenceItem(
     RIGHTS_EVIDENCE_KINDS,
     "evidence kind",
   );
+  if (SYSTEM_RECORDED_EVIDENCE_KINDS.has(kind)) {
+    throw new BadRequestException("This evidence kind is recorded by the platform and cannot be submitted");
+  }
   const title = trimOrNull(input.title);
 
   if (!title) {

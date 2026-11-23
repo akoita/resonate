@@ -868,6 +868,8 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
   // Operator and indexer infrastructure.
   ArtistClaimDecisionEvent:
     "Internal artist-claim audit history; `actorUserId` identifies a reviewer whose decisions may concern another claimant, so historical free-text review notes are not exposed through an operator's personal export. The claimant's own current request and decision remain in the ArtistClaimRequest export.",
+  RemixWatermarkDetection:
+    "One admin check of an uploaded clip for the remix watermark (#2575): the clip's hash and size and the decoder's figures, with no column naming a person. That a render of theirs was watermarked is exported as RemixRenderWatermark.",
   IndexerState: "Per-chain block cursor for the indexer; operator infrastructure with no personal column.",
   CreditTopUpRefund:
     "One dated refund of a credit pack (#2497): amounts, a status code and the Stripe event time, with no column naming a person; the purchase it belongs to is exported as CreditTopUp, which carries the cumulative refund totals.",

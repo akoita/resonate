@@ -15,7 +15,7 @@ skill, workflow, or security gate.
 | `AGENTS.md` | Project-wide invariants and links to scoped standards and skills. | Yes |
 | `backend/AGENTS.md`, `contracts/AGENTS.md`, `web/AGENTS.md` | Canonical directory-specific standards; also read for cross-directory changes affecting their behavior. | Yes |
 | `CLAUDE.md`, `GEMINI.md` | Symlinks to `AGENTS.md` so each runtime finds it under the name it expects. | Yes |
-| `.agents/skills/<name>/SKILL.md` | Resonate-specific capabilities, including the `start-issue`, `finish-issue`, and security-routing procedures. | Yes |
+| `.agents/skills/<name>/SKILL.md` | Resonate-specific capabilities, including the `start-issue`, `finish-issue`, security-routing, and web-UI-routing procedures. | Yes |
 | `.claude/skills` | Symlink to `.agents/skills` so Claude Code discovers them. | Yes — the symlink is tracked; `.claude/worktrees/` and `settings.local.json` stay ignored |
 | `.gemini/commands/*.toml` | Command shims that point Gemini CLI at the canonical files above. | Yes |
 | `.codex/`, `.codex-tmp/` | Per-developer Codex state. Nothing project-shared lives here. | No — gitignored |
@@ -106,6 +106,35 @@ This is why the three security workflows that used to live in
 prompts, they drifted from upstream, and they are now covered by maintained
 shared skills. See [AI Skills Marketplace](../ai-skills-marketplace.md) for the
 migration mapping.
+
+## Web platform guidance
+
+`building-resonate-web-ui` applies the same router-plus-context pattern to
+browser UI work. The methodology is
+[Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance), a
+corpus of short guides on current HTML, CSS, and browser APIs written for
+coding agents. It is not a plugin and is not vendored: the skill calls its
+command-line tool for `search` and `retrieve`, then supplies the Resonate rules
+the result must fit (browser support, the animation and load budgets, shared
+components, text-renders-as-text).
+
+Three choices are deliberate and should survive edits:
+
+- **Pinned version.** Every command names an exact version, never `@latest`,
+  and passes `--ignore-scripts`. Upgrade in one reviewed commit that changes
+  the version in the skill body and its `metadata.upstream`.
+- **Usage reporting off.** Every command sets `DISABLE_TELEMETRY=1`. By default
+  the tool reports search queries and guide ids to its publisher.
+- **No upstream installer.** `modern-web-guidance install` would write an
+  unpinned, always-on copy of the upstream skill into each runtime's own
+  directory. The project skill replaces it so Claude Code, Codex, and Gemini
+  all read one committed file with the same scope and safeguards.
+
+Discovery follows the table above: Claude Code finds it through
+`.claude/skills`, Codex through the pointers in `AGENTS.md` and
+`web/AGENTS.md`, and Gemini through `.gemini/commands/web-guidance.toml`.
+`start-issue` points to it at implementation time and `finish-issue` asks for
+its one-line PR note.
 
 ## Install
 

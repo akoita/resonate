@@ -125,6 +125,7 @@ export default function RootLayout({
           * sets one attribute; it never exposes their values. The key names
           * mirror TOKEN_KEY / ADDRESS_KEY in lib/authSession.ts. */}
         <script
+          // eslint-disable-next-line react/no-danger -- a fixed inline script with no dynamic text
           dangerouslySetInnerHTML={{
             __html:
               'try{if(localStorage.getItem("resonate.token")&&localStorage.getItem("resonate.address"))document.documentElement.setAttribute("data-session","stored")}catch(e){}',

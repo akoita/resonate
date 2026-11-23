@@ -361,7 +361,14 @@ service boundary: deterministic assist remains the default deployed mode, while
 summaries with strict prompt bounds, redaction, timeout, malformed-output, and
 post-validation fallback guards. Model-backed queue hydration is capped per
 response and per-process concurrency is bounded, while uncapped reports still
-receive deterministic assist. Operator notes are accepted for workflow context
+receive deterministic assist. `COMMUNITY_MODERATION_ASSIST_STRATEGY=decision`
+([#2584](https://github.com/akoita/resonate/issues/2584)) triages on structured
+decision calls instead: a yes/no "needs human review", one category from a fixed
+set and a severity score, with the summary and review focus kept deterministic.
+It is advisory and fails closed: the `needsReview` hint is `false` only on a
+confident "no", severity is never lowered, and any error, timeout or unusable
+answer leaves the report needing review. The moderation console does not show
+the hint yet. Operator notes are accepted for workflow context
 but not persisted in this first slice; durable note/audit storage remains a
 follow-up if moderation policy requires it.
 Resolving a report with a message deletion, member removal or ban sends the

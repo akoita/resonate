@@ -1784,10 +1784,30 @@ export class CatalogService implements OnModuleInit {
 
     const matches = await tx.artist.findMany({
       where: { displayName: { equals: normalizedDisplayName, mode: "insensitive" } },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
     if (matches.length === 1 && matches[0].profileType === "public_artist" && matches[0].userId === null) {
       return { artist: matches[0], identityStatus: "inferred" as const };
+    }
+
+    // Same-name profiles that the catalog created from a credit name alone and
+    // nobody has claimed carry no evidence of being different people, so they
+    // are one artist: reuse the oldest instead of minting another duplicate
+    // (which made every later credit ambiguous and dropped the artist from
+    // identity-keyed rankings). A manager account, a claimed profile, or two
+    // different reference identifiers under the name is such evidence, and the
+    // credit stays ambiguous for operator review; it still reuses the oldest
+    // unclaimed profile so the set of duplicates stops growing.
+    const unclaimed = matches.filter(isUnclaimedPublicArtistProfile);
+    if (unclaimed.length > 0) {
+      const referenceIds = new Set(
+        unclaimed.map((match) => match.musicbrainzArtistId).filter(Boolean),
+      );
+      const sameArtist = unclaimed.length === matches.length && referenceIds.size <= 1;
+      return {
+        artist: unclaimed[0],
+        identityStatus: sameArtist ? "inferred" as const : "ambiguous" as const,
+      };
     }
 
     const artist = await tx.artist.create({
@@ -3940,4 +3960,11 @@ export class CatalogService implements OnModuleInit {
 
     return getUploadRightsActions(parsedRoute).streamingAllowed;
   }
+}
+
+/** A profile created from a credit name: public, no account behind it, unclaimed. */
+function isUnclaimedPublicArtistProfile(artist: Pick<Artist, "profileType" | "userId" | "claimStatus">) {
+  return artist.profileType === "public_artist"
+    && artist.userId === null
+    && artist.claimStatus === "unclaimed";
 }

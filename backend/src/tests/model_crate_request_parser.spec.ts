@@ -80,8 +80,9 @@ describe("ModelCrateRequestParser", () => {
         energy: { min: 0, max: 0.4 },
         requiredStems: ["vocals"],
         licenseType: "remix",
-        maxTotalUsd: 30,
-        maxPerItemUsd: 6,
+        // The request names no amount, so the model's caps are not taken.
+        maxTotalUsd: null,
+        maxPerItemUsd: null,
         verifiedHumanOnly: true,
         genres: ["House"],
         moods: ["Late Night"],
@@ -206,7 +207,22 @@ describe("ModelCrateRequestParser", () => {
       const result = await parser.parse(text);
       expect(result.filters.bpm).toEqual({ min: 30, max: 300 });
       expect(result.filters.energy).toEqual({ min: 0, max: 1 });
-      expect(result.filters.maxTotalUsd).toBe(50);
+      expect(result.filters.maxTotalUsd).toBeNull();
+    });
+
+    it("takes a spending cap from the model only when the request states that amount", async () => {
+      const stated = "something dreamy, keep the whole crate to 50 bucks, 6 a track tops";
+      expect(parseCrateRequestText(stated).filters.maxTotalUsd).toBeNull();
+      const caps = { maxTotalUsd: 50, maxPerItemUsd: 6.5 };
+      const { parser } = harness(async () => answer(caps));
+      const grounded = await parser.parse(stated);
+      expect(grounded.filters.maxTotalUsd).toBe(50);
+      expect(grounded.filters.maxPerItemUsd).toBe(6.5);
+
+      // Same answer, but the amounts are not in the request: 50 is not "150" or "500".
+      const unstated = await parser.parse("something dreamy for 150 people, 500 miles away");
+      expect(unstated.filters.maxTotalUsd).toBeNull();
+      expect(unstated.filters.maxPerItemUsd).toBeNull();
     });
 
     it("swaps a reversed range", async () => {

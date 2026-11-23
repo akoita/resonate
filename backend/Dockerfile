@@ -91,6 +91,9 @@ RUN apt-get update -y && apt-get install -y openssl ffmpeg \
 COPY --from=audiowmark /opt/audiowmark/bin/audiowmark /usr/local/bin/audiowmark
 COPY --from=audiowmark /opt/audiowmark/share/doc/audiowmark /usr/share/doc/audiowmark
 RUN audiowmark --version
+# The mark check undoes pitch and tempo changes with ffmpeg's rubberband
+# filter (#2614). Fail the build if this ffmpeg was built without it.
+RUN ffmpeg -hide_banner -filters | grep -q ' rubberband '
 
 # Copy production dependencies, Prisma schema, and generated client.
 COPY --from=prod-deps /app/node_modules ./node_modules

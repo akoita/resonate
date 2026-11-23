@@ -1292,6 +1292,27 @@ Still open:
   never by the model (`requiresSeedEvidence`). The guard refuses such a model
   reply as `unverifiable` if one still arrives. In stage C's artist group,
   surviving contradictions fell from 40 to 0.
+- Model picks are bound to the run's tool results: the ADK and Vertex runtimes
+  record every track id their catalog tools (`catalog_search`,
+  `semantic_search`) return in a run (`runtime/offered_tracks.ts`), and a reply
+  may only pick from that set. A reply that names other ids loses them before
+  the guard; a reply left with none is an empty reply and is filled from the
+  deterministic selector. Ids the model passes into a ranking or analytics
+  tool do not count as offered. The model's reasoning line is kept to one
+  bounded line (300 characters, no control characters).
+- A model run's tool calls are bounded (`runtime/tool_call_budget.ts`): 24
+  per run on both runtimes, and 8 per model turn on the Vertex runtime. A call
+  over the bound is answered `tool_budget_exhausted` and does no catalog,
+  embedding or analytics work; the reply can still pick from what the run was
+  shown. Taste-edit preview and apply are paced per listener (20 and 10 a
+  minute).
+- One "playable now" filter: `PLAYABLE_TRACK_WHERE`
+  (`catalog/track-availability.ts`) is the query form of the availability
+  classifier (published or ready release, not withdrawn, not held or removed,
+  public rights route). The `catalog.search` tool, the reload of model picks
+  and playback resolution filter on it, so none returns a track that a
+  library or playlist read would mark withdrawn or unavailable.
+  `playable_track_where.integration.spec.ts` holds one fixture per state.
 
 ## "Right now": a session with no filters follows the time of day (#2245)
 

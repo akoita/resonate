@@ -89,6 +89,9 @@ export interface AgentPreferences {
   seed?: { kind: SessionSeed["kind"]; id: string; label?: string } | null;
 }
 
+/** Upper bound on sessions remembered in memory per instance. */
+export const MAX_REMEMBERED_SESSIONS = 5000;
+
 @Injectable()
 export class SessionsService {
   private readonly logger = new Logger(SessionsService.name);
@@ -96,6 +99,20 @@ export class SessionsService {
   private readonly playlistTtlMs = 15_000;
   private agentPreferences = new Map<string, AgentPreferences>();
   private recentTrackIds = new Map<string, string[]>();
+
+  /**
+   * Keeps the per-session maps bounded: a session that is never stopped would
+   * otherwise stay remembered until restart. The oldest entry goes first; a
+   * session evicted here behaves as it does after a restart (its picks are
+   * still read from its license rows).
+   */
+  private boundSessionMemory<T>(map: Map<string, T>): void {
+    while (map.size > MAX_REMEMBERED_SESSIONS) {
+      const oldest = map.keys().next().value;
+      if (oldest === undefined) return;
+      map.delete(oldest);
+    }
+  }
 
   constructor(
     private readonly walletService: WalletService,
@@ -139,6 +156,7 @@ export class SessionsService {
         session.id,
         sanitizeIncomingRequest(withoutSeed(input.preferences)) ?? {},
       );
+      this.boundSessionMemory(this.agentPreferences);
     }
     this.eventBus.publish({
       eventName: "session.started",
@@ -165,6 +183,9 @@ export class SessionsService {
       where: { id: sessionId },
       data: { endedAt: new Date() },
     });
+    // A stopped session's remembered preferences and picks are not needed again.
+    this.agentPreferences.delete(sessionId);
+    this.recentTrackIds.delete(sessionId);
     this.agentRuntimeService.clearMyMixSession?.(session.userId, sessionId);
     this.eventBus.publish({
       eventName: "session.ended",
@@ -490,6 +511,7 @@ export class SessionsService {
       ...(incoming ?? {}),
     };
     this.agentPreferences.set(sessionId, merged);
+    this.boundSessionMemory(this.agentPreferences);
     return merged;
   }
 
@@ -788,6 +810,7 @@ export class SessionsService {
       sessionId,
       [trackId, ...recent.filter((id) => id !== trackId)].slice(0, 20),
     );
+    this.boundSessionMemory(this.recentTrackIds);
   }
 }
 

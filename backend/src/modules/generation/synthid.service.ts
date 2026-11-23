@@ -3,6 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { EncryptionService } from '../encryption/encryption.service';
 
 export interface SynthIdResult {
+  /**
+   * Whether the verification service actually answered. False when it is not
+   * configured, refused the request, returned nothing usable or could not be
+   * reached: `isAiGenerated: false` then means "not checked", never "no
+   * watermark" (#2576).
+   */
+  checked: boolean;
   /** Whether SynthID watermark was detected */
   isAiGenerated: boolean;
   /** Confidence score (0-1) */
@@ -24,6 +31,17 @@ export interface SynthIdResult {
  * - Verify AI-generated stems during upload
  * - Content moderation (flag misattributed AI content)
  * - Display verification badges in marketplace
+ *
+ * Status (#2576, checked 2026-11-11): the request below targets a Vertex
+ * `publishers/google/models/synthid-audio:verify` method for which no public
+ * documentation exists. Google documents SynthID verification for images
+ * only; its content detection API is a limited preview that lists images,
+ * with audio announced as planned; and the public SynthID Detector portal
+ * accepts audio but forbids programmatic use. Until a documented audio
+ * method exists and this client is rewritten against it, treat this service
+ * as unverified: keep `SYNTHID_PROJECT_ID` unset, do not build on its
+ * answers (#347 stays blocked), and read a result that is not `checked` as
+ * "not checked".
  */
 @Injectable()
 export class SynthIdService {
@@ -56,6 +74,7 @@ export class SynthIdService {
     if (!this.isAvailable()) {
       this.logger.warn('SynthID verification not configured (no project ID)');
       return {
+        checked: false,
         isAiGenerated: false,
         confidence: 0,
         provider: undefined,
@@ -97,6 +116,7 @@ export class SynthIdService {
         this.logger.error(`SynthID API error ${response.status}: ${errorBody}`);
         // Non-blocking: return negative result on API error
         return {
+          checked: false,
           isAiGenerated: false,
           confidence: 0,
           rawResponse: { error: errorBody, status: response.status },
@@ -109,6 +129,7 @@ export class SynthIdService {
       if (!prediction) {
         this.logger.warn('SynthID API returned no predictions');
         return {
+          checked: false,
           isAiGenerated: false,
           confidence: 0,
           rawResponse: responseData,
@@ -121,6 +142,7 @@ export class SynthIdService {
       this.logger.log(`SynthID verification: isAI=${isAiGenerated}, confidence=${confidence}`);
 
       return {
+        checked: true,
         isAiGenerated,
         confidence,
         provider: prediction.provider || (isAiGenerated ? 'google-lyria' : undefined),
@@ -128,8 +150,9 @@ export class SynthIdService {
       };
     } catch (error) {
       this.logger.error(`SynthID verification failed: ${error}`);
-      // Non-blocking: return negative result on error
+      // Non-blocking: the caller gets "not checked", not a negative result
       return {
+        checked: false,
         isAiGenerated: false,
         confidence: 0,
       };

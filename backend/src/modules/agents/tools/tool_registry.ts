@@ -1,3 +1,4 @@
+import { PLAYABLE_TRACK_WHERE } from "../../catalog/track-availability";
 import { Injectable, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/prisma";
@@ -142,7 +143,7 @@ export class ToolRegistry {
           where: {
             ...(explicitAllowed ? {} : { explicit: false }),
             ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
-            AND: [searchWhere, { id: { in: excludeTrackIds } }],
+            AND: [PLAYABLE_TRACK_WHERE, searchWhere, { id: { in: excludeTrackIds } }],
           },
         });
         return { items, excludedMatches };
@@ -778,7 +779,9 @@ export class ToolRegistry {
         // Fully generated tracks remain available through direct catalog APIs,
         // but are excluded from this promotional/agent-ranking seam (ADR-BM-5).
         ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
-        ...options.extraWhere,
+        // Only tracks that can be played publicly right now (published release,
+        // not withdrawn, not held or removed, public rights route).
+        AND: [PLAYABLE_TRACK_WHERE, options.extraWhere],
       },
       include: {
         // `artistId` and `moods` feed the shared discovery policy stage

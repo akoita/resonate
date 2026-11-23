@@ -1,3 +1,4 @@
+import { PLAYABLE_TRACK_WHERE } from "../catalog/track-availability";
 import { Injectable } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { resolveCreditedArtistName, resolveCreditedArtistNames } from "../shared/artist_attribution";
@@ -199,12 +200,16 @@ export class DiscoveryPolicyContextService {
    */
   async loadTrackCandidates(
     trackIds: string[],
-    options: { performerCap?: boolean } = {},
+    options: { performerCap?: boolean; playableOnly?: boolean } = {},
   ): Promise<Map<string, DiscoveryCandidate>> {
     const ids = [...new Set(trackIds.filter(Boolean))];
     if (ids.length === 0) return new Map();
     const tracks = await prisma.track.findMany({
-      where: { id: { in: ids } },
+      // `playableOnly` (model picks): a track that cannot be played publicly
+      // right now is absent from the map, like an unknown id.
+      where: options.playableOnly
+        ? { id: { in: ids }, ...PLAYABLE_TRACK_WHERE }
+        : { id: { in: ids } },
       select: {
         id: true,
         title: true,

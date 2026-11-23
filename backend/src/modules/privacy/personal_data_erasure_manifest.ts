@@ -959,7 +959,9 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "`statusBeforeWithdrawal` — and the two must be kept in step by hand. "
       + "`managementOwnerUserId` is not cleared; if it names the erased person it follows the User "
       + "foreign-key cascade to the rotated, closed id so legacy-owner fallback cannot reauthorize "
-      + "another account.",
+      + "another account. Published remixes of the withdrawn releases are put on a source hold "
+      + "(#2601) once the erasure transaction has committed (#2606): the reconcile writes through the "
+      + "global client, and a failure there is logged without undoing the erasure.",
   },
   {
     model: "ReleaseArtistCredit",
@@ -1118,6 +1120,14 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     reason:
       "A takedown notice keyed by trackId whose personal content — claimant name and email — belongs "
       + "to the reporter, not to the person being erased; it is theirs to request, not ours to delete.",
+  },
+  {
+    model: "RemixWatermarkDetection",
+    disposition: "untouched",
+    reason:
+      "One admin check of an uploaded clip for the remix watermark (#2575): the clip's hash and size, the decoder's "
+      + "figures and a reference to the matched token row. It has no column naming a person; the admin who ran it is "
+      + "in AdminAuditEvent, and the matched render's owner is on RemixRenderWatermark, which has its own rule.",
   },
   {
     model: "IndexerState",

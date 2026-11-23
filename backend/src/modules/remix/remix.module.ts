@@ -10,6 +10,8 @@ import { LyriaClient } from "../generation/lyria.client";
 import { EncryptionService } from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
 import { RemixController } from "./remix.controller";
+import { RemixWatermarkAdminController } from "./remix-watermark-admin.controller";
+import { RemixWatermarkDetectionService } from "./remix-watermark-detection.service";
 import { RemixService } from "./remix.service";
 import { RemixEligibilityService } from "./remix-eligibility.service";
 import { EntitlementsModule } from "../entitlements/entitlements.module";
@@ -58,13 +60,15 @@ import {
       },
     }),
   ],
-  controllers: [RemixController],
+  controllers: [RemixController, RemixWatermarkAdminController],
   providers: [
     RemixService,
     RemixEligibilityService,
     // Entitlement seam (#1903): Remix Studio Pro mode, free for everyone.
     RemixEntitlementsService,
     RemixProjectService,
+    // #2575: admin detection of the render watermark.
+    RemixWatermarkDetectionService,
     ...backgroundLoopProviders("remixGenerationQueueProcessor", [
       RemixGenerationProcessor,
     ]),

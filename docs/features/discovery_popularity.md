@@ -32,6 +32,15 @@ promotion. Optional play/save events require consent, while canonical settled
 purchases use their contract basis. Legacy events need a governed backfill
 before they qualify.
 
+Artist engagement credits each listen to the artist ids stamped on the track's
+most recent engagement event in the 30-day source window, not only the ids
+stamped when that listen was recorded (#2638). When a credit is corrected (an
+operator identity review or the same-name profile merge), the track's earlier
+listens move to the corrected artist as soon as anyone plays or saves the
+track again; a track that is ambiguous now credits nobody. A track with no
+stamped event in the window keeps its event-time ids. The local filler always
+resolves credits at refresh time.
+
 Both paths enforce `DISCOVERY_MIN_AUDIENCE` before snapshot storage and again
 on reads. An empty qualifying audience keeps the existing low-data UI.
 

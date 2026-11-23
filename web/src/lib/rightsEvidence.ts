@@ -82,6 +82,8 @@ export function getCreatorRightsEvidenceOption(kind: RightsEvidenceKind) {
 }
 
 export function formatRightsEvidenceKindLabel(kind: RightsEvidenceKind | string) {
+  // #2575: recorded by the admin remix mark check, never chosen by a person.
+  if (kind === "remix_watermark_match") return "Remix mark match";
   return (
     CREATOR_RIGHTS_EVIDENCE_OPTIONS.find((option) => option.value === kind)?.label ??
     kind.replaceAll("_", " ")

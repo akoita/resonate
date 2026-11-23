@@ -439,6 +439,19 @@ export default function Sidebar() {
               </span>
               <span className="link-text">Audit Log</span>
             </Link>
+            <Link
+              href="/admin/remix-mark-check"
+              prefetch={false}
+              className={`sidebar-link ${pathname === "/admin/remix-mark-check" ? 'active' : ''}`}
+              aria-current={pathname === "/admin/remix-mark-check" ? "page" : undefined}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12h2l2-5 3 10 3-14 3 12 2-3h3" />
+                </svg>
+              </span>
+              <span className="link-text">Remix Mark Check</span>
+            </Link>
           </>
         ) : null}
         {showManagementRecoveryLink ? (

@@ -1,0 +1,9 @@
+# Gemini CLI / Antigravity custom command. Adapts the shared Agent Skill (single source).
+description = "Look up current web-platform guidance for Resonate UI work and fit it to the web standards."
+prompt = """
+Use the building-resonate-web-ui skill for the browser UI task the user asked for: look up
+the matching guides with the pinned command below, then apply them within the Resonate
+rules. The web-platform guidance lives upstream — do not reconstruct it from memory.
+
+@{.agents/skills/building-resonate-web-ui/SKILL.md}
+"""

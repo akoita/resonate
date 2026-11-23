@@ -10,6 +10,7 @@ import { CurationController } from "../modules/curation/curation.controller";
 import { GenerationController } from "../modules/generation/generation.controller";
 import { IngestionController } from "../modules/ingestion/ingestion.controller";
 import { PrivacyController } from "../modules/privacy/privacy.controller";
+import { RecommendationsController } from "../modules/recommendations/recommendations.controller";
 
 const THROTTLED_CONTROLLERS = [
   AuthController,
@@ -77,5 +78,16 @@ describe("rate limit windows", () => {
     ) as (req: Record<string, any>) => string;
     expect(getTracker({ user: { userId: "user-1" }, ip: "127.0.0.1" })).toBe("user-1");
     expect(getTracker({ ip: "127.0.0.1" })).toBe("127.0.0.1");
+  });
+
+  it("paces taste-edit previews and applies per listener", () => {
+    const preview = RecommendationsController.prototype.previewTasteEdits;
+    const apply = RecommendationsController.prototype.applyTasteEdits;
+    expect(Reflect.getMetadata(`${THROTTLER_LIMIT}default`, preview)).toBe(20);
+    expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, preview)).toBe(minutes(1));
+    expect(Reflect.getMetadata(`${THROTTLER_LIMIT}default`, apply)).toBe(10);
+    expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, apply)).toBe(minutes(1));
+    const getTracker = Reflect.getMetadata(`${THROTTLER_TRACKER}default`, preview);
+    expect(getTracker({ user: { userId: "user-1" }, ip: "10.0.0.1" })).toBe("user-1");
   });
 });

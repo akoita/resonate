@@ -9,6 +9,9 @@ import { SynthIdService } from './synthid.service';
  * Provides REST endpoints for verifying SynthID watermarks
  * in audio content (uploaded files or existing stems).
  */
+/** Uploads are held in memory for the check, so they are capped. */
+export const SYNTHID_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+
 @Controller('generation/synthid')
 export class SynthIdController {
   private readonly logger = new Logger(SynthIdController.name);
@@ -20,7 +23,7 @@ export class SynthIdController {
    * POST /api/generation/synthid/verify
    */
   @Post('verify')
-  @UseInterceptors(FileInterceptor('audio'))
+  @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: SYNTHID_UPLOAD_MAX_BYTES } }))
   async verifyUpload(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No audio file provided');
@@ -43,6 +46,7 @@ export class SynthIdController {
       filename: file.originalname,
       size: file.size,
       result: {
+        checked: result.checked,
         isAiGenerated: result.isAiGenerated,
         confidence: result.confidence,
         provider: result.provider,
@@ -73,6 +77,7 @@ export class SynthIdController {
       available: true,
       stemId,
       result: {
+        checked: result.checked,
         isAiGenerated: result.isAiGenerated,
         confidence: result.confidence,
         provider: result.provider,

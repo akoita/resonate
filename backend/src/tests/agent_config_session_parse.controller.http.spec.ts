@@ -65,6 +65,21 @@ describe('AgentConfigController session parse (e2e)', () => {
       .send({ trackId: 'track-1', action: 'loop' }).expect(401);
   });
 
+  it('rejects oversized config and session-start bodies with 400', async () => {
+    const send = (method: 'post' | 'patch', path: string, body: object) =>
+      request(app.getHttpServer())[method](path).set('Authorization', `Bearer ${token}`).send(body);
+    const tooMany = Array.from({ length: 33 }, (_, i) => `vibe ${i}`);
+    const tooLong = 'x'.repeat(65);
+
+    await send('post', '/agents/config', { name: 'DJ', vibes: tooMany, monthlyCapUsd: 10 }).expect(400);
+    await send('post', '/agents/config', { name: 'x'.repeat(101), vibes: ['House'], monthlyCapUsd: 10 }).expect(400);
+    await send('patch', '/agents/config', { vibes: [tooLong] }).expect(400);
+    await send('patch', '/agents/config', { stemTypes: tooMany }).expect(400);
+    await send('post', '/agents/config/session', { preferences: { genres: tooMany } }).expect(400);
+    await send('post', '/agents/config/session', { preferences: { genres: [tooLong] } }).expect(400);
+    await send('post', '/agents/config/session', { preferences: { mood: 'x'.repeat(101) } }).expect(400);
+  });
+
   it('POST /agents/config/session/parse → 401 without JWT', async () => {
     await request(app.getHttpServer())
       .post('/agents/config/session/parse')

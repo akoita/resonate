@@ -48,8 +48,13 @@ describe("agent observability", () => {
 
     await service.traceToolCall({
       toolName: "stem.download",
-      input: { stemId: "stem-1", authorization: "Bearer secret" },
-      output: { ok: true, token: "sensitive" },
+      input: {
+        stemId: "stem-1",
+        authorization: "Bearer secret",
+        paymentProof: "proof-bytes",
+        headers: { "x-payment": "header-bytes", "PAYMENT-SIGNATURE": "sig-bytes" },
+      },
+      output: { ok: true, token: "sensitive", receipt: { paymentProofSha256: "abc123" } },
       startedAt: new Date("2026-04-25T00:00:00.000Z"),
       endedAt: new Date("2026-04-25T00:00:00.010Z"),
     });
@@ -71,6 +76,13 @@ describe("agent observability", () => {
     expect(body.batch[1].type).toBe("span-create");
     expect(body.batch[1].body.input.authorization).toBe("[redacted]");
     expect(body.batch[1].body.output.token).toBe("[redacted]");
+    // A payment proof or payment header is bearer material for a paid download.
+    expect(body.batch[1].body.input.paymentProof).toBe("[redacted]");
+    expect(body.batch[1].body.input.headers["x-payment"]).toBe("[redacted]");
+    expect(body.batch[1].body.input.headers["PAYMENT-SIGNATURE"]).toBe("[redacted]");
+    expect(request.body).not.toContain("proof-bytes");
+    // Its digest identifies the payment without being usable, so it stays.
+    expect(body.batch[1].body.output.receipt.paymentProofSha256).toBe("abc123");
     expect(body.batch[1].body.environment).toBe("staging");
   });
 });

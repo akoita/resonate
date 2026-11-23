@@ -21,6 +21,8 @@ import {
   PersonalDataResolverService,
   ResolvedPersonalIdentifiers,
 } from "../identity/personal_data_resolver.service";
+import { reconcileAndAnnounceRemixSourceHolds } from "../catalog/remix-source-hold";
+import { EventBus } from "../shared/event_bus";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { AccountClosureService } from "./account_closure.service";
 import {
@@ -183,6 +185,11 @@ export interface AccountErasureSummary {
   anonymized: Record<string, number>;
   danglingRewritten: Record<string, number>;
   releasesWithdrawn: number;
+  /**
+   * Published remixes of this person's releases put on hold after the commit
+   * (#2606). Null when that step failed; the erasure itself still completed.
+   */
+  remixSourceHolds: number | null;
 }
 
 export interface DueAccountErasureOutcome {
@@ -412,6 +419,9 @@ export class PersonalDataErasureService {
     // Stripe gateway, so an account with a live subscription is never erased:
     // the cancellation cannot be confirmed and the request stays pending.
     @Optional() billing?: SubscriptionLifecycleService,
+    // #2606: announces the source holds an erasure causes. Optional so scripts
+    // and tests that build the service by hand still reconcile, silently.
+    @Optional() private readonly eventBus?: EventBus,
   ) {
     this.billing = billing ?? new SubscriptionLifecycleService(new BillingConfig({}), null);
   }
@@ -488,6 +498,13 @@ export class PersonalDataErasureService {
     }
     const counts = transactionResult.counts;
 
+    // 3b. The erasure withdrew this person's releases. Published remixes of
+    //     them are held like after any other withdrawal (#2601, #2606). After
+    //     the commit, because the reconcile reads and writes through the global
+    //     client. The erasure is already done, so a failure here is logged and
+    //     never undoes or fails it; any later source-hold trigger catches up.
+    const remixSourceHolds = await this.holdDerivativesOfErasedArtists(identifiers.artistIds);
+
     const summary: AccountErasureSummary = {
       status: "erased",
       newUserId,
@@ -495,6 +512,7 @@ export class PersonalDataErasureService {
       identifiers: describeErasedIdentifiers(identifiers),
       analytics,
       ...counts,
+      remixSourceHolds,
     };
 
     // 4. The governance record. Counts, never values: the person's addresses
@@ -513,9 +531,29 @@ export class PersonalDataErasureService {
       anonymized: summary.anonymized,
       danglingRewritten: summary.danglingRewritten,
       releasesWithdrawn: summary.releasesWithdrawn,
+      remixSourceHolds: summary.remixSourceHolds,
     });
 
     return summary;
+  }
+
+  /** How many published remixes were put on hold, or null when the reconcile failed. */
+  private async holdDerivativesOfErasedArtists(artistIds: string[]): Promise<number | null> {
+    if (artistIds.length === 0) return 0;
+    try {
+      const changes = await reconcileAndAnnounceRemixSourceHolds(this.eventBus, { artistIds });
+      return changes.filter((change) => change.held).length;
+    } catch (error) {
+      writeStructuredLog({
+        level: "error",
+        event: "privacy.account_erasure.source_hold_reconcile_failed",
+        message:
+          "Account erased, but its published remixes could not be put on hold; they are held on the next source-hold trigger",
+        artistIdCount: artistIds.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   /**
@@ -1019,5 +1057,6 @@ function alreadyErasedSummary(userId: string, erasedAt: Date): AccountErasureSum
     anonymized: {},
     danglingRewritten: {},
     releasesWithdrawn: 0,
+    remixSourceHolds: 0,
   };
 }

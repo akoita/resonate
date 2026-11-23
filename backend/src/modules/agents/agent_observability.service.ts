@@ -34,7 +34,10 @@ interface LangfuseConfig {
   environment?: string;
 }
 
-const SENSITIVE_KEY_PATTERN = /(password|secret|token|api[-_]?key|private[-_]?key|authorization|signature)/i;
+// Keys whose values never leave the process in a trace. Payment proofs and
+// payment headers are bearer material for a paid download, like a token.
+const SENSITIVE_KEY_PATTERN =
+  /(password|secret|token|api[-_]?key|private[-_]?key|authorization|signature|proof|x[-_]?payment|payment[-_]?(header|signature|response)|cookie)/i;
 
 @Injectable()
 export class AgentObservabilityService {
@@ -184,11 +187,16 @@ function sanitize(value: unknown, depth = 0): JsonValue {
         .slice(0, 100)
         .map(([key, item]) => [
           key,
-          SENSITIVE_KEY_PATTERN.test(key) ? "[redacted]" : sanitize(item, depth + 1),
+          isSensitiveKey(key) ? "[redacted]" : sanitize(item, depth + 1),
         ])
     );
   }
   return String(value);
+}
+
+/** A digest of a sensitive value (`paymentProofSha256`) is safe to keep. */
+function isSensitiveKey(key: string): boolean {
+  return SENSITIVE_KEY_PATTERN.test(key) && !/sha256$/i.test(key);
 }
 
 function errorMessage(error: unknown): string {

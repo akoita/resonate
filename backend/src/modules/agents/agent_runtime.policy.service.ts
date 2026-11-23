@@ -200,8 +200,8 @@ export class AgentRuntimePolicyService {
     const [taste, candidatesById, sessionArtistKeys] = await Promise.all([
       this.tasteMemory?.getPolicy(userId),
       scope
-        ? policyContext.loadTrackCandidates(ordered.map((pick) => pick.trackId), { performerCap: true })
-        : policyContext.loadTrackCandidates(ordered.map((pick) => pick.trackId)),
+        ? policyContext.loadTrackCandidates(ordered.map((pick) => pick.trackId), { performerCap: true, playableOnly: true })
+        : policyContext.loadTrackCandidates(ordered.map((pick) => pick.trackId), { playableOnly: true }),
       scope
         ? policyContext.artistKeysForTracks(input.recentTrackIds, true)
         : policyContext.artistKeysForTracks(input.recentTrackIds),

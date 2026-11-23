@@ -92,7 +92,7 @@ describe('SynthIdService (integration)', () => {
 
     expect(loadSourceBuffer).toHaveBeenCalledTimes(1);
     expect(loadSourceBuffer).toHaveBeenCalledWith(stemUri);
-    expect(result).toMatchObject({ isAiGenerated: false, confidence: 0 });
+    expect(result).toMatchObject({ checked: false, isAiGenerated: false, confidence: 0 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

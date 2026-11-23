@@ -17,11 +17,17 @@ import { UploadRightsRoutingService } from '../modules/rights/upload-rights-rout
 import { EventBus } from '../modules/shared/event_bus';
 import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
 import { FingerprintService } from '../modules/fingerprint/fingerprint.service';
+import { AnalyticsGovernanceService } from '../modules/analytics/analytics_governance.service';
+import { AccountClosureService } from '../modules/privacy/account_closure.service';
+import { PersonalDataErasureService } from '../modules/privacy/personal_data_erasure.service';
+import { PersonalDataResolverService } from '../modules/identity/personal_data_resolver.service';
 
 const P = `rsh_${Date.now()}_`;
 const SOURCE_USER = `${P}source_user`;
 const OTHER_USER = `${P}other_user`;
 const REMIXER = `${P}remixer`;
+const ERASED_USER = `${P}erased_user`;
+const erasedUserIds: string[] = [];
 
 let catalog: CatalogService;
 let eventBus: EventBus;
@@ -107,7 +113,7 @@ describe('Remix source holds (integration, #2601)', () => {
     eventBus.subscribe('remix.source_hold_changed', (event: any) => {
       holdEvents.push(event);
     });
-    for (const userId of [SOURCE_USER, OTHER_USER, REMIXER]) {
+    for (const userId of [SOURCE_USER, OTHER_USER, REMIXER, ERASED_USER]) {
       await createUserWithArtist(userId);
     }
   });
@@ -126,6 +132,7 @@ describe('Remix source holds (integration, #2601)', () => {
     await prisma.release.deleteMany({ where: { artistId: { startsWith: P } } });
     await prisma.artist.deleteMany({ where: { id: { startsWith: P } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: P } } });
+    await prisma.user.deleteMany({ where: { id: { in: erasedUserIds } } });
   });
 
   it('holds a published remix when the source artist revokes consent, and restores it when consent returns', async () => {
@@ -344,6 +351,39 @@ describe('Remix source holds (integration, #2601)', () => {
 
     expect(only(restored, mine).map((change) => change.releaseId)).toEqual(mine);
     expect(await holdState(remixOfRemix.releaseId)).toMatchObject({ status: 'published', sourceHoldReason: null });
+  });
+
+  it('holds the published remixes of an erased artist once the erasure has committed (#2606)', async () => {
+    const source = await createRelease(ERASED_USER);
+    const remix = await createPublishedRemix(source.trackId);
+    const remixOfRemix = await createPublishedRemix(remix.trackId);
+    const erasure = new PersonalDataErasureService(
+      new PersonalDataResolverService(),
+      new AnalyticsGovernanceService(),
+      new AccountClosureService(),
+      undefined,
+      eventBus,
+    );
+
+    const summary = await erasure.eraseAccount(ERASED_USER);
+    erasedUserIds.push(summary.newUserId);
+
+    expect(summary).toMatchObject({ status: 'erased', releasesWithdrawn: 1, remixSourceHolds: 2 });
+    // The erased artist's own release is an ordinary withdrawal, not a hold.
+    expect(await holdState(source.releaseId)).toMatchObject({ status: 'withdrawn', sourceHoldReason: null });
+    expect(await holdState(remix.releaseId)).toMatchObject({
+      status: 'withdrawn',
+      statusBeforeWithdrawal: 'published',
+      sourceHoldReason: 'source_withdrawn',
+    });
+    expect(await holdState(remixOfRemix.releaseId)).toMatchObject({
+      status: 'withdrawn',
+      sourceHoldReason: 'source_withdrawn',
+    });
+    expect(holdEvents.map((event) => [event.releaseId, event.held, event.creatorId])).toEqual([
+      [remix.releaseId, true, REMIXER],
+      [remixOfRemix.releaseId, true, REMIXER],
+    ]);
   });
 
   it('leaves drafts and unrelated remixes alone', async () => {
