@@ -3,8 +3,8 @@ name: finish-issue
 description: >-
   Finish work on a Resonate branch — verify the branch, run the selected local
   gates, route the security review, update docs and the feature catalog, then
-  commit and submit the pull request with /ship (or push and open it by hand
-  where /ship is unavailable). Use when the user says
+  commit and submit the pull request with /ship in Claude Code (other agents
+  push and open it by hand). Use when the user says
   "finish issue", "close issue", "wrap up", "ship it", or wants to finalize the
   current branch. Merging, branch cleanup, and aligning local main happen only
   when the user explicitly says "merge". Do not use to begin work (use
@@ -227,7 +227,7 @@ approval. Honor approval already given in the conversation; do not ask again.
 
 ## 9. Publish with `/ship` (default)
 
-When the agent has the `/ship` command (Claude Code), run `/ship` once steps
+In Claude Code, run the `/ship` command once steps
 1–8 are done and the work is committed. It pushes the branch, opens the PR,
 reviews the change, and works on review feedback and failing checks.
 
@@ -239,9 +239,9 @@ reviews the change, and works on review feedback and failing checks.
 - Report the PR link and current CI status, then continue to step 11 only on
   an explicit merge request.
 
-Use the manual path below instead when `/ship` is not available (another agent
-runtime, an older Claude Code, or a repository where it is not enabled), or
-when the user asks for a manual push.
+Use the manual path below instead in any other agent (Codex included, unless it
+gains a native equivalent), in a Claude Code version or repository where `/ship`
+is not available, or when the user asks for a manual push.
 
 ### Manual fallback: push the branch
 
