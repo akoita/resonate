@@ -348,6 +348,47 @@ Policy: unused credits are refundable according to the consent choice; with
 Refunds are an operator action in Stripe. **For legal review before live
 charging.**
 
+### Withdrawal from contract (#2594)
+
+The online withdrawal function (Directive 2023/2673, in force since
+2026-06-19), in `billing/contract_withdrawal.service.ts`:
+
+- `GET /billing/withdrawals` (JWT) lists what can be withdrawn from **now**,
+  the form labels and the person's past withdrawals. Offered only while the
+  right lasts: **Artist Pro** within 14 days of the subscription's first paid
+  invoice while it still runs, and each **credit pack still on its 14-day
+  hold** (not disputed). Held stems, licences and Punchline collects (paid
+  on-chain) are not offered yet (#2642); the refund policy keeps the written
+  route for them.
+- Every label lives in `billing/withdrawal_labels.ts`
+  (`WITHDRAWAL_LABELS_VERSION`), so an operator localises them in one place;
+  the app renders what the server sends.
+- The app shows **Withdraw from contract** in Usage & Billing, then a short
+  statement form (name, contract, where the confirmation goes), then a
+  separate step with one **Confirm withdrawal** button
+  (`WithdrawContract.tsx`). Nothing is pre-filled or pre-selected.
+- `POST /billing/withdrawals` (`SubmitWithdrawalDto`: `contract`,
+  `subjectId`, `name`) records one `ContractWithdrawal` per contract (unique
+  on `contract` + `subjectId`, so pressing twice records once), sends a
+  `purchase` notice (emailed to a confirmed contact address) repeating the
+  statement and the UTC time, and starts the refund.
+- **Artist Pro:** the subscription is cancelled at once
+  (`endForAccount(..., "contract_withdrawal")`, retried by the retention job
+  like an erasure) and the first invoice is refunded less the service received:
+  the larger of the share of the period passed and the share of that invoice's
+  generation allowance used, rounded in the person's favour
+  (`proratedRefundCents`).
+- **Credit pack:** refunded in full. The hold never releases a withdrawn pack
+  (`releaseHeldTopUp` checks for a withdrawal), and `charge.refunded` cancels
+  the held credits as for any refund.
+- **Refund:** `withdrawal_refunds.ts` asks Stripe with the idempotency key
+  `resonate-withdrawal-<row id>`; a failure leaves the row `failed` with a
+  short code and `SubscriptionLifecycleService.reconcile` retries it (up to
+  20 attempts).
+
+Tests: `contract_withdrawal.integration.spec.ts`,
+`billing.controller.http.spec.ts`, `WithdrawContract.test.tsx`.
+
 ### Card disputes (chargebacks, #2596)
 
 **Revenue line (ADR-BM-6):** line 2, Phase 2. Loss prevention before live

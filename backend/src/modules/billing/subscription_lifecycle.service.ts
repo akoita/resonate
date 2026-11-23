@@ -24,6 +24,10 @@
  *   new address marks the row `billingEmailStale` and pushes the address to
  *   the Stripe customer.
  *
+ * - **A withdrawal** (#2594, `contract_withdrawal.service.ts`) ends the
+ *   subscription the same way, with the reason `contract_withdrawal`; its
+ *   refund is retried here too (`withdrawal_refunds.ts`).
+ *
  * Every Stripe call that fails is retried by {@link reconcile}, which the
  * retention job runs: it finds the rows whose Stripe state does not match the
  * account (an erased or closed account with a live subscription, a suspended
@@ -41,6 +45,7 @@ import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig } from "./billing_config";
 import { STRIPE_GATEWAY, createStripeGateway, type StripeGateway, type StripeSubscription } from "./stripe_gateway";
 import { SUBSCRIPTION_STATUSES, isSubscriptionStatus, isTerminalStatus } from "./subscription_state";
+import { retryPendingWithdrawalRefunds } from "./withdrawal_refunds";
 
 /** Statuses of a subscription Stripe may still charge, including an `incomplete` first payment. */
 export const CANCELLABLE_STATUSES: readonly SubscriptionStatus[] = SUBSCRIPTION_STATUSES.filter(
@@ -79,6 +84,8 @@ export type BillingReconcileResult = {
   resumed: number;
   closureScheduled: number;
   billingContactsUpdated: number;
+  /** #2594: withdrawal refunds Stripe accepted on this run. */
+  withdrawalRefunds: number;
   failed: number;
 };
 
@@ -343,6 +350,7 @@ export class SubscriptionLifecycleService {
       resumed: 0,
       closureScheduled: 0,
       billingContactsUpdated: 0,
+      withdrawalRefunds: 0,
       failed: 0,
     };
 
@@ -433,6 +441,11 @@ export class SubscriptionLifecycleService {
       if (outcome === "synced") result.billingContactsUpdated += 1;
       else if (outcome === "deferred") result.failed += 1;
     }
+
+    // 6. Withdrawal refunds Stripe has not accepted yet (#2594).
+    const refunds = await retryPendingWithdrawalRefunds(this.available() ? this.gateway : null, now);
+    result.withdrawalRefunds = refunds.refunded;
+    result.failed += refunds.failed;
 
     log(result.failed > 0 ? "warn" : "info", "billing.lifecycle_reconciled", { ...result });
     return result;

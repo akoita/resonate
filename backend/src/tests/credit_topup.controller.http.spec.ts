@@ -38,6 +38,8 @@ const gateway = {
   cancelSubscription: jest.fn(),
   updateSubscription: jest.fn(),
   updateCustomerEmail: jest.fn(),
+  createRefund: jest.fn(async () => ({ id: "re_test", status: "succeeded" })),
+  findPaymentIntentForInvoice: jest.fn(async () => null),
 } satisfies StripeGateway;
 const bearer = (userId = "user-1") => ({ Authorization: `Bearer ${authToken(userId)}` });
 const consent = { choice: "deliver_now", acknowledgedWaiver: true, textVersion: CONSENT_TEXT_VERSION };

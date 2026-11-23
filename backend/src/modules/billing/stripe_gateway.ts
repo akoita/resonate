@@ -50,6 +50,16 @@ export interface StripeGateway {
     id: string,
     params: Pick<Stripe.SubscriptionUpdateParams, "pause_collection" | "cancel_at_period_end">,
   ): Promise<StripeSubscription>;
+  /**
+   * Refund all of a payment intent, or `amountCents` of it (#2594 withdrawal,
+   * #2595 closure). The idempotency key makes a retry return the same refund.
+   */
+  createRefund(
+    params: { paymentIntentId: string; amountCents?: number; metadata: Record<string, string> },
+    idempotencyKey: string,
+  ): Promise<{ id: string; status: string | null }>;
+  /** The payment intent that paid an invoice, or null when none did. */
+  findPaymentIntentForInvoice(invoiceId: string): Promise<string | null>;
   /** Update the customer's billing email (#2430). */
   updateCustomerEmail(id: string, email: string): Promise<void>;
   /** Verifies the `Stripe-Signature` header over the raw body; throws when it does not match. */
@@ -86,6 +96,23 @@ export function createStripeGateway(config: BillingConfig): StripeGateway | null
     },
     updateSubscription(id, params) {
       return stripe.subscriptions.update(id, params);
+    },
+    async createRefund(params, idempotencyKey) {
+      const refund = await stripe.refunds.create(
+        {
+          payment_intent: params.paymentIntentId,
+          ...(params.amountCents !== undefined ? { amount: params.amountCents } : {}),
+          reason: "requested_by_customer",
+          metadata: params.metadata,
+        },
+        { idempotencyKey },
+      );
+      return { id: refund.id, status: refund.status };
+    },
+    async findPaymentIntentForInvoice(invoiceId) {
+      const page = await stripe.invoicePayments.list({ invoice: invoiceId, status: "paid", limit: 1 });
+      const intent = page.data[0]?.payment?.payment_intent;
+      return typeof intent === "string" ? intent : intent?.id ?? null;
     },
     async updateCustomerEmail(id, email) {
       await stripe.customers.update(id, { email });

@@ -15,6 +15,7 @@ import { StripeWebhookController } from "../modules/billing/stripe_webhook.contr
 import { StripeWebhookService } from "../modules/billing/stripe_webhook.service";
 import { StripeDisputeService } from "../modules/billing/stripe_dispute.service";
 import { CreditTopUpService } from "../modules/billing/credit_topup.service";
+import { ContractWithdrawalService } from "../modules/billing/contract_withdrawal.service";
 import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
 import { SUBSCRIPTION_CONSENT_TEXT_VERSION } from "../modules/purchase_consent/purchase_consent.constants";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
@@ -29,6 +30,8 @@ const CONFIGURED = {
 const consents = { recordSubscriptionStart: jest.fn(), link: jest.fn() };
 // The webhook requires the credit-pack service (#2492); this spec covers subscriptions only.
 const topUps = { fulfilFromCheckout: jest.fn(), reverseFromRefund: jest.fn() };
+// #2594: the withdrawal routes share the controller.
+const withdrawals = { getState: jest.fn(async () => ({ contracts: [] })), withdraw: jest.fn(async () => ({ id: "w1" })) };
 const bearer = (userId = "user-1") => ({ Authorization: `Bearer ${authToken(userId)}` });
 const validCheckout = { interval: "month", acknowledgedImmediateStart: true, textVersion: SUBSCRIPTION_CONSENT_TEXT_VERSION };
 
@@ -41,6 +44,7 @@ async function appWith(config: BillingConfig, gateway: StripeGateway | null) {
       { provide: PurchaseConsentService, useValue: consents },
       { provide: CreditTopUpService, useValue: topUps },
       { provide: StripeDisputeService, useValue: { apply: jest.fn() } },
+      { provide: ContractWithdrawalService, useValue: withdrawals },
       BillingService,
       StripeWebhookService,
     ],
@@ -60,6 +64,29 @@ describe("Billing (HTTP, #2407)", () => {
       await request(app.getHttpServer()).get("/billing/subscription").expect(401);
       await request(app.getHttpServer()).post("/billing/subscription/checkout").send(validCheckout).expect(401);
       await request(app.getHttpServer()).post("/billing/portal").expect(401);
+      await request(app.getHttpServer()).get("/billing/withdrawals").expect(401);
+      await request(app.getHttpServer())
+        .post("/billing/withdrawals")
+        .send({ contract: "credit_topup", subjectId: "p1", name: "A" })
+        .expect(401);
+    });
+
+    it("validates the withdrawal statement with 400, and passes a valid one to the service (#2594)", async () => {
+      const valid = { contract: "credit_topup", subjectId: "p1", name: "Ada" };
+      for (const body of [
+        { ...valid, contract: "stem_purchase" },
+        { ...valid, name: "" },
+        { ...valid, name: "x".repeat(121) },
+        { ...valid, subjectId: undefined },
+        { contract: "artist_pro", subjectId: "i1" },
+      ]) {
+        await request(app.getHttpServer()).post("/billing/withdrawals").set(bearer()).send(body).expect(400);
+      }
+      expect(withdrawals.withdraw).not.toHaveBeenCalled();
+      await request(app.getHttpServer()).post("/billing/withdrawals").set(bearer("user-9")).send(valid).expect(200);
+      expect(withdrawals.withdraw).toHaveBeenCalledWith("user-9", valid);
+      await request(app.getHttpServer()).get("/billing/withdrawals").set(bearer("user-9")).expect(200);
+      expect(withdrawals.getState).toHaveBeenCalledWith("user-9");
     });
 
     it("answers 503 billing_unavailable on checkout and the portal, and records no consent", async () => {

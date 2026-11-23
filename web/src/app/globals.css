@@ -7133,6 +7133,65 @@ a.listener-cohort-detail__action:focus-visible {
   background: rgba(245, 158, 11, 0.08);
 }
 
+.withdraw-contract {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.withdraw-contract-title,
+.withdraw-contract-form-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.withdraw-contract-list {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 14px;
+}
+
+.withdraw-contract-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 32rem;
+}
+
+.withdraw-contract-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 14px;
+}
+
+.withdraw-contract-field legend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+}
+
+.withdraw-contract-choice {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.withdraw-contract-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
 .plan-billing-actions {
   display: flex;
   flex-wrap: wrap;

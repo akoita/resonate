@@ -143,11 +143,15 @@ purchase, at any time during the 14 days. We confirm your withdrawal straight
 away in your notices, and by email if you have confirmed a contact address. You
 can also write to {{OPERATOR_CONTACT_EMAIL}}.
 
-> **Not built yet** ([#2594](https://github.com/akoita/resonate/issues/2594)).
-> Until the in-app withdrawal button exists, writing to
-> {{OPERATOR_CONTACT_EMAIL}} is the only route. EU law has required an online
-> withdrawal function since 19 June 2026, so this must ship before live
-> charging.
+> **Built for Artist Pro and credit packs**
+> ([#2594](https://github.com/akoita/resonate/issues/2594)): **Withdraw from
+> contract** in Usage & Billing takes a short statement, then a separate
+> confirmation, records the withdrawal, confirms it with the statement and the
+> time in UTC, and starts the refund. **Not built yet for held stems, licences
+> and collectibles** ([#2642](https://github.com/akoita/resonate/issues/2642)), which are paid on-chain: for those, writing to
+> {{OPERATOR_CONTACT_EMAIL}} is the route until the button reaches them. EU
+> law has required an online withdrawal function since 19 June 2026, so this
+> must be complete before live charging.
 
 Beyond that period, these purchases are not refundable, with two exceptions:
 
@@ -185,9 +189,8 @@ any time from Manage billing; your plan then stays on until the end of the
 period you paid for.
 
 **Withdrawing within 14 days.** You can withdraw within 14 days of subscribing,
-using **Withdraw from contract** in Usage & Billing or by writing to
-{{OPERATOR_CONTACT_EMAIL}} (the in-app button is
-[#2594](https://github.com/akoita/resonate/issues/2594), not built yet).
+using **Withdraw from contract** in Usage & Billing, or by writing to
+{{OPERATOR_CONTACT_EMAIL}}. Artist Pro ends as soon as you confirm.
 Because Artist Pro starts straight away at your request, you pay only for the
 service you received before withdrawing, in proportion to the price, and the
 rest is refunded. We work out that share as the larger of two figures: the

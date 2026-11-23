@@ -119,6 +119,9 @@ export async function releaseHeldTopUp(
       select: { status: true, disputedCreditsCents: true },
     });
     if (disputes.some((dispute) => dispute.status === "open")) return null;
+    // #2594: a pack the buyer withdrew from is refunded, never released.
+    const withdrawn = await tx.contractWithdrawal.count({ where: { contract: "credit_topup", subjectId: row.id } });
+    if (withdrawn > 0) return null;
     const chargedBack = disputes.reduce((sum, dispute) => sum + dispute.disputedCreditsCents, 0);
     const amount = Math.max(0, row.creditsCents - row.refundedCreditsCents - chargedBack);
     const claimed = await tx.creditTopUp.updateMany({
