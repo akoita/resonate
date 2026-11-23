@@ -363,6 +363,8 @@ export class CreditTopUpService {
         cancel_url: this.returnUrl("cancel"),
         metadata,
         payment_intent_data: { metadata },
+        // #2597: the terms and the refund policy, linked on the payment page itself.
+        custom_text: { submit: { message: this.config.checkoutTermsText() } },
         ...(this.config.automaticTax
           ? { automatic_tax: { enabled: true }, customer_update: { address: "auto" as const } }
           : {}),

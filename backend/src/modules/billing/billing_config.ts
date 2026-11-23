@@ -106,6 +106,18 @@ export class BillingConfig {
     return `${this.frontendUrl}/settings?section=usage&billing=${result}`;
   }
 
+  /**
+   * #2597: the text under the pay button on every Stripe Checkout Session,
+   * linking the terms of service and the refund policy (the best evidence in
+   * a card dispute). Stripe renders Markdown links in custom text.
+   */
+  checkoutTermsText(): string {
+    return (
+      `By paying you agree to our [Terms of Service](${this.frontendUrl}/terms) and ` +
+      `[Refund Policy](${this.frontendUrl}/refunds), which explain your right to withdraw, refunds and how to cancel.`
+    );
+  }
+
   /** One log line at boot when billing is off; names only, never values. */
   logIfUnavailable(): void {
     if (this.unavailableReason === null) return;

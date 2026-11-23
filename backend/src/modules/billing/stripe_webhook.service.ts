@@ -25,11 +25,15 @@
 import { BadRequestException, Inject, Injectable, Optional } from "@nestjs/common";
 import { Prisma, type Subscription } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { AuditService } from "../audit/audit.service";
 import { GenerationAllowanceService } from "../credits/allowance.service";
+import { NoticeService } from "../notifications/notice.service";
+import { EventBus } from "../shared/event_bus";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig } from "./billing_config";
 import { CreditTopUpService } from "./credit_topup.service";
 import { HANDLED_DISPUTE_EVENTS, StripeDisputeService } from "./stripe_dispute.service";
+import { RenewalNoticeService } from "./renewal_notices.service";
 import { recordPaidInvoice } from "./subscription_invoices";
 import {
   STRIPE_GATEWAY,
@@ -97,6 +101,7 @@ function log(level: "info" | "warn" | "error", event: string, fields: Record<str
 @Injectable()
 export class StripeWebhookService {
   private readonly allowance: GenerationAllowanceService;
+  private readonly renewals: RenewalNoticeService;
 
   constructor(
     private readonly config: BillingConfig,
@@ -107,8 +112,10 @@ export class StripeWebhookService {
     private readonly topUps: CreditTopUpService,
     private readonly disputes: StripeDisputeService,
     @Optional() allowance?: GenerationAllowanceService,
+    @Optional() renewals?: RenewalNoticeService,
   ) {
     this.allowance = allowance ?? new GenerationAllowanceService();
+    this.renewals = renewals ?? new RenewalNoticeService(new NoticeService(new EventBus(), new AuditService()));
   }
 
   /** Whether the webhook can verify events (billing configured). */
@@ -185,6 +192,8 @@ export class StripeWebhookService {
         // #2408: a paid invoice credits the Artist Pro monthly allowance for
         // the period it pays (idempotent per invoice; see allowance.service.ts).
         if (event.type === "invoice.paid") await this.allowance.grantForInvoice(invoice);
+        // #2597: the first paid invoice is acknowledged with the renewal terms and how to cancel (once).
+        if (event.type === "invoice.paid") await this.renewals.onSubscriptionStarted(invoice);
         return outcome;
       }
       case "checkout.session.async_payment_succeeded":

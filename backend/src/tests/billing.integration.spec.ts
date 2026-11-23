@@ -218,6 +218,9 @@ describe("Billing (integration, #2407)", () => {
         metadata: { userId: U.buyer, consentId: consent.id, interval: "month" },
         subscription_data: { metadata: { userId: U.buyer, consentId: consent.id } },
       });
+      // #2597: the terms and the refund policy are linked on the payment page.
+      expect(params.custom_text.submit.message).toContain("[Terms of Service](https://app.example.test/terms)");
+      expect(params.custom_text.submit.message).toContain("[Refund Policy](https://app.example.test/refunds)");
       expect(params.automatic_tax).toBeUndefined();
       expect(key).toBe(`resonate-checkout-${consent.id}`);
       expect(await row(U.buyer)).toMatchObject({ status: "incomplete", stripeSubscriptionId: null, interval: "month" });
