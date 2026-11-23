@@ -58,8 +58,8 @@ describe("admin account controls (#2147)", () => {
   });
 
   it("builds the request bodies and drops an empty note", () => {
-    const draft = { ...EMPTY_RESTRICTION_DRAFT, reason: "fraud" as const, note: "  ", scheduleErasure: true };
-    expect(toRestrictionInput("close", draft)).toEqual({ reason: "fraud", scheduleErasure: true });
+    const draft = { ...EMPTY_RESTRICTION_DRAFT, reason: "fraud" as const, note: "  ", scheduleErasure: true, seriousBreach: true };
+    expect(toRestrictionInput("close", draft)).toEqual({ reason: "fraud", scheduleErasure: true, seriousBreach: true });
     expect(toRestrictionInput("suspend", { ...draft, until: "2999-01-01", note: "n" })).toEqual({
       reason: "fraud",
       until: "2999-01-01T23:59:59.000Z",
@@ -72,6 +72,10 @@ describe("admin account controls (#2147)", () => {
     expect(validateRestrictionDraft("suspend", { ...EMPTY_RESTRICTION_DRAFT, until: "2000-01-01" }).until).toMatch(/future/);
     expect(validateRestrictionDraft("suspend", { ...EMPTY_RESTRICTION_DRAFT, until: "2999-01-01" })).toEqual({});
     expect(validateRestrictionDraft("close", { ...EMPTY_RESTRICTION_DRAFT, note: "x".repeat(1001) }).note).toMatch(/1000/);
+    // #2595: a closure must say whether it is for a serious breach.
+    expect(validateRestrictionDraft("close", EMPTY_RESTRICTION_DRAFT).seriousBreach).toMatch(/breach/);
+    expect(validateRestrictionDraft("close", { ...EMPTY_RESTRICTION_DRAFT, seriousBreach: false }).seriousBreach).toBeUndefined();
+    expect(validateRestrictionDraft("suspend", EMPTY_RESTRICTION_DRAFT).seriousBreach).toBeUndefined();
   });
 
   it("words a confirmation for each action, danger for closure", () => {
@@ -81,5 +85,7 @@ describe("admin account controls (#2147)", () => {
     const close = getRestrictionConfirmCopy("close", account, erase);
     expect(close.variant).toBe("danger");
     expect(close.message).toMatch(/erasure/);
+    expect(close.message).toMatch(/refunded to their card/);
+    expect(getRestrictionConfirmCopy("close", account, { ...erase, seriousBreach: true }).message).toMatch(/nothing is refunded/);
   });
 });

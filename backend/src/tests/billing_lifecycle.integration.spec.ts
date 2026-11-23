@@ -293,7 +293,7 @@ describe("Billing account lifecycle (integration, #2430)", () => {
   describe("operator closure", () => {
     it("cancels immediately and records the outcome in the audit trail", async () => {
       const { userId, subscriptionId } = await subscriber("closed");
-      await accounts.close(operator, userId, { reason: "fraud" });
+      await accounts.close(operator, userId, { reason: "fraud", seriousBreach: true });
       expect(remote.get(subscriptionId)!.status).toBe("canceled");
       expect(await row(userId)).toMatchObject({ status: "canceled", endReason: "account_closure" });
       const event = await prisma.adminAuditEvent.findFirstOrThrow({
@@ -305,7 +305,7 @@ describe("Billing account lifecycle (integration, #2430)", () => {
     it("still closes when Stripe fails, and the retention job finishes the cancellation", async () => {
       const { userId, subscriptionId } = await subscriber("closed_retry");
       gateway.cancelSubscription.mockRejectedValueOnce(stripeError("api_error"));
-      await accounts.close(operator, userId, { reason: "abuse" });
+      await accounts.close(operator, userId, { reason: "abuse", seriousBreach: true });
       expect((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).accountStatus).toBe("closed");
       expect((await row(userId)).endConfirmedAt).toBeNull();
       const event = await prisma.adminAuditEvent.findFirstOrThrow({

@@ -5,9 +5,11 @@ import { useAuth } from "../auth/AuthProvider";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import {
   cancelAccountClosure,
+  getBillingState,
   requestAccountClosure,
   requestAccountClosureChallenge,
   type AccountClosureRequest,
+  type BillingState,
 } from "../../lib/api";
 import { isPasskeyDismissal } from "../../lib/passkeyDismissal";
 import {
@@ -54,8 +56,24 @@ export default function AccountClosurePanel({ token, addToast }: Props) {
   const [closure, setClosure] = useState<AccountClosureState>(() => getAccountClosureState());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState<"scheduling" | "cancelling" | null>(null);
+  const [subscription, setSubscription] = useState<BillingState["subscription"]>(null);
 
   useEffect(() => subscribeToAccountClosure(setClosure), []);
+
+  // #2595: read the Artist Pro period when the confirmation opens, so the
+  // warning names its end date. A failure only leaves the warning out.
+  useEffect(() => {
+    if (!confirmOpen || !token) return;
+    let live = true;
+    getBillingState(token)
+      .then((state) => {
+        if (live) setSubscription(state.subscription);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [confirmOpen, token]);
 
   useEffect(() => {
     void loadAccountClosure(token);
@@ -94,7 +112,7 @@ export default function AccountClosurePanel({ token, addToast }: Props) {
         isOpen={confirmOpen}
         variant="danger"
         title={CLOSURE_CONFIRM_TITLE}
-        message={CLOSURE_CONFIRM_MESSAGE}
+        message={closureConfirmMessage(subscription)}
         confirmLabel="Yes, delete my account"
         cancelLabel="Keep my account"
         onConfirm={async () => {
@@ -124,6 +142,33 @@ export const CLOSURE_CONFIRM_MESSAGE = [
   "If you have released music, it stops streaming on Resonate. People who bought something from you keep it.",
   "Next, your passkey will ask you to sign — that is how we know this is really you.",
 ].join("\n\n");
+
+const LIVE_SUBSCRIPTION = new Set(["active", "trialing", "past_due"]);
+
+/**
+ * #2595: the warning before erasure (owner's wording, 2026-11-23), when an
+ * Artist Pro period is running. Erasure ends the subscription straight away
+ * with no refund of the rest of the period, so the person is told how to keep
+ * it until the end instead. Null when there is no running period.
+ */
+export function erasureProWarning(subscription: BillingState["subscription"], now: Date = new Date()): string | null {
+  if (!subscription || !LIVE_SUBSCRIPTION.has(subscription.status) || !subscription.currentPeriodEnd) return null;
+  const end = new Date(subscription.currentPeriodEnd);
+  if (Number.isNaN(end.getTime()) || end.getTime() <= now.getTime()) return null;
+  return (
+    "Erasing your account ends Artist Pro straight away, and the unused part of your current period is not refunded. " +
+    `If you want to keep using it until ${formatClosureDate(end.toISOString())}, cancel Artist Pro in Manage billing and ` +
+    "delete your account after that date."
+  );
+}
+
+/** The confirmation, with the Artist Pro warning after the first paragraph when it applies. */
+export function closureConfirmMessage(subscription: BillingState["subscription"], now: Date = new Date()): string {
+  const warning = erasureProWarning(subscription, now);
+  if (!warning) return CLOSURE_CONFIRM_MESSAGE;
+  const [first, ...rest] = CLOSURE_CONFIRM_MESSAGE.split("\n\n");
+  return [first, warning, ...rest].join("\n\n");
+}
 
 /**
  * Ask for the challenge, have the person sign the server's own words, and

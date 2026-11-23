@@ -110,9 +110,14 @@ Admin only (`@Roles("admin")` with `AuthGuard("jwt")`):
 - `GET /admin/accounts/:userId/status` (`:userId` is a user id or wallet address)
 - `POST /admin/accounts/:userId/suspend` `{ reason, until?, note? }`
 - `POST /admin/accounts/:userId/unsuspend` `{ note? }`
-- `POST /admin/accounts/:userId/close` `{ reason, note?, scheduleErasure? }`;
+- `POST /admin/accounts/:userId/close` `{ reason, note?, scheduleErasure?, seriousBreach }`;
   `scheduleErasure` uses the existing account-closure request (#1771) with its
-  normal 30-day grace period.
+  normal 30-day grace period. `seriousBreach` is required (#2595): the admin
+  records whether the closure is for a serious or repeated breach of the terms
+  by the person. When it is `false`, the unused days of the running Artist Pro
+  period and unspent bought credits are refunded (`ClosureRefund`, see
+  `artist_pro_billing.md`), and the closure notice says so. The choice and the
+  refund counts are in the audit record.
 
 An admin cannot change their own account or another admin/operator address
 (`ADMIN_ADDRESSES`, `OPERATOR_ADDRESSES`): `403`. A closed account cannot be

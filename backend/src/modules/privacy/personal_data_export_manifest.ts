@@ -164,6 +164,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "gave in the statement, when it was received, what was paid and refunded, and the refund's progress.",
   },
   {
+    model: "ClosureRefund",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2595. Refunds owed to the person after an operator closure that was not for a breach: what was "
+      + "paid and refunded, when, and the refund's progress.",
+  },
+  {
     model: "GenerationJobOutcome",
     primaryKey: "jobId",
     keys: [{ kind: "userId", column: "userId" }],

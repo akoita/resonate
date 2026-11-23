@@ -22,6 +22,8 @@ export type RestrictionDraft = {
   until: string;
   note: string;
   scheduleErasure: boolean;
+  /** #2595: whether a closure is for a serious or repeated breach; null until the operator chooses. */
+  seriousBreach: boolean | null;
 };
 
 export const EMPTY_RESTRICTION_DRAFT: RestrictionDraft = {
@@ -29,9 +31,10 @@ export const EMPTY_RESTRICTION_DRAFT: RestrictionDraft = {
   until: "",
   note: "",
   scheduleErasure: false,
+  seriousBreach: null,
 };
 
-export type RestrictionDraftErrors = Partial<Record<"until" | "note", string>>;
+export type RestrictionDraftErrors = Partial<Record<"until" | "note" | "seriousBreach", string>>;
 
 /** Mirrors the server's limits; the server re-checks them. */
 export function validateRestrictionDraft(
@@ -41,6 +44,9 @@ export function validateRestrictionDraft(
 ): RestrictionDraftErrors {
   const errors: RestrictionDraftErrors = {};
   if (draft.note.length > ACCOUNT_NOTE_MAX) errors.note = `Keep the note to ${ACCOUNT_NOTE_MAX} characters.`;
+  if (action === "close" && draft.seriousBreach === null) {
+    errors.seriousBreach = "Say whether this closure is for a serious or repeated breach of the terms.";
+  }
   if (action === "suspend" && draft.until) {
     const end = new Date(`${draft.until}T23:59:59Z`);
     if (Number.isNaN(end.getTime())) errors.until = "Use a valid date.";
@@ -64,6 +70,7 @@ export function toRestrictionInput(action: RestrictionAction, draft: Restriction
     reason: draft.reason,
     ...(note ? { note } : {}),
     ...(draft.scheduleErasure ? { scheduleErasure: true } : {}),
+    seriousBreach: draft.seriousBreach === true,
   };
 }
 
@@ -95,7 +102,10 @@ export function getRestrictionConfirmCopy(action: RestrictionAction, account: Ad
       `${who} will be permanently blocked from making changes (${reason}) and told in a notice. Closing cannot be undone from this page.` +
       (draft.scheduleErasure
         ? " Their personal data is scheduled for erasure after the normal 30-day grace period, and they cannot cancel it."
-        : " Their data is kept; no erasure is scheduled."),
+        : " Their data is kept; no erasure is scheduled.") +
+      (draft.seriousBreach
+        ? " Recorded as a serious or repeated breach: nothing is refunded."
+        : " Not a breach: the unused days of their Artist Pro period and their unspent bought credits are refunded to their card."),
     confirmLabel: "Close account",
     variant: "danger" as const,
   };
@@ -179,6 +189,28 @@ export default function AccountRestrictionPanel({
             />
             <span>When closing, also schedule erasure of their personal data (30-day grace period)</span>
           </label>
+          <fieldset style={{ border: "none", margin: 0, padding: 0, display: "grid", gap: "6px", fontSize: "0.85rem" }}>
+            <legend style={{ padding: 0, marginBottom: "4px" }}>When closing: is it for a serious or repeated breach of the terms by the person?</legend>
+            <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                type="radio"
+                name="serious-breach"
+                checked={draft.seriousBreach === true}
+                onChange={() => onChange({ seriousBreach: true })}
+              />
+              <span>Yes: nothing is refunded</span>
+            </label>
+            <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                type="radio"
+                name="serious-breach"
+                checked={draft.seriousBreach === false}
+                onChange={() => onChange({ seriousBreach: false })}
+              />
+              <span>No: refund the unused days of Artist Pro and unspent bought credits</span>
+            </label>
+            {errors.seriousBreach ? <span role="alert" style={errorStyle}>{errors.seriousBreach}</span> : null}
+          </fieldset>
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             <button type="button" className="ui-btn ui-btn-primary" disabled={busy || !canSuspend} onClick={() => onRequest("suspend")}>
               {canUnsuspend ? "Update suspension" : "Suspend"}

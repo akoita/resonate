@@ -8467,7 +8467,7 @@ export function unsuspendAccount(token: string, idOrAddress: string, input: { no
 export function closeAccount(
   token: string,
   idOrAddress: string,
-  input: { reason: AccountStatusReason; note?: string; scheduleErasure?: boolean },
+  input: { reason: AccountStatusReason; note?: string; scheduleErasure?: boolean; seriousBreach: boolean },
   stepUpProof?: string,
 ) {
   return apiRequest<AdminAccountStatus>(

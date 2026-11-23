@@ -45,6 +45,7 @@ import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig } from "./billing_config";
 import { STRIPE_GATEWAY, createStripeGateway, type StripeGateway, type StripeSubscription } from "./stripe_gateway";
 import { SUBSCRIPTION_STATUSES, isSubscriptionStatus, isTerminalStatus } from "./subscription_state";
+import { type ClosureRefundSummary, refundOperatorClosure, retryPendingClosureRefunds } from "./closure_refunds";
 import { retryPendingWithdrawalRefunds } from "./withdrawal_refunds";
 
 /** Statuses of a subscription Stripe may still charge, including an `incomplete` first payment. */
@@ -86,6 +87,8 @@ export type BillingReconcileResult = {
   billingContactsUpdated: number;
   /** #2594: withdrawal refunds Stripe accepted on this run. */
   withdrawalRefunds: number;
+  /** #2595: operator-closure refunds Stripe accepted on this run. */
+  closureRefunds: number;
   failed: number;
 };
 
@@ -121,6 +124,15 @@ export class SubscriptionLifecycleService {
   }
 
   // ============ Erasure and closure ============
+
+  /**
+   * #2595: refund the unused days of the current period and unspent bought
+   * credits after an operator closure that is not for a serious or repeated
+   * breach. Idempotent; a Stripe failure is retried by {@link reconcile}.
+   */
+  refundForOperatorClosure(userId: string, now: Date = new Date()): Promise<ClosureRefundSummary> {
+    return refundOperatorClosure(this.available() ? this.gateway : null, userId, now);
+  }
 
   /**
    * Cancel the person's subscription at Stripe now, before their account is
@@ -351,6 +363,7 @@ export class SubscriptionLifecycleService {
       closureScheduled: 0,
       billingContactsUpdated: 0,
       withdrawalRefunds: 0,
+      closureRefunds: 0,
       failed: 0,
     };
 
@@ -446,6 +459,11 @@ export class SubscriptionLifecycleService {
     const refunds = await retryPendingWithdrawalRefunds(this.available() ? this.gateway : null, now);
     result.withdrawalRefunds = refunds.refunded;
     result.failed += refunds.failed;
+
+    // 7. Operator-closure refunds Stripe has not accepted yet (#2595).
+    const closureRefunds = await retryPendingClosureRefunds(this.available() ? this.gateway : null, now);
+    result.closureRefunds = closureRefunds.refunded;
+    result.failed += closureRefunds.failed;
 
     log(result.failed > 0 ? "warn" : "info", "billing.lifecycle_reconciled", { ...result });
     return result;

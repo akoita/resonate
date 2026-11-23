@@ -343,6 +343,16 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "acknowledgement itself is a Notice.",
   },
   {
+    model: "ClosureRefund",
+    disposition: "retain",
+    reason:
+      "A billing record (#2595): a refund owed after an operator closure (unused days of a paid period or unspent "
+      + "bought credits), kept as long as accounting and consumer-law rules require.",
+    note:
+      "Names the person only through `userId`, which rotates with the cascade; holds amounts, the paid record's id, "
+      + "the Stripe refund id, a short error code and times, and no free text.",
+  },
+  {
     model: "CreditTopUpRefund",
     disposition: "retain",
     reason:
@@ -1405,6 +1415,9 @@ export const REVIEWED_NON_PERSON_ID_COLUMNS: Readonly<Record<string, Readonly<Re
   },
   ContractWithdrawal: {
     subjectId: "The contract withdrawn from (#2594): a SubscriptionInvoice id or a CreditTopUp id, named by `contract`, never a person; the person is `userId`, which has a User relation.",
+  },
+  ClosureRefund: {
+    subjectId: "The paid record refunded after an operator closure (#2595): a SubscriptionInvoice id or a CreditTopUp id, named by `kind`, never a person; the person is `userId`, which has a User relation.",
   },
   PurchaseConsent: {
     subjectId: "The item bought (a stem, a punchline moment, a credit pack or a plan such as `artist_pro_month`, named by `surface`), never a person; the buyer is `userId`, which has a User relation.",
