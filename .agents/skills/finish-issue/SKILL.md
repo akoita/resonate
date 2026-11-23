@@ -3,7 +3,8 @@ name: finish-issue
 description: >-
   Finish work on a Resonate branch — verify the branch, run the selected local
   gates, route the security review, update docs and the feature catalog, then
-  commit, push, and open or update the pull request. Use when the user says
+  commit and submit the pull request with /ship (or push and open it by hand
+  where /ship is unavailable). Use when the user says
   "finish issue", "close issue", "wrap up", "ship it", or wants to finalize the
   current branch. Merging, branch cleanup, and aligning local main happen only
   when the user explicitly says "merge". Do not use to begin work (use
@@ -224,12 +225,30 @@ approval. Honor approval already given in the conversation; do not ask again.
   - Examples: `docs(#N): clarify setup` or `chore: simplify agent config`.
   - One logical change per commit — split if needed
 
-## 9. Push the branch
+## 9. Publish with `/ship` (default)
+
+When the agent has the `/ship` command (Claude Code), run `/ship` once steps
+1–8 are done and the work is committed. It pushes the branch, opens the PR,
+reviews the change, and works on review feedback and failing checks.
+
+- Give it the PR title and body this skill asks for in step 10 (summary,
+  validation, impact/deferral notes, `Closes #N` or `Refs #N`), or edit the PR
+  body after it opens so those notes are there.
+- Fixes it pushes land on the same branch; review them like any other commit.
+- `/ship` does not change who may merge: step 11 still applies.
+- Report the PR link and current CI status, then continue to step 11 only on
+  an explicit merge request.
+
+Use the manual path below instead when `/ship` is not available (another agent
+runtime, an older Claude Code, or a repository where it is not enabled), or
+when the user asks for a manual push.
+
+### Manual fallback: push the branch
 
 - Push to remote: `git push -u origin <branch-name>`
 - Verify the push succeeded
 
-## 10. Create or update the PR
+## 10. Create or update the PR (manual fallback)
 
 - If a PR for the branch already exists, update it by pushing the branch and
   editing the PR body only when the summary or validation materially changed.
