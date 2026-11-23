@@ -41,6 +41,20 @@ track again; a track that is ambiguous now credits nobody. A track with no
 stamped event in the window keeps its event-time ids. The local filler always
 resolves credits at refresh time.
 
+The exporter then reconciles the artist mart with the track mart through the
+current catalog credits (#2653). Every charting track contributes a derived row
+to each artist it currently credits: summed score, plays, saves and purchases,
+and its own audience as a lower bound of the artist's distinct listeners. Each
+metric keeps the larger of the warehouse and derived values, so an artist whose
+track charts in Trending is never missing from Top Artists because of a missing
+or stale attribution stamp. Warehouse rows for artist ids that no current
+credit names (an old duplicate profile) are dropped. Both rails sort by score,
+then distinct listeners, then plays, then id, so equal scores never swap
+between reads. Home refetches both rails every 15 minutes while it is visible
+and when the listener returns to a tab whose rails are more than 5 minutes old,
+so a tab opened before a snapshot refresh does not keep showing the previous
+ranking.
+
 Both paths enforce `DISCOVERY_MIN_AUDIENCE` before snapshot storage and again
 on reads. An empty qualifying audience keeps the existing low-data UI.
 

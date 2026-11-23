@@ -311,4 +311,51 @@ describe("warehouse discovery popularity export (real Postgres + Redis)", () => 
     });
     expect(after?.score).toBe(42);
   });
+  it("keeps Top Artists consistent with Trending through current credits (#2653)", async () => {
+    const staleArtistId = `${TEST_PREFIX}stale_duplicate`;
+    const tieArtistId = `${TEST_PREFIX}tie_artist`;
+    const tieReleaseId = `${TEST_PREFIX}tie_release`;
+    // An old duplicate profile that no credit names any more.
+    await prisma.artist.create({ data: { id: staleArtistId, displayName: "Credited Artist" } });
+    await prisma.artist.create({ data: { id: tieArtistId, displayName: "Tie Artist" } });
+    await prisma.release.create({
+      data: {
+        id: tieReleaseId,
+        artistId: tieArtistId,
+        title: "Tie release",
+        status: "ready",
+        primaryArtist: "Tie Artist",
+        artistCredits: {
+          create: { artistId: tieArtistId, role: "main", displayName: "Tie Artist", identityStatus: "inferred" },
+        },
+      },
+    });
+
+    // The track charts, but the warehouse attributed its listens to the stale
+    // profile instead of the current credit.
+    const exporter = new DiscoveryPopularityExportService(
+      redisCache,
+      warehouseConfig(),
+      fakeMarts(
+        [row(TRACK_ID, "", { score: 7, plays: 9, unique_listeners: 4 })],
+        [
+          artistRow(staleArtistId, "", { score: 50, unique_listeners: 5 }),
+          artistRow(tieArtistId, "", { score: 7, plays: 9, unique_listeners: 3 }),
+        ],
+      ),
+    );
+    await expect(exporter.refreshFromWarehouse()).resolves.toMatchObject({ trackRows: 1, artistRows: 2 });
+
+    expect(await prisma.artistEngagement.count({ where: { artistId: staleArtistId } })).toBe(0);
+    const service = new DiscoveryPopularityService(secondRedisCache);
+    const topArtists = await service.getTopArtists({ window: "7d", limit: 10 }) as {
+      items: Array<{ artistId: string; uniqueListeners: number; score: number }>;
+    };
+    const ours = topArtists.items.filter((item) => item.artistId.startsWith(TEST_PREFIX));
+    // Equal scores: more listeners ranks first, deterministically.
+    expect(ours.map((item) => [item.artistId, item.score, item.uniqueListeners])).toEqual([
+      [ARTIST_ID, 7, 4],
+      [tieArtistId, 7, 3],
+    ]);
+  });
 });

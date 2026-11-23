@@ -29,7 +29,7 @@ Application milestone: [#55](https://github.com/akoita/resonate/milestone/55). A
 
 ## Merged pull requests
 
-[#2640](https://github.com/akoita/resonate/pull/2640) (plan), [#2619](https://github.com/akoita/resonate/pull/2619), [#2641](https://github.com/akoita/resonate/pull/2641), [#2643](https://github.com/akoita/resonate/pull/2643), [#2644](https://github.com/akoita/resonate/pull/2644), [#2646](https://github.com/akoita/resonate/pull/2646), [#2647](https://github.com/akoita/resonate/pull/2647) (closure).
+[#2653](https://github.com/akoita/resonate/pull/2640) (plan), [#2619](https://github.com/akoita/resonate/pull/2619), [#2641](https://github.com/akoita/resonate/pull/2641), [#2643](https://github.com/akoita/resonate/pull/2643), [#2644](https://github.com/akoita/resonate/pull/2644), [#2646](https://github.com/akoita/resonate/pull/2646), [#2647](https://github.com/akoita/resonate/pull/2647) (closure).
 
 ## Carry-over and owner decisions
 

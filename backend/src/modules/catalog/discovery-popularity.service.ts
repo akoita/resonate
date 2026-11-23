@@ -409,7 +409,8 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
             uniqueListeners: { gte: minimumAudience },
             computedAt: { gte: freshSince, lte: now },
           },
-          orderBy: { score: "desc" },
+          // Deterministic order (#2653): ties never swap between reads or tabs.
+          orderBy: [{ score: "desc" }, { uniqueListeners: "desc" }, { plays: "desc" }, { trackId: "asc" }],
           take: limit,
         });
         const tracks = rows.length
@@ -575,7 +576,8 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
             uniqueListeners: { gte: minimumAudience },
             computedAt: { gte: freshSince, lte: now },
           },
-          orderBy: { score: "desc" },
+          // Deterministic order (#2653): ties never swap between reads or tabs.
+          orderBy: [{ score: "desc" }, { uniqueListeners: "desc" }, { plays: "desc" }, { artistId: "asc" }],
           take: limit,
         });
         const profiles = rows.length
