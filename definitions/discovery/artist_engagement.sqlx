@@ -1,0 +1,70 @@
+config {
+  type: "table",
+  name: require("includes/discovery_popularity_config").artistEngagementTableName(dataform.projectConfig),
+  tags: ["discovery_popularity", "serving"],
+  description: "Trusted artist engagement snapshots by 24h/7d/30d window and genre. Audience is a distinct listener union, not summed track audiences.",
+  bigquery: {
+    partitionBy: "DATE(computed_at)",
+    clusterBy: ["`window`", "genre", "artist_id"],
+  },
+}
+
+/*
+ * Cost note: this mart reads the 30-day trusted event view; clean rows filter
+ * on occurredDate and the raw basis lookup on occurredAt. The raw lookup
+ * currently filters occurredAt only; verify the partition field and matching
+ * predicate via BigQuery dry-run bytes before enabling warehouse refreshes.
+ * Artist audiences count distinct actors; the exporter never scans events
+ * online.
+ */
+WITH windows AS (
+  SELECT '24h' AS `window`, 24 * 60 * 60 AS window_seconds
+  UNION ALL SELECT '7d', 7 * 24 * 60 * 60
+  UNION ALL SELECT '30d', 30 * 24 * 60 * 60
+),
+artist_genres AS (
+  SELECT event_id, event_name, occurred_at, track_id, actor_id, artist_id, '' AS genre, signal_kind, signal_id, completion_ratio
+  FROM ${ref(require("includes/discovery_popularity_config").eligibleEventsTableName(dataform.projectConfig))}, UNNEST(credited_artist_ids) AS artist_id
+  UNION ALL
+  SELECT event_id, event_name, occurred_at, track_id, actor_id, artist_id, genre, signal_kind, signal_id, completion_ratio
+  FROM ${ref(require("includes/discovery_popularity_config").eligibleEventsTableName(dataform.projectConfig))}, UNNEST(credited_artist_ids) AS artist_id
+  WHERE genre != ''
+),
+windowed AS (
+  SELECT
+    ag.*,
+    windows.`window`,
+    GREATEST(
+      0.1,
+      1.0 - SAFE_DIVIDE(
+        GREATEST(0, TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), ag.occurred_at, SECOND)),
+        windows.window_seconds
+      )
+    ) AS decay
+  FROM artist_genres AS ag
+  CROSS JOIN windows
+  WHERE ag.occurred_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL windows.window_seconds SECOND)
+),
+deduplicated_artist_signals AS (
+  SELECT *
+  FROM windowed
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY artist_id, `window`, genre, signal_kind, signal_id
+    ORDER BY occurred_at DESC, event_id DESC
+  ) = 1
+)
+SELECT
+  artist_id,
+  `window`,
+  genre,
+  SUM(CASE WHEN signal_kind = 'play' THEN LEAST(1.5, GREATEST(0.0, completion_ratio)) * decay ELSE 0 END)
+    + ${require("includes/discovery_popularity_config").saveWeight(dataform.projectConfig)} * SUM(IF(signal_kind = 'save', decay, 0))
+    + ${require("includes/discovery_popularity_config").purchaseWeight(dataform.projectConfig)} * SUM(IF(signal_kind = 'purchase', decay, 0)) AS score,
+  COUNTIF(signal_kind = 'play') AS plays,
+  COUNT(DISTINCT actor_id) AS unique_listeners,
+  COUNTIF(signal_kind = 'save') AS saves,
+  COUNTIF(signal_kind = 'purchase') AS purchases,
+  CURRENT_TIMESTAMP() AS computed_at
+FROM deduplicated_artist_signals
+GROUP BY artist_id, `window`, genre
+HAVING COUNT(DISTINCT actor_id) >= ${require("includes/discovery_popularity_config").minimumAudience(dataform.projectConfig)}
