@@ -46,6 +46,7 @@ import { HomeFeedRails } from "../components/home/HomeFeedRails";
 import type { ArtistCoverFallback } from "../components/home/PopularityRails";
 import { FEED_ERROR, FEED_LOADING, homeRevealState, type FeedState } from "../components/home/homeReveal";
 import { RAIL_ERROR, RAIL_LOADING, type RailState } from "../components/home/railState";
+import { usePopularityRefreshTick } from "../components/home/usePopularityRefreshTick";
 import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
 import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
 import { HomeTuner } from "../components/home/HomeTuner";
@@ -556,8 +557,13 @@ export default function Home() {
   const [trendingRail, setTrendingRail] = useState<RailState<TrendingTrackItem>>(RAIL_LOADING);
   const [rankedTopArtists, setRankedTopArtists] =
     useState<RailState<TopArtistItem>>(RAIL_LOADING);
+  // Refetch the charts while Home stays open, so an old tab does not keep the
+  // ranking from before the hourly snapshot. A failed background refetch keeps
+  // the rails it already shows.
+  const popularityRefreshTick = usePopularityRefreshTick();
   useEffect(() => {
     let cancelled = false;
+    const keepOnError = popularityRefreshTick > 0;
     // #2228: the two requests settle independently — a failure of one rail
     // must not blank the other, and a failed request must never look like the
     // honest "not enough listening yet" state (an empty `items` array).
@@ -569,7 +575,7 @@ export default function Home() {
       .catch((error: unknown) => {
         if (cancelled) return;
         console.warn("Failed to load trending tracks:", error);
-        setTrendingRail(RAIL_ERROR);
+        if (!keepOnError) setTrendingRail(RAIL_ERROR);
       });
     fetchTopArtists({ window: "7d", genre: popularityGenre, limit: 8 })
       .then((artists) => {
@@ -579,12 +585,12 @@ export default function Home() {
       .catch((error: unknown) => {
         if (cancelled) return;
         console.warn("Failed to load top artists:", error);
-        setRankedTopArtists(RAIL_ERROR);
+        if (!keepOnError) setRankedTopArtists(RAIL_ERROR);
       });
     return () => {
       cancelled = true;
     };
-  }, [popularityGenre]);
+  }, [popularityGenre, popularityRefreshTick]);
 
   const displayReleases = releases;
 

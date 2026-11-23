@@ -2,7 +2,9 @@ import { Logger } from "@nestjs/common";
 import { GoogleAuth } from "google-auth-library";
 import { prisma } from "../../db/prisma";
 import { RedisCacheService } from "../shared/redis_cache.service";
+import { resolveCreditedArtistIds } from "../shared/artist_attribution";
 import { AI_PROMOTIONAL_ELIGIBILITY_WHERE } from "./ai-disclosure.policy";
+import { reconcileArtistEngagement } from "./discovery-artist-reconcile";
 import {
   DiscoveryPopularityConfig,
   DISCOVERY_POPULARITY_CACHE_TTL_SECONDS,
@@ -182,12 +184,15 @@ export class DiscoveryPopularityExportService {
         where: { id: { in: ids } },
         select: {
           id: true,
+          artist: true,
           aiDisclosureLevel: true,
           release: {
             select: {
               artistId: true,
+              primaryArtist: true,
+              artist: { select: { displayName: true } },
               artistCredits: {
-                select: { artistId: true, identityStatus: true },
+                select: { artistId: true, identityStatus: true, role: true, displayName: true },
               },
             },
           },
@@ -221,8 +226,50 @@ export class DiscoveryPopularityExportService {
       return false;
     });
 
+    // Current credits of the charting tracks, by the same rule the analytics
+    // stamp and the local filler use, so Top Artists cannot disagree with
+    // Trending when a warehouse attribution stamp is missing or stale.
+    const creditedArtistIdsByTrack = new Map<string, string[]>();
+    for (const row of eligibleTrackRows) {
+      if (creditedArtistIdsByTrack.has(row.trackId)) continue;
+      const track = tracksById.get(row.trackId);
+      if (!track) continue;
+      creditedArtistIdsByTrack.set(row.trackId, resolveCreditedArtistIds({
+        trackArtist: track.artist,
+        credits: track.release.artistCredits,
+        primaryArtist: track.release.primaryArtist,
+        accountDisplayName: track.release.artist?.displayName,
+      }));
+    }
+    const currentlyCreditedArtistIds = new Set<string>();
+    for (const ids of chunksOf(sourceArtistIds, POSTGRES_CATALOG_LOOKUP_CHUNK_SIZE)) {
+      const credits = await prisma.releaseArtistCredit.findMany({
+        where: { artistId: { in: ids }, identityStatus: { not: "ambiguous" } },
+        select: { artistId: true },
+        distinct: ["artistId"],
+      });
+      for (const credit of credits) currentlyCreditedArtistIds.add(credit.artistId);
+    }
+    for (const ids of creditedArtistIdsByTrack.values()) {
+      for (const id of ids) currentlyCreditedArtistIds.add(id);
+    }
+    const reconciledArtistRows = reconcileArtistEngagement(
+      artistRows,
+      eligibleTrackRows,
+      creditedArtistIdsByTrack,
+      currentlyCreditedArtistIds,
+    );
+
+    const derivedArtistIds = [...new Set(reconciledArtistRows.map((row) => row.artistId))]
+      .filter((id) => !sourceArtistIds.includes(id));
+    for (const ids of chunksOf(derivedArtistIds, POSTGRES_CATALOG_LOOKUP_CHUNK_SIZE)) {
+      artists.push(...await prisma.artist.findMany({
+        where: { id: { in: ids } },
+        select: { id: true },
+      }));
+    }
     const existingArtistIds = new Set(artists.map((artist) => artist.id));
-    const eligibleArtistRows = artistRows.filter(
+    const eligibleArtistRows = reconciledArtistRows.filter(
       (row) => existingArtistIds.has(row.artistId) && !ineligibleArtistIds.has(row.artistId),
     );
     return { trackRows: eligibleTrackRows, artistRows: eligibleArtistRows };
