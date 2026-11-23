@@ -85,23 +85,8 @@
   background: linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.28), transparent);
 }
 
-.logo-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  filter: drop-shadow(0 0 10px rgba(124, 92, 255, 0.45))
-          drop-shadow(0 0 6px rgba(255, 107, 74, 0.28));
-  transition: transform 0.4s var(--r-ease-spring);
-}
-.app-sidebar:hover .logo-icon { transform: rotate(8deg) scale(1.06); }
-
-.logo-text {
-  background: var(--r-grad-text);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  letter-spacing: -0.02em;
-}
+/* The logo itself (mark + wordmark) is styled in globals.css (.brand-logo):
+ * the brand guide forbids glows, rotation and gradient text on the logo. */
 
 /* Active nav → fully violet (the platform colour), no more coral/violet clash. */
 .sidebar-link {
@@ -406,7 +391,6 @@ button:focus-visible,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-sidebar:hover .logo-icon { transform: none; }
   /* Disable the refresh's decorative motion for reduced-motion users. */
   .artist-community-room__meta span:first-child::before,
   .artist-community-conversation__header > span::before,

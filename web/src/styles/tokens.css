@@ -1,4 +1,21 @@
 :root {
+  /* ══════════════════════════════════════════════════════════════
+   * Brand (Resonate brand book, 2026-11)
+   * The four core colors from the brand book. Every other color token
+   * derives from or sits alongside these. Guide: docs/brand/README.md.
+   * Code that needs the hex values reads src/lib/brand.ts; keep in sync.
+   * ══════════════════════════════════════════════════════════════ */
+  --brand-jet-black: #08080F;
+  --brand-pure-white: #FFFFFF;
+  --brand-hyacinth-blue: #7C5CFF;   /* platform: nav, structure, actions, AI */
+  --brand-tomato-red: #FF6B4A;      /* sound: playback, now playing, energy */
+  /* Accessible companion the brand book lacks: Hyacinth as *text* is only
+   * 3.9:1 on raised surfaces, so text and icons use this tint (>= 4.8:1). */
+  --brand-hyacinth-text: #9880FF;
+  --brand-font: var(--font-ds-body), "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  /* One brand typeface: the display slot points at the body face. */
+  --font-ds-display: var(--font-ds-body);
+
   /*
    * Legacy `--color-*` tokens are now aliases of the Stitch "Next-Gen
    * Music Platform" design-system tokens below. Every component that
@@ -41,12 +58,10 @@
    * system; Geist / Inter remain as graceful fallbacks so any surface
    * that references `var(--font-sans)` flips to the new face with no
    * code change. */
-  --font-sans: var(--font-ds-body), var(--font-geist-sans), "Inter",
-    system-ui, -apple-system, sans-serif;
-  /* Display / kicker font — new surfaces reference this directly so
-   * they can switch to Space Grotesk without extra configuration. */
-  --font-display: var(--font-ds-display), var(--font-geist-sans), "Inter",
-    system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-ds-body), system-ui, -apple-system, sans-serif;
+  /* Display / heading font. The brand book names one typeface, so
+   * headings use Be Vietnam Pro too (was Space Grotesk until 2026-11). */
+  --font-display: var(--font-ds-body), system-ui, -apple-system, sans-serif;
 
   /*
    * Canonical responsive breakpoints — use these exact pixel values in
@@ -69,7 +84,7 @@
    * ══════════════════════════════════════════════════════════════ */
 
   /* Canvas & Surfaces */
-  --r-canvas: #08080F;
+  --r-canvas: var(--brand-jet-black);
   --r-canvas-warm: #0A0912;
   --r-surface-lowest: #0B0B13;
   --r-surface-low: #11101E;
@@ -78,17 +93,18 @@
   --r-surface-highest: #282542;
 
   /* Text & Content */
-  --r-on-surface: #FFFFFF;
+  --r-on-surface: var(--brand-pure-white);
   --r-on-surface-variant: #C4B5FD;
-  --r-on-surface-muted: #797295;
+  /* Was #797295 (4.4:1 on canvas, 3.7:1 on cards): below WCAG AA. */
+  --r-on-surface-muted: #958DB5;
 
   /* Outlines */
   --r-outline: #2C293F;
   --r-outline-variant: #1D1B2D;
 
   /* Primary: Hyacinth Blue */
-  --r-primary: #7C5CFF;
-  --r-primary-soft: #9880FF;
+  --r-primary: var(--brand-hyacinth-blue);
+  --r-primary-soft: var(--brand-hyacinth-text);
   --r-primary-glow: rgba(124, 92, 255, 0.35);
   --r-on-primary: #FFFFFF;
   --r-primary-container: #6242E6;
@@ -146,7 +162,7 @@
    * ══════════════════════════════════════════════════════════════ */
 
   /* Sound / playback (coral ember) — reserved for the act of listening */
-  --r-play: #FF6B4A;
+  --r-play: var(--brand-tomato-red);
   --r-play-soft: #FF8F6B;
   --r-play-warm: #FFB782;
   --r-play-glow: rgba(255, 107, 74, 0.45);
@@ -228,8 +244,8 @@
   --ds-tertiary-fixed-dim: #ffb782;
   --ds-error: var(--r-error);               /* was #ffb4ab */
 
-  --ds-font-display: "Space Grotesk", system-ui, -apple-system, sans-serif;
-  --ds-font-body: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  --ds-font-display: var(--font-ds-display), "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  --ds-font-body: var(--font-ds-body), "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
 
   /* Stitch spacing scale (4px base). */
   --ds-margin: 40px;
@@ -262,6 +278,9 @@
   --color-ds-on-tertiary: #08080F;
   --color-ds-tertiary-fixed: #F0EDFF;
   --color-ds-tertiary-fixed-dim: #E2DCFF;
-  --font-ds-display: "Space Grotesk", system-ui, sans-serif;
+  --font-ds-display: "Be Vietnam Pro", system-ui, sans-serif;
   --font-ds-body: "Be Vietnam Pro", system-ui, sans-serif;
+  /* Tailwind's preflight emits its own --font-sans on :root after this file,
+   * which would win over the :root token above. Pin it to the brand face. */
+  --font-sans: "Be Vietnam Pro", "Be Vietnam Pro Fallback", system-ui, -apple-system, sans-serif;
 }

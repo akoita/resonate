@@ -156,7 +156,7 @@
 
 .help-search__icon {
   flex: 0 0 auto;
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
 }
 
 .help-search__input {
@@ -172,7 +172,7 @@
 }
 
 .help-search__input::placeholder {
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
 }
 
 .help-search__clear {
@@ -230,7 +230,7 @@
 
 .help-browser__count {
   margin: 0 0 var(--space-4);
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
   font-size: 13px;
 }
 
@@ -260,7 +260,7 @@
 
 .help-catsection__blurb {
   margin: 4px 0 0;
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
   font-size: 14px;
 }
 
@@ -322,7 +322,7 @@
   gap: 8px;
   margin-bottom: var(--space-4);
   font-size: 13px;
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
 }
 
 .help-breadcrumb a {
@@ -365,7 +365,7 @@
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
 }
 
 .help-levels__tabs {
@@ -495,7 +495,7 @@
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
 }
 
 .help-toc ul {
@@ -542,7 +542,7 @@
 
 .help-anchor {
   opacity: 0;
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
   text-decoration: none;
   font-weight: 700;
   transition: opacity 0.12s ease;
@@ -668,7 +668,7 @@
 
 .help-figure__caption {
   margin-top: 8px;
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -696,7 +696,7 @@
 }
 
 .help-audio__duration {
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
   font-weight: 500;
 }
 
@@ -757,7 +757,7 @@
 
 .help-applink__desc {
   grid-column: 1;
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
   font-size: 13px;
 }
 
@@ -793,7 +793,7 @@
 }
 
 .help-related__summary {
-  color: var(--r-on-surface-muted, #797295);
+  color: var(--r-on-surface-muted, #958DB5);
   font-size: 13px;
   line-height: 1.5;
 }

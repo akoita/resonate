@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Space_Grotesk, Be_Vietnam_Pro, JetBrains_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono, Be_Vietnam_Pro, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 // Loaded after globals.css so the Obsidian Frequency identity refresh
 // reliably wins ties over the base chrome / aid / vault rules defined
@@ -34,6 +34,7 @@ import {
   publicMetadata,
   socialImageUrl,
 } from "../lib/seo";
+import { BRAND_COLORS } from "../lib/brand";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -45,30 +46,19 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const inter = Inter({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
-
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
 });
 
-// Stitch design system fonts. Scoped via the `--ds-font-*` tokens in
-// tokens.css so they only apply where the new design system is used
-// (home page + future migrated surfaces).
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-ds-display",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  display: "swap",
-});
-
+// Brand typeface (docs/brand/README.md): Be Vietnam Pro for body text,
+// headings and the wordmark. tokens.css maps --font-sans, --font-display and
+// the legacy --ds-font-* tokens onto --font-ds-body. Inter and Space Grotesk
+// were retired with the brand book rollout (2026-11).
 const beVietnamPro = Be_Vietnam_Pro({
   variable: "--font-ds-body",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+  weight: ["300", "400", "500", "600", "700", "800"],
   display: "swap",
 });
 
@@ -107,6 +97,11 @@ export const metadata: Metadata = {
   },
 };
 
+// Browser chrome (mobile address bar, installed-app title bar) in Jet Black.
+export const viewport: Viewport = {
+  themeColor: BRAND_COLORS.jetBlack,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -115,7 +110,13 @@ export default function RootLayout({
   return (
     // suppressHydrationWarning: the inline script below may add `data-session`
     // to this element before React hydrates it.
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      // Font variables sit on <html> so the :root tokens in tokens.css that
+      // reference them (--font-sans, --font-display) resolve.
+      className={`${geistSans.variable} ${geistMono.variable} ${beVietnamPro.variable} ${jetbrainsMono.variable}`}
+    >
       <head>
         {/* Runs before first paint. A returning listener's session lives in
           * localStorage, which the server cannot see, so the server renders the
@@ -152,7 +153,7 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=album,arrow_forward,auto_awesome,chevron_left,chevron_right,close,error,folder,graphic_eq,hourglass_top,library_add,library_music,lock,mic,person_add,person_search,play_arrow,playlist_add,progress_activity,public,queue_music,rocket_launch,search,search_off,table_rows,tune,upload_file&display=swap"
         />
       </head>
-      <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${beVietnamPro.variable} ${jetbrainsMono.variable}`}>
+      <body>
         <ToastProvider>
           <ZeroDevProviderClient projectId={process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID}>
             <AuthProvider>

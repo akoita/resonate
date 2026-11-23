@@ -29,9 +29,17 @@ Supporting tokens: `--r-secondary` `#C4B5FD` (lavender, secondary text/accents),
 
 > Note: `--color-accent-rgb` is intentionally aligned to the platform violet (`124, 92, 255`) so every `rgba(var(--color-accent-rgb), …)` border/glow matches `var(--color-accent)`. Coral is reserved for the dedicated `--r-play*` / `--r-grad-energy` tokens only.
 
+### Brand layer
+
+The four brand-book colours sit at the top of `tokens.css` as `--brand-*`
+tokens (`--brand-jet-black`, `--brand-pure-white`, `--brand-hyacinth-blue`,
+`--brand-tomato-red`, plus the text-safe `--brand-hyacinth-text`), and the
+`--r-*` canvas, primary and play tokens point at them. Logo, colour roles,
+type and voice are defined in the [brand guide](../brand/README.md).
+
 ### Typography
 
-- **Display & UI**: System sans via `--ds-font-display`
+- **Display & UI**: Be Vietnam Pro (`--font-sans`, `--font-display`, `--ds-font-*` all resolve to it; Space Grotesk and Inter retired 2026-11)
 - **Studio & tabular**: `var(--font-mono)` (JetBrains Mono) — used for all pricing values, durations, track numbers, smart contract addresses, balances, and metrics
 
 ### Key Principles

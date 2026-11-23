@@ -12,6 +12,7 @@
     "build": "node scripts/write-build-version.mjs && next build --webpack",
     "start": "next start",
     "lint": "eslint",
+    "brand:assets": "node scripts/brand-assets.mjs",
     "perf:home": "node scripts/measure-home-performance.mjs",
     "perf:idle": "node scripts/measure-idle-cost.mjs",
     "perf:load": "node scripts/measure-load-cost.mjs",
