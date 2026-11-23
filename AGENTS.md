@@ -85,6 +85,12 @@ partial-delivery checklist; do not duplicate that procedure here.
   ignored local settings, not shared runtime configuration.
 - Keep related refinements on the current feature branch and PR until the user
   asks to finish or merge.
+- In Claude Code, submit pull requests with `/ship` by default, after the
+  `finish-issue` gates (docs, tests, security routing) pass. `/ship` pushes the
+  branch, opens the PR, reviews it, and works on feedback and failing checks;
+  it does not lift the merge rule above. Other agents (Codex included, unless
+  it gains a native equivalent), or Claude Code where `/ship` is unavailable
+  for the repository, push and open the PR by hand as `finish-issue` describes.
 
 Use these project skills:
 
