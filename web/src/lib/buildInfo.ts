@@ -48,3 +48,19 @@ export function getCommitUrl(): string | null {
   if (!COMMIT_SHA) return null;
   return `${REPO_URL}/commit/${COMMIT_SHA}`;
 }
+
+/**
+ * A build stamp as the About box shows it. A commit SHA (the backend reports
+ * the released commit as its version) is shortened and linked to the commit;
+ * anything else is shown as given.
+ */
+export function describeBuildStamp(
+  stamp: string | null | undefined,
+): { label: string; href: string | null } | null {
+  const value = (stamp ?? "").trim();
+  if (!value) return null;
+  if (/^[0-9a-f]{7,40}$/i.test(value)) {
+    return { label: value.slice(0, 7).toLowerCase(), href: `${REPO_URL}/commit/${value}` };
+  }
+  return { label: value, href: null };
+}
