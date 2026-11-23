@@ -7,6 +7,7 @@ import { BillingReconciliationService } from "./billing_reconciliation.service";
 import { BillingController } from "./billing.controller";
 import { BillingCoreModule } from "./billing_core.module";
 import { BillingService } from "./billing.service";
+import { ContractWithdrawalService } from "./contract_withdrawal.service";
 import { CreditPackConfig } from "./credit_packs";
 import { CreditTopUpController } from "./credit_topup.controller";
 import { CreditTopUpService } from "./credit_topup.service";
@@ -33,6 +34,7 @@ import { RenewalNoticeService } from "./renewal_notices.service";
     CreditTopUpService,
     StripeDisputeService,
     BillingReconciliationService,
+    ContractWithdrawalService,
     RenewalNoticeService,
   ],
 })

@@ -81,6 +81,7 @@ model User {
   generationCreditTxns        GenerationCreditTransaction[]
   generationCreditRequests    GenerationCreditRequest[]
   creditTopUps                CreditTopUp[]
+  contractWithdrawals         ContractWithdrawal[]
   generationAllowanceGrants   GenerationAllowanceGrant[]
   entitlementGrants           EntitlementGrant[]
   subscription                Subscription?
@@ -361,6 +362,47 @@ model StripeDispute {
   @@index([fundsReinstatedAt])
 }
 
+// An exercised right of withdrawal (#2594, Directive 2023/2673): the person
+// used the in-app "Withdraw from contract" function for an Artist Pro
+// subscription within 14 days, or for a credit pack still on its 14-day hold.
+// One row per contract (`contract`, `subjectId`), so pressing twice records
+// one withdrawal. The refund starts at once and the retention job retries it
+// until Stripe accepts it. `statementName` is the name the person typed in the
+// statement form; the acknowledgement notice repeats it with `withdrawnAt`.
+model ContractWithdrawal {
+  id              String    @id @default(uuid())
+  userId          String
+  /// artist_pro | credit_topup
+  contract        String
+  /// The paid invoice (`SubscriptionInvoice.id`) or the purchase (`CreditTopUp.id`) withdrawn from.
+  subjectId       String
+  /// What the person was told they were withdrawing from ("Artist Pro (monthly)", "$10 credit pack").
+  contractLabel   String    @db.VarChar(200)
+  /// Who is withdrawing, as typed in the statement form.
+  statementName   String    @db.VarChar(120)
+  /// The label version of the form (`WITHDRAWAL_LABELS_VERSION`).
+  labelsVersion   String    @db.VarChar(64)
+  withdrawnAt     DateTime
+  currency        String
+  /// What the payment was, and what is refunded (minor units of `currency`).
+  paidCents       Int
+  refundCents     Int
+  /// pending | refunded | failed (retried) | not_needed
+  refundStatus    String
+  stripeRefundId  String?
+  refundAttempts  Int       @default(0)
+  /// The last failure as a short code (never a message or a payload).
+  refundLastError String?   @db.VarChar(64)
+  refundedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([contract, subjectId])
+  @@index([userId, withdrawnAt])
+  @@index([refundStatus])
+}
+
 // Artist Pro monthly generation allowance (#2408, docs/rfc/artist-pro.md §5,
 // docs/rfc/business-model.md Layer 2b): a ledger bucket kept apart from bought
 // and promo credits. One row per month of a paid subscription invoice: a
@@ -541,6 +583,8 @@ model SubscriptionInvoice {
 enum SubscriptionEndReason {
   account_erasure
   account_closure
+  /// #2594: the person withdrew from the contract within 14 days.
+  contract_withdrawal
 }
 
 enum SubscriptionProvider {

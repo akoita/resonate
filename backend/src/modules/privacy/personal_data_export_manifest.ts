@@ -156,6 +156,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "Stripe.",
   },
   {
+    model: "ContractWithdrawal",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2594. The person's withdrawals from Artist Pro or a held credit pack: the contract, the name they "
+      + "gave in the statement, when it was received, what was paid and refunded, and the refund's progress.",
+  },
+  {
     model: "GenerationJobOutcome",
     primaryKey: "jobId",
     keys: [{ kind: "userId", column: "userId" }],

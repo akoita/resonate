@@ -4,6 +4,8 @@ import { Throttle } from "@nestjs/throttler";
 import { minutes } from "../shared/rate_limits";
 import { StartSubscriptionCheckoutDto } from "./billing.dto";
 import { BillingService } from "./billing.service";
+import { SubmitWithdrawalDto } from "./contract_withdrawal.dto";
+import { ContractWithdrawalService } from "./contract_withdrawal.service";
 
 /**
  * The signed-in person's Artist Pro subscription (#2407). Checkout and the
@@ -13,7 +15,10 @@ import { BillingService } from "./billing.service";
 @Controller("billing")
 @UseGuards(AuthGuard("jwt"))
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(
+    private readonly billing: BillingService,
+    private readonly withdrawals: ContractWithdrawalService,
+  ) {}
 
   @Get("subscription")
   state(@Req() req: any) {
@@ -25,6 +30,20 @@ export class BillingController {
   @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   checkout(@Req() req: any, @Body() body: StartSubscriptionCheckoutDto) {
     return this.billing.startCheckout(req.user.userId, body);
+  }
+
+  /** #2594: what can be withdrawn from now, the form labels and past withdrawals. */
+  @Get("withdrawals")
+  withdrawalState(@Req() req: any) {
+    return this.withdrawals.getState(req.user.userId);
+  }
+
+  /** #2594: the withdrawal statement, sent after the bare confirmation step. */
+  @Post("withdrawals")
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
+  withdraw(@Req() req: any, @Body() body: SubmitWithdrawalDto) {
+    return this.withdrawals.withdraw(req.user.userId, body);
   }
 
   @Post("portal")

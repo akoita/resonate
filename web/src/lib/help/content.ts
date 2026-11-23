@@ -1968,6 +1968,19 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "Credit packs use the same two choices. Deliver now adds the credits as soon as your payment is confirmed, and you give up your right to withdraw for the credits you use. Wait 14 days holds them and adds them automatically when the 14 days end; you can ask for them sooner from Usage & Billing.",
           },
           {
+            kind: "steps",
+            items: [
+              "To withdraw from Artist Pro within 14 days of subscribing, or from a credit pack that is still on hold, open Settings, Usage & Billing. While you have that right, a Withdraw from a contract box lists what you can withdraw from and until when.",
+              "Choose Withdraw from contract, type your name and choose the contract. The form says what will be refunded and where we send the confirmation. Nothing is filled in or chosen for you.",
+              "Choose Continue, then Confirm withdrawal. Artist Pro ends straight away and you are refunded the price less the service you received; a held credit pack is cancelled and refunded in full.",
+              "You get a Purchase notice repeating your statement and the time we received it (in UTC), also emailed if you have a confirmed contact email. The box then lists the withdrawal and how its refund is going.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "For a held stem, licence or collectible, which is paid on-chain, write to us at the contact address in the Refund Policy for now. You can always withdraw by writing to us instead of using the button.",
+          },
+          {
             kind: "paragraph",
             text: "If you dispute a credit pack payment with your bank instead of asking us for a refund, the credits from that purchase that you have not used are paused while the dispute is open, and a purchase still on hold stays on hold. If the bank refunds you, those credits are removed; if it does not, they come back. You get a Refund notice each time, and Usage & Billing shows the purchase as disputed. Writing to us first is faster: see the Refund Policy for the contact address.",
           },

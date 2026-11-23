@@ -9107,6 +9107,73 @@ export function openBillingPortal(token: string) {
   return apiRequest<{ url: string }>("/billing/portal", { method: "POST" }, token);
 }
 
+// ============ Withdrawal from contract (#2594) ============
+
+/** Every label of the withdrawal function, served by the server so an operator can localise them. */
+export type WithdrawalLabels = {
+  version: string;
+  entryButton: string;
+  sectionTitle: string;
+  sectionIntro: string;
+  formTitle: string;
+  nameLabel: string;
+  contractLabel: string;
+  confirmationLabel: string;
+  confirmationToEmail: string;
+  confirmationToNotices: string;
+  continueButton: string;
+  cancelButton: string;
+  confirmButton: string;
+  doneTitle: string;
+  doneBody: string;
+  refundArtistPro: string;
+  refundCreditPack: string;
+  fallback: string;
+};
+
+export type WithdrawableContract = {
+  contract: "artist_pro" | "credit_topup";
+  subjectId: string;
+  label: string;
+  boughtAt: string;
+  rightEndsAt: string;
+  currency: string;
+  paidCents: number;
+  refundCents: number;
+};
+
+export type ContractWithdrawalView = {
+  id: string;
+  contract: string;
+  label: string;
+  withdrawnAt: string;
+  currency: string;
+  refundCents: number;
+  refundStatus: "pending" | "refunded" | "failed" | "not_needed" | string;
+};
+
+export type WithdrawalState = {
+  labels: WithdrawalLabels;
+  confirmationEmail: string | null;
+  contracts: WithdrawableContract[];
+  withdrawals: ContractWithdrawalView[];
+};
+
+export function getWithdrawalState(token: string) {
+  return apiRequest<WithdrawalState>("/billing/withdrawals", { cache: "no-store" }, token);
+}
+
+export function submitWithdrawal(
+  token: string,
+  input: { contract: WithdrawableContract["contract"]; subjectId: string; name: string },
+) {
+  return apiRequest<ContractWithdrawalView>(
+    "/billing/withdrawals",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
 // ============ Credit packs (#1422, Stripe test mode) ============
 
 export type CreditPackId = "credits_5" | "credits_10" | "credits_25";

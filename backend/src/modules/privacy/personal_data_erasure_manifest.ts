@@ -331,6 +331,18 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "`consentId` points at the person's own PurchaseConsent, which is retained alongside.",
   },
   {
+    model: "ContractWithdrawal",
+    disposition: "anonymize",
+    reason:
+      "The record that the person exercised their right of withdrawal (#2594) and what was refunded, kept as a "
+      + "billing record as long as accounting and consumer-law rules require; the name they typed is not part of it.",
+    scrub: ["statementName"],
+    matchOn: "userId",
+    note:
+      "`userId` rotates with the cascade. The contract label, amounts, Stripe refund id and times stay; the "
+      + "acknowledgement itself is a Notice.",
+  },
+  {
     model: "CreditTopUpRefund",
     disposition: "retain",
     reason:
@@ -1390,6 +1402,9 @@ export const REVIEWED_NON_PERSON_ID_COLUMNS: Readonly<Record<string, Readonly<Re
   },
   RightsRouteReassessment: {
     evidenceSubjectId: "Copied from the evidence bundle's subject, so it carries the same enum-constrained work or case id.",
+  },
+  ContractWithdrawal: {
+    subjectId: "The contract withdrawn from (#2594): a SubscriptionInvoice id or a CreditTopUp id, named by `contract`, never a person; the person is `userId`, which has a User relation.",
   },
   PurchaseConsent: {
     subjectId: "The item bought (a stem, a punchline moment, a credit pack or a plan such as `artist_pro_month`, named by `surface`), never a person; the buyer is `userId`, which has a User relation.",

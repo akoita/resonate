@@ -15,6 +15,7 @@ import { Button } from "../ui/Button";
 import { BuyCreditsSection } from "./BuyCredits";
 import { useBillingCurrencyPreference } from "./BillingCurrencyChoice";
 import { PlanBillingSection } from "./PlanBilling";
+import { WithdrawContractSection } from "./WithdrawContract";
 
 type ToastFn = (toast: {
   type: "success" | "error" | "info" | "warning";
@@ -532,14 +533,18 @@ export default function UsageBillingPanel({ token, addToast }: Props) {
         onRequestCredits={handleRequestCredits}
         requesting={creditRequestState === "sending"}
         planExtra={
-          <PlanBillingSection
-            token={token}
-            addToast={addToast}
-            onPlanChanged={() => void load()}
-            refreshKey={refreshKey}
-            currencyPreference={currencyPreference}
-            onCurrencyChange={setCurrencyPreference}
-          />
+          <>
+            <PlanBillingSection
+              token={token}
+              addToast={addToast}
+              onPlanChanged={() => void load()}
+              refreshKey={refreshKey}
+              currencyPreference={currencyPreference}
+              onCurrencyChange={setCurrencyPreference}
+            />
+            {/* #2594: shown only while a right to withdraw exists (Artist Pro, held credit packs). */}
+            <WithdrawContractSection token={token} addToast={addToast} refreshKey={refreshKey} onWithdrawn={refresh} />
+          </>
         }
         creditsExtra={
           <BuyCreditsSection
