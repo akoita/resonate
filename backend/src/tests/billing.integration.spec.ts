@@ -71,6 +71,7 @@ const gateway = {
   updateCustomerEmail: jest.fn(),
   createRefund: jest.fn(async () => ({ id: "re_test", status: "succeeded" })),
   findPaymentIntentForInvoice: jest.fn(async () => null),
+  findInvoiceIdForPaymentIntent: jest.fn(async () => null),
 } satisfies StripeGateway;
 
 const billing = new BillingService(config, consents, gateway, entitlements);

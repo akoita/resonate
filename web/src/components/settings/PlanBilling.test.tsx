@@ -226,6 +226,15 @@ describe("PlanBillingView (#2407)", () => {
     expect(html).toContain("Update your card");
   });
 
+  it("card dispute: says Artist Pro is paused and until when (#2596)", () => {
+    const html = render(
+      billing({ hasBillingAccount: true, subscription: sub({ disputeHoldUntil: "2026-11-25T00:00:00.000Z" }) }),
+    );
+    expect(html).toContain("A card dispute has paused Artist Pro.");
+    expect(html).toContain("(until Nov 25, 2026)");
+    expect(render(billing({ hasBillingAccount: true, subscription: sub() }))).not.toContain("card dispute");
+  });
+
   it("unpaid: Pro has ended, with the card update", () => {
     const html = render(billing({ hasBillingAccount: true, subscription: sub({ status: "unpaid" }) }));
     expect(html).toContain("Artist Pro has ended");

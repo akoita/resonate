@@ -69,7 +69,10 @@ export class BillingReconciliationService {
       prisma.stripeDispute.findMany({
         where: { OR: [{ openedAt: range }, { closedAt: range }, { fundsReinstatedAt: range }] },
         orderBy: [{ openedAt: "asc" }, { id: "asc" }],
-        include: { creditTopUp: { select: { userId: true } } },
+        include: {
+          creditTopUp: { select: { userId: true } },
+          subscriptionInvoice: { select: { stripeInvoiceId: true, subscription: { select: { userId: true } } } },
+        },
       }),
     ]);
 
@@ -127,7 +130,8 @@ export class BillingReconciliationService {
       stripePaymentIntentId: d.stripePaymentIntentId,
       kind: d.kind,
       creditTopUpId: d.creditTopUpId,
-      accountId: d.creditTopUp?.userId ?? null,
+      stripeInvoiceId: d.subscriptionInvoice?.stripeInvoiceId ?? null,
+      accountId: d.creditTopUp?.userId ?? d.subscriptionInvoice?.subscription.userId ?? null,
       currency: d.currency,
       amountCents: d.amountCents,
       reason: d.reason,

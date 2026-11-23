@@ -156,10 +156,12 @@ export interface DisputeRow {
   disputeId: string;
   stripeDisputeId: string;
   stripePaymentIntentId: string | null;
-  /** credit_topup | other (an Artist Pro invoice or any other payment). */
+  /** credit_topup | subscription_invoice (an Artist Pro invoice) | other. */
   kind: string;
   creditTopUpId: string | null;
-  /** Empty for a dispute that is not over a credit pack. */
+  /** The Artist Pro invoice the disputed payment paid (#2596). */
+  stripeInvoiceId: string | null;
+  /** Empty for a dispute over a payment we could not tie to a purchase or an invoice. */
   accountId: string | null;
   currency: string;
   amountCents: number;
@@ -349,6 +351,7 @@ const DISPUTE_COLUMNS = [
   "stripePaymentIntentId",
   "kind",
   "creditTopUpId",
+  "stripeInvoiceId",
   "accountId",
   "currency",
   "amountCents",

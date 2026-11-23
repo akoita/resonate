@@ -177,6 +177,18 @@ export function PlanBillingView({
         </p>
       ) : null}
 
+      {sub?.disputeHoldUntil ? (
+        <div className="plan-billing-alert" role="alert">
+          <p>
+            <strong>A card dispute has paused Artist Pro.</strong> Your bank told us that an Artist Pro payment is
+            disputed, so the period it paid for does not include Pro
+            {formatBillingDate(sub.disputeHoldUntil) ? ` (until ${formatBillingDate(sub.disputeHoldUntil)})` : ""}.
+            If the dispute closes in our favour, Pro comes back straight away. A refund through us is faster: see the
+            refund policy for how to ask.
+          </p>
+        </div>
+      ) : null}
+
       {kind === "loading" ? <p className="usage-muted-note">Loading subscription…</p> : null}
 
       {kind === "error" ? (

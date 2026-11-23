@@ -278,7 +278,9 @@ const REFUND_COLUMNS: Array<Column<BillingRefundRow>> = [
 const DISPUTE_COLUMNS: Array<Column<BillingDisputeRow>> = [
   { header: "Opened (UTC)", render: (row) => <span className="whitespace-nowrap">{formatUtcTimestamp(row.openedAt)}</span> },
   { header: "Dispute", render: (row) => <Reference value={row.stripeDisputeId} /> },
-  { header: "For", render: (row) => (row.kind === "credit_topup" ? "Credit pack" : "Other payment") },
+  { header: "For", render: (row) =>
+      row.kind === "credit_topup" ? "Credit pack" : row.kind === "subscription_invoice" ? "Artist Pro invoice" : "Other payment",
+  },
   { header: "Account", render: (row) => (row.accountId ? <Reference value={row.accountId} /> : "—") },
   { header: "Disputed", align: "right", render: (row) => money(row.amountCents, row.currency) },
   { header: "Dispute fee", align: "right", render: (row) => money(row.feeCents, row.currency) },

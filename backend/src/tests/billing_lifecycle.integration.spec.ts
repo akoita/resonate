@@ -95,6 +95,7 @@ const gateway = {
   updateCustomerEmail: jest.fn(async () => undefined),
   createRefund: jest.fn(async () => ({ id: "re_test", status: "succeeded" })),
   findPaymentIntentForInvoice: jest.fn(async () => null),
+  findInvoiceIdForPaymentIntent: jest.fn(async () => null),
   constructEvent: jest.fn(),
 } satisfies StripeGateway;
 

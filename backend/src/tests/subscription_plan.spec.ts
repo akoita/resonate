@@ -33,6 +33,15 @@ describe("planFromSubscription (#2407)", () => {
     });
   });
 
+  it("is free while a card dispute holds the paid period, and Pro once the hold has passed (#2596)", () => {
+    expect(planFromSubscription(sub({ disputeHoldUntil: at(20) }), NOW)).toEqual({ plan: "free" });
+    expect(planFromSubscription(sub({ status: "past_due", pastDueSince: at(-1), disputeHoldUntil: at(1) }), NOW)).toEqual({
+      plan: "free",
+    });
+    expect(planFromSubscription(sub({ disputeHoldUntil: at(-1) }), NOW).plan).toBe("pro");
+    expect(planFromSubscription(sub({ disputeHoldUntil: null }), NOW).plan).toBe("pro");
+  });
+
   it("keeps an active row through a late renewal, but not past the slack", () => {
     expect(planFromSubscription(sub({ currentPeriodEnd: at(-1) }), NOW).plan).toBe("pro");
     const stale = new Date(NOW.getTime() - SUBSCRIPTION_RENEWAL_SLACK_MS);
