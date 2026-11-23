@@ -11,6 +11,15 @@ config {
  * requires the configured events_raw table to be partitioned by occurredAt;
  * verify that partition and dry-run bytes before enabling warehouse refreshes.
  * The serving exporter reads only the two materialized marts, never this view.
+ *
+ * Artist attribution (#2638): every engagement event carries the credited
+ * artist ids the server resolved when it was recorded. A credit can be fixed
+ * later (identity review, same-name profile merge), so each track uses the ids
+ * stamped on its most recent event (any engagement event, including
+ * playback.started and events that fail the trust filters below: the stamp is
+ * catalog data, not listener data). Older listens are therefore re-credited
+ * as soon as the track is played again after the fix. Tracks with no stamped
+ * event keep their own event-time ids.
  */
 WITH raw_basis AS (
   SELECT
@@ -24,6 +33,31 @@ WITH raw_basis AS (
   WHERE occurredAt >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
     AND occurredAt <= CURRENT_TIMESTAMP()
   GROUP BY eventId
+),
+current_track_credits AS (
+  SELECT
+    CAST(trackId AS STRING) AS track_id,
+    JSON_VALUE_ARRAY(payload, '$.creditedArtistIds') AS current_credited_artist_ids
+  FROM ${require("includes/discovery_popularity_config").cleanTableRef(dataform.projectConfig)}
+  WHERE occurredDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND TIMESTAMP(occurredAt) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    AND TIMESTAMP(occurredAt) <= CURRENT_TIMESTAMP()
+    AND eventName IN (
+      'playback.started',
+      'playback.completed',
+      'library.saved',
+      'playlist.track_added',
+      'commerce.settled',
+      'payment.settled',
+      'x402.purchase',
+      'agent.purchase_completed'
+    )
+    AND NULLIF(TRIM(CAST(trackId AS STRING)), '') IS NOT NULL
+    AND JSON_QUERY(payload, '$.creditedArtistIds') IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY CAST(trackId AS STRING)
+    ORDER BY TIMESTAMP(occurredAt) DESC, eventId DESC
+  ) = 1
 ),
 candidate AS (
   SELECT
@@ -43,11 +77,20 @@ candidate AS (
       JSON_VALUE(c.payload, '$.transactionHash')
     ) AS transaction_hash,
     JSON_VALUE(c.payload, '$.status') AS purchase_status,
-    JSON_VALUE_ARRAY(c.payload, '$.creditedArtistIds') AS credited_artist_ids,
+    -- A track with a stamped recent event uses that current attribution,
+    -- even when it is empty (the credit is ambiguous now): no event-time id.
+    current_track_credits.track_id IS NOT NULL AS has_current_credit,
+    IF(
+      current_track_credits.track_id IS NOT NULL,
+      current_track_credits.current_credited_artist_ids,
+      JSON_VALUE_ARRAY(c.payload, '$.creditedArtistIds')
+    ) AS credited_artist_ids,
     c.payload AS payload,
     raw_basis.consent_basis
   FROM ${require("includes/discovery_popularity_config").cleanTableRef(dataform.projectConfig)} AS c
   INNER JOIN raw_basis USING (eventId)
+  LEFT JOIN current_track_credits
+    ON current_track_credits.track_id = CAST(c.trackId AS STRING)
   WHERE c.occurredDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
     AND TIMESTAMP(c.occurredAt) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
     AND c.eventName IN (
@@ -120,8 +163,8 @@ SELECT
     ARRAY(
       SELECT DISTINCT NULLIF(TRIM(artist_id), '')
       FROM UNNEST(IF(
-        COALESCE(ARRAY_LENGTH(credited_artist_ids), 0) > 0,
-        credited_artist_ids,
+        has_current_credit OR COALESCE(ARRAY_LENGTH(credited_artist_ids), 0) > 0,
+        COALESCE(credited_artist_ids, ARRAY<STRING>[]),
         [clean_credited_artist_id]
       )) AS artist_id
       WHERE NULLIF(TRIM(artist_id), '') IS NOT NULL

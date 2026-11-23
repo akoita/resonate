@@ -135,8 +135,12 @@ history. Scope labels use **My Library** for private groupings and **Resonate
 Catalog/Profile** for public resources. Public and Library artist pages expose
 the same Play all and Queue artist pattern when tracks are available.
 
-[#1450](https://github.com/akoita/resonate/issues/1450)'s warehouse marts MUST
-adopt the same credited ID key so the serving contract stays consistent.
+[#1450](https://github.com/akoita/resonate/issues/1450)'s warehouse marts use
+the same credited ID key so the serving contract stays consistent. They take a
+track's ids from its most recent stamped engagement event, so a corrected credit
+re-credits earlier listens once the track is played again
+([#2638](https://github.com/akoita/resonate/issues/2638); see
+[Discovery popularity](discovery_popularity.md)).
 
 ## Creation-time laundering (and the fix)
 
