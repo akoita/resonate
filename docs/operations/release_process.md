@@ -332,11 +332,28 @@ Milestone closure is a separate required changelog procedure:
    parents open and reassign/link every carry-over with a reason.
 3. Link the next milestone or state that it is not yet selected.
 4. Generate notes listing shipped PRs, verification, carry-over, and deferred
-   owner decisions.
-5. Create `milestone-<github-milestone-number>-<slug>` at the closure SHA and a
-   changelog-only GitHub Release with no software artifacts.
+   owner decisions, and commit them as
+   `docs/sprints/releases/milestone-<github-milestone-number>.md` in the
+   closure PR so they are reviewed like any other change.
+5. Once that PR is merged, dispatch **Milestone Release**
+   (`.github/workflows/milestone-release.yml`) on `main` with the milestone
+   number, the tag slug and the title. It refuses a milestone with open issues,
+   an existing tag or missing notes, then creates
+   `milestone-<github-milestone-number>-<slug>` at the dispatched `main` SHA as
+   a changelog-only GitHub Release with no software artifacts, and closes the
+   GitHub milestone.
 6. Verify no software or desktop publication workflow ran for the milestone
-   tag, then close the GitHub milestone.
+   tag.
+
+**The release is required.** Every closed milestone has its changelog release
+unless the owner agrees an exception, recorded in the sprint document. A
+staging deployment does not replace it, and a milestone is not reported as done
+until the release exists.
+
+The milestone tag ruleset restricts who can create `milestone-*` tags. For the
+workflow to create them with its own token, the ruleset's bypass list must
+include the GitHub Actions app; without it, the owner runs the same
+`gh release create` command with their own login.
 
 Never use `v*` for a sprint report.
 

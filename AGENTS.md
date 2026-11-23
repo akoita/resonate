@@ -100,6 +100,13 @@ Use these project skills:
 - Milestone or sprint planning: use the `plan-milestone` skill from
   `codex-utilities@agent-toolkit`; never create or reassign milestone scope
   before explicit approval.
+- Closing a milestone requires an explicit changelog-only GitHub Release
+  (`milestone-<number>-<slug>`), unless the owner agrees an exception. A
+  staging deployment is not a substitute. Commit the notes at
+  `docs/sprints/releases/milestone-<number>.md` in the closure PR, then run the
+  `Milestone Release` workflow; see "Close A Milestone" in
+  `docs/operations/release_process.md`. A milestone is not done until its
+  release exists.
 - Any security request: `.agents/skills/auditing-resonate-security/SKILL.md`
 - Building or reworking browser UI under `web/`:
   `.agents/skills/building-resonate-web-ui/SKILL.md`
