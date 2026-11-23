@@ -349,7 +349,8 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "as long as accounting and tax rules require.",
     note:
       "Has no person column and no free text: a dispute over a credit pack is reached only through its CreditTopUp, "
-      + "which is retained alongside; any other dispute names no account at all.",
+      + "and one over an Artist Pro invoice through its SubscriptionInvoice (#2596), both retained alongside; any other "
+      + "dispute names no account at all.",
   },
   {
     model: "SubscriptionInvoice",
