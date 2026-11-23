@@ -50,7 +50,7 @@ thin lines, light that glows rather than shouts, and one warm spark of energy.
 - Do: "You keep 85%. Here's where the other 15% goes."
 - Don't: "Revolutionising the music economy with Web3 synergy."
 
-**Tagline (proposed, pending owner approval):** "Fair music, from stem to
+**Tagline:** "Fair music, from stem to
 stage." Subline: "Streaming · Stem licensing · Remixes · Fan-funded shows". It
 appears on the README banner and the social card; change it in
 `web/scripts/brand-assets.mjs` and regenerate.

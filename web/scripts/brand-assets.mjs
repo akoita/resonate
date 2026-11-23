@@ -74,7 +74,7 @@ ${tagline ? `<div class="tagline">${tagline}</div>` : ""}
 ${subline ? `<div class="subline">${subline}</div>` : ""}
 </body></html>`;
 
-// Tagline proposed in the brand book; pending owner approval (docs/brand/README.md).
+// Tagline approved with the brand book (docs/brand/README.md).
 const TAGLINE = "Fair music, from stem to stage.";
 const SUBLINE = "Streaming · Stem licensing · Remixes · Fan-funded shows";
 
