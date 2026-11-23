@@ -546,6 +546,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Does not balance: the opening figure plus the movements does not equal the closing figure for that section. Do not use that section until the difference is explained.",
               "Ledger and account balances differ: the record of every credit movement and the balances people see add up to different amounts right now. Ask engineering to look before you rely on the credit balance.",
               "Need review: someone paid for a credit pack and never received the credits. Each one needs a decision before the month is closed.",
+              "Card disputes: payments a customer disputed with their bank, with the amount Stripe took back, its dispute fee and anything it gave back. A dispute over a credit pack pauses that pack's unused credits until the bank decides; a dispute over any other payment is listed only.",
               "Without a recorded charge amount: no charged amount was saved for that payment, so the total may be short; check it in Stripe.",
             ],
           },
@@ -1965,6 +1966,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Credit packs use the same two choices. Deliver now adds the credits as soon as your payment is confirmed, and you give up your right to withdraw for the credits you use. Wait 14 days holds them and adds them automatically when the 14 days end; you can ask for them sooner from Usage & Billing.",
+          },
+          {
+            kind: "paragraph",
+            text: "If you dispute a credit pack payment with your bank instead of asking us for a refund, the credits from that purchase that you have not used are paused while the dispute is open, and a purchase still on hold stays on hold. If the bank refunds you, those credits are removed; if it does not, they come back. You get a Refund notice each time, and Usage & Billing shows the purchase as disputed. Writing to us first is faster: see the Refund Policy for the contact address.",
           },
         ],
       },

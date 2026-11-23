@@ -348,6 +348,46 @@ Policy: unused credits are refundable according to the consent choice; with
 Refunds are an operator action in Stripe. **For legal review before live
 charging.**
 
+### Card disputes (chargebacks, #2596)
+
+**Revenue line (ADR-BM-6):** line 2, Phase 2. Loss prevention before live
+charging; no fee, split or price changes and ADR-BM-4 is unaffected.
+
+When a cardholder disputes a payment with their bank, Stripe takes the money
+back at once and sends `charge.dispute.created`, `.updated`,
+`.funds_withdrawn`, `.funds_reinstated` and `.closed`. Every event of one
+dispute lands on one `StripeDispute` row, keyed by the Stripe dispute id
+(`billing/stripe_dispute.service.ts`).
+
+For a **credit pack** (the dispute's payment intent is a `CreditTopUp`):
+
+| Stripe status | State | What happens |
+| --- | --- | --- |
+| `needs_response`, `under_review`, any unknown status | `open` | The disputed share of the pack's credits still in the balance is taken out with a `reversal` row (reason `top_up_dispute_hold`), **never below a zero balance**: credits already used stay used. A purchase still on its 14-day hold stays held: neither the automatic release nor "Deliver now" (`409 credit_purchase_disputed`) moves it |
+| `won`, `warning_closed`, `prevented` | `won` | The paused credits go back with a `grant` row (reason `top_up_dispute_release`); a held purchase follows its normal hold again |
+| `lost` | `lost` | The paused credits stay out. A held purchase releases without the disputed share |
+| `warning_needs_response`, `warning_under_review` | `inquiry` | The bank is only asking and no money has moved: nothing is paused. It becomes `open` if the inquiry turns into a dispute |
+
+- **Share:** the disputed amount over the amount charged, all of the pack when
+  the whole charge is disputed.
+- **Idempotent and order-safe:** the row is locked while an event is applied,
+  the pause is applied once (`holdAppliedAt`), `won` and `lost` are final, and
+  a `closed` that arrives before its `created` is applied on its own.
+- **Notices:** one `refund` notice when the credits are paused, one when they
+  are restored and one when they are removed, each with the amounts and how to
+  write to the operator. An inquiry that simply closes sends nothing.
+- **Usage & Billing** shows the purchase as disputed (`dispute` on each
+  purchase of `GET /billing/credits`).
+- **Any other payment** (an Artist Pro invoice): the dispute is recorded with
+  `kind: other` for the reconciliation report and changes nothing else.
+  Pausing the plan for a disputed invoice is the remaining part of #2596.
+
+`StripeDispute` holds Stripe ids, codes, amounts and times only: no person
+column and no free text. It is retained on erasure as a billing record and
+reached through its `CreditTopUp`.
+
+Tests: `stripe_dispute.integration.spec.ts`.
+
 ### Data
 
 `CreditTopUp` (one row per Checkout Session): pack, price and its currency
@@ -503,12 +543,13 @@ their record (operators)".
 | --- | --- |
 | `purchases` | Credit packs paid in the month (`paidAt`), except `needs_review`: Checkout Session and payment intent ids, pack, the currency paid, the catalogue price in that currency (before tax in USD, VAT included in EUR), the amount charged with any tax (`amountTotalCents`, null on purchases before #2497), credits, delivery, and the credits that reached the balance in the month |
 | `refunds` | Each pack refund applied in the month (`CreditTopUpRefund`, dated by the Stripe event): money refunded, credits withdrawn, credits taken back from the balance, credits already spent, and the reduction of a held purchase |
+| `disputes` | Card disputes opened, closed or paid back in the month (`StripeDispute`, #2596): the disputed amount, what Stripe took back, its dispute fees (net of fees it returned), what it gave back, the credits paused and restored, the reason code and the current state. A dispute that is not over a credit pack has no account id |
 | `needs_review` | Packs paid in the month whose amount did not match the catalogue; nothing was credited. Each one needs a refund or an audited operator grant |
-| `held_purchases` | Roll-forward, in credit cents, of credits paid for but not yet in the balance (the 14-day hold): opening, purchased, credited, withdrawn by refunds, closing |
-| `credit_balance` | Roll-forward, in credit cents, of the pooled bought and free balance: opening, grants by reason (`top_up`, `signup_starter`, `credit_request`, `operator_grant`), spends and job refunds (the balance part only), `top_up_refund` reversals, closing |
+| `held_purchases` | Roll-forward, in credit cents, of credits paid for but not yet in the balance (the 14-day hold): opening, purchased, credited, withdrawn by refunds, removed by lost card disputes, closing |
+| `credit_balance` | Roll-forward, in credit cents, of the pooled bought and free balance: opening, grants by reason (`top_up`, `top_up_dispute_release`, `signup_starter`, `credit_request`, `operator_grant`), spends and job refunds (the balance part only), `top_up_refund` reversals, credits paused for card disputes (`top_up_dispute_hold`), closing. Paused credits given back count as neither bought nor free grants |
 | `allowance` | The Artist Pro allowance, apart: granted, used, returned and lapsed. It expires, has no cash value and is never a liability |
 | `subscription_invoices` | Paid Artist Pro invoices in the month (`SubscriptionInvoice`): amount paid, amount before tax, currency, interval, billing reason and service period, so annual plans can be spread over their 12 months |
-| `control_totals` | Per currency (USD and EUR are never added together): pack purchases, pack refunds, `needs_review` and invoice totals, and the net collected, to set against Stripe's balance report for the month. Amounts charged use `amountTotalCents`, so a USD purchase counts its tax and an EUR one its included VAT |
+| `control_totals` | Per currency (USD and EUR are never added together): pack purchases, pack refunds, `needs_review` and invoice totals, money taken back for disputes opened in the month with their fees, money given back after disputes, and the net collected (purchases and invoices, less refunds and dispute withdrawals, plus money given back; fees are not deducted), to set against Stripe's balance report for the month. Amounts charged use `amountTotalCents`, so a USD purchase counts its tax and an EUR one its included VAT |
 
 The JSON also carries an `integrity` check: the whole ledger's signed sum
 against the cached balances, now.
@@ -522,7 +563,10 @@ they agree.
 
 **Reproducible:** every total comes from dates and append-only rows, never
 from a purchase's current status, so two runs for a past month give the same
-totals, and later refunds or spends do not change it.
+totals, and later refunds or spends do not change it. A dispute row is the
+one exception: its amounts are dated by when the dispute opened and when funds
+came back, but Stripe can report the money taken back or a fee a little after
+the dispute opens, and its current state is informational.
 
 **Personal data:** account ids are opaque user ids. The report holds no
 emails, names, notes or consent ids. A free-text reason an operator typed for a

@@ -13,6 +13,7 @@ import { BillingService } from "../modules/billing/billing.service";
 import { STRIPE_GATEWAY, createStripeGateway, type StripeGateway } from "../modules/billing/stripe_gateway";
 import { StripeWebhookController } from "../modules/billing/stripe_webhook.controller";
 import { StripeWebhookService } from "../modules/billing/stripe_webhook.service";
+import { StripeDisputeService } from "../modules/billing/stripe_dispute.service";
 import { CreditTopUpService } from "../modules/billing/credit_topup.service";
 import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
 import { SUBSCRIPTION_CONSENT_TEXT_VERSION } from "../modules/purchase_consent/purchase_consent.constants";
@@ -39,6 +40,7 @@ async function appWith(config: BillingConfig, gateway: StripeGateway | null) {
       { provide: STRIPE_GATEWAY, useValue: gateway },
       { provide: PurchaseConsentService, useValue: consents },
       { provide: CreditTopUpService, useValue: topUps },
+      { provide: StripeDisputeService, useValue: { apply: jest.fn() } },
       BillingService,
       StripeWebhookService,
     ],

@@ -30,6 +30,7 @@ import { ContactEmailService } from "../modules/email/contact_email.service";
 import { EmailConfig } from "../modules/email/email_config";
 import { sha256Hex } from "../modules/email/email_tokens";
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
+import { StripeDisputeService } from "../modules/billing/stripe_dispute.service";
 import { NoticeService } from "../modules/notifications/notice.service";
 import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
@@ -223,7 +224,7 @@ describe("Billing account lifecycle (integration, #2430)", () => {
       const { userId, customer, subscriptionId } = await subscriber("late_webhook");
       await lifecycle.endForAccount(userId, "account_closure");
       const topUps = new CreditTopUpService(config, new PurchaseConsentService(notices), notices, gateway, new CreditPackConfig({}));
-      const webhooks = new StripeWebhookService(config, gateway, topUps);
+      const webhooks = new StripeWebhookService(config, gateway, topUps, new StripeDisputeService(new NoticeService(new EventBus(), new AuditService())));
       const outcome = await webhooks.applySnapshot(
         {
           stripeSubscriptionId: subscriptionId,

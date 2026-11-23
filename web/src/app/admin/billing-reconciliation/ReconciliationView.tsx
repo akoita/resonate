@@ -14,6 +14,7 @@ import {
 } from "../../../components/admin/review-queue/ReviewQueue";
 import type {
   BillingCurrencyControlTotals,
+  BillingDisputeRow,
   BillingInvoiceRow,
   BillingPurchaseRow,
   BillingReconciliationReport,
@@ -274,6 +275,32 @@ const REFUND_COLUMNS: Array<Column<BillingRefundRow>> = [
   },
 ];
 
+const DISPUTE_COLUMNS: Array<Column<BillingDisputeRow>> = [
+  { header: "Opened (UTC)", render: (row) => <span className="whitespace-nowrap">{formatUtcTimestamp(row.openedAt)}</span> },
+  { header: "Dispute", render: (row) => <Reference value={row.stripeDisputeId} /> },
+  { header: "For", render: (row) => (row.kind === "credit_topup" ? "Credit pack" : "Other payment") },
+  { header: "Account", render: (row) => (row.accountId ? <Reference value={row.accountId} /> : "—") },
+  { header: "Disputed", align: "right", render: (row) => money(row.amountCents, row.currency) },
+  { header: "Dispute fee", align: "right", render: (row) => money(row.feeCents, row.currency) },
+  { header: "Given back", align: "right", render: (row) => money(row.reinstatedCents, row.currency) },
+  { header: "Credits paused", align: "right", render: (row) => formatCreditCents(row.heldCreditsCents) },
+  { header: "Credits restored", align: "right", render: (row) => formatCreditCents(row.releasedCreditsCents) },
+  { header: "Reason", render: (row) => humanizeCode(row.reason) },
+  {
+    header: "Status now",
+    render: (row) => (
+      <>
+        {humanizeCode(row.currentStatus)}
+        {row.closedAt ? (
+          <span className="ml-2 whitespace-nowrap text-[12px] text-[var(--r-on-surface-muted)]">
+            {formatUtcDate(row.closedAt)}
+          </span>
+        ) : null}
+      </>
+    ),
+  },
+];
+
 const NEEDS_REVIEW_COLUMNS: Array<Column<BillingPurchaseRow>> = PURCHASE_COLUMNS.filter(
   (column) => column.header !== "Credited in month",
 );
@@ -334,6 +361,23 @@ function ControlTotalsCard({ totals }: { totals: BillingCurrencyControlTotals })
           note={`${totals.subscriptionInvoices.count}`}
           value={formatMoneyMinor(totals.subscriptionInvoices.amountPaidCents, currency)}
         />
+        {totals.disputesOpened?.count ? (
+          <>
+            <Row
+              label="Taken back for card disputes"
+              note={`${totals.disputesOpened.count}`}
+              value={formatMoneyMinor(totals.disputesOpened.withdrawnCents, currency)}
+            />
+            <Row indent label="Dispute fees (not in net collected)" value={formatMoneyMinor(totals.disputesOpened.feeCents, currency)} />
+          </>
+        ) : null}
+        {totals.disputesReinstated?.count ? (
+          <Row
+            label="Given back after card disputes"
+            note={`${totals.disputesReinstated.count}`}
+            value={formatMoneyMinor(totals.disputesReinstated.amountCents, currency)}
+          />
+        ) : null}
         <Row strong label="Net collected" value={formatMoneyMinor(totals.netCollectedCents, currency)} />
       </Rows>
     </div>
@@ -401,6 +445,9 @@ function ReportBody({
             <Row label="Purchased" value={inflow(held.purchasedCents)} />
             <Row label="Credited to the balance" value={outflow(held.creditedCents)} />
             <Row label="Withdrawn by refunds" value={outflow(held.refundWithdrawnCents)} />
+            {held.disputeWithdrawnCents ? (
+              <Row label="Removed by lost card disputes" value={outflow(held.disputeWithdrawnCents)} />
+            ) : null}
             <RollForwardCheck balanced={held.balanced} closing={held.closingCents} computed={held.computedClosingCents} />
           </Rows>
         </SectionCard>
@@ -412,7 +459,10 @@ function ReportBody({
         >
           <Rows>
             <Row label="Opening" value={formatCreditCents(balance.openingCents)} />
-            <Row label="Grants" value={inflow(balance.topUpGrantsCents + balance.freeGrantsCents)} />
+            <Row
+              label="Grants"
+              value={inflow(balance.topUpGrantsCents + balance.freeGrantsCents + (balance.disputeReleases?.cents ?? 0))}
+            />
             {balance.grants.map((grant) => (
               <Row
                 key={grant.label}
@@ -449,6 +499,13 @@ function ReportBody({
               note={`${balance.topUpRefundReversals.count}`}
               value={outflow(balance.topUpRefundReversals.cents)}
             />
+            {balance.disputeHolds?.count ? (
+              <Row
+                label="Paused for card disputes"
+                note={`${balance.disputeHolds.count}`}
+                value={outflow(balance.disputeHolds.cents)}
+              />
+            ) : null}
             {balance.unclassified.count > 0 ? (
               <Row label="Unclassified entries" value={`${balance.unclassified.count}`} />
             ) : null}
@@ -498,6 +555,21 @@ function ReportBody({
           rows={report.creditPacks.refunds}
           rowKey={(row) => row.refundId}
           emptyText="No credit packs were refunded in this month."
+        />
+      </SectionCard>
+
+      <SectionCard
+        section="disputes"
+        subtitle="Card disputes opened, closed or paid back in the month. A dispute over a credit pack pauses its unspent credits."
+        badge={<Chip tone="neutral">{`${(report.disputes ?? []).length}`}</Chip>}
+        {...section}
+      >
+        <DataTable
+          label="Card disputes"
+          columns={DISPUTE_COLUMNS}
+          rows={report.disputes ?? []}
+          rowKey={(row) => row.disputeId}
+          emptyText="No card disputes in this month."
         />
       </SectionCard>
 

@@ -52,12 +52,14 @@ function makeReport(overrides: Partial<BillingReconciliationReport> = {}): Billi
       ],
       needsReview: [],
     },
+    disputes: [],
     heldPurchases: {
       unit: "credit_cents",
       openingCents: 0,
       purchasedCents: 500,
       creditedCents: 400,
       refundWithdrawnCents: 0,
+      disputeWithdrawnCents: 0,
       closingCents: 100,
       computedClosingCents: 100,
       balanced: true,
@@ -73,6 +75,8 @@ function makeReport(overrides: Partial<BillingReconciliationReport> = {}): Billi
       jobRefunds: { count: 1, cents: 50 },
       jobRefundsByReason: [],
       topUpRefundReversals: { count: 1, cents: 300 },
+      disputeHolds: { count: 0, cents: 0 },
+      disputeReleases: { count: 0, cents: 0 },
       unclassified: { count: 0 },
       closingCents: 4250,
       computedClosingCents: 4250,
@@ -110,6 +114,8 @@ function makeReport(overrides: Partial<BillingReconciliationReport> = {}): Billi
         creditPackRefunds: { count: 1, amountCents: 400 },
         needsReview: { count: 0, priceCents: 0, chargedCents: 0, chargedUnknownCount: 0 },
         subscriptionInvoices: { count: 1, amountPaidCents: 1200 },
+        disputesOpened: { count: 0, withdrawnCents: 0, feeCents: 0 },
+        disputesReinstated: { count: 0, amountCents: 0 },
         netCollectedCents: 1800,
       },
     ],
@@ -243,6 +249,52 @@ describe("ReconciliationView (#2497)", () => {
     expect(html).not.toContain("Month closed");
   });
 
+  it("lists card disputes with their fees and shows them in the totals and roll-forwards (#2596)", () => {
+    const base = makeReport();
+    const report = makeReport({
+      disputes: [
+        {
+          disputeId: "d-1",
+          stripeDisputeId: "dp_1AbcDefGhiJkl",
+          stripePaymentIntentId: "pi_3Abc",
+          kind: "credit_topup",
+          creditTopUpId: PURCHASE.creditTopUpId,
+          accountId: PURCHASE.accountId,
+          currency: "usd",
+          amountCents: 500,
+          reason: "product_not_received",
+          withdrawnCents: 500,
+          feeCents: 1500,
+          reinstatedCents: 0,
+          disputedCreditsCents: 500,
+          heldCreditsCents: 300,
+          releasedCreditsCents: 0,
+          statusBefore: "credited",
+          openedAt: "2026-09-12T08:00:00.000Z",
+          closedAt: "2026-09-28T08:00:00.000Z",
+          fundsReinstatedAt: null,
+          currentStatus: "lost",
+        },
+      ],
+      heldPurchases: { ...base.heldPurchases, disputeWithdrawnCents: 200 },
+      creditBalance: { ...base.creditBalance, disputeHolds: { count: 1, cents: 300 }, disputeReleases: { count: 0, cents: 0 } },
+      controlTotals: base.controlTotals.map((totals) => ({
+        ...totals,
+        disputesOpened: { count: 1, withdrawnCents: 500, feeCents: 1500 },
+        disputesReinstated: { count: 0, amountCents: 0 },
+      })),
+    });
+    const html = render({ state: { status: "ready", report } });
+    expect(html).toContain("Card disputes");
+    expect(html).toContain("product not received");
+    expect(html).toContain("$15.00");
+    expect(html).toContain("Taken back for card disputes");
+    expect(html).toContain("Dispute fees (not in net collected)");
+    expect(html).toContain("Paused for card disputes");
+    expect(html).toContain("Removed by lost card disputes");
+    expect(html).not.toContain("Given back after card disputes");
+  });
+
   it("explains each empty table", () => {
     const report = makeReport({
       creditPacks: { purchases: [], refunds: [], needsReview: [] },
@@ -253,6 +305,7 @@ describe("ReconciliationView (#2497)", () => {
     expect(html).toContain("No payments, refunds or invoices in this month.");
     expect(html).toContain("No credit packs were bought in this month.");
     expect(html).toContain("No credit packs were refunded in this month.");
+    expect(html).toContain("No card disputes in this month.");
     expect(html).toContain("Nothing needs review: every credit pack paid in this month was credited.");
     expect(html).toContain("No Artist Pro invoices were paid in this month.");
     expect(html).not.toContain("<table");
@@ -314,7 +367,7 @@ describe("ReconciliationView (#2497)", () => {
     for (const control of csv) (control.props.onClick as () => void)();
     expect(onDownloadCsv.mock.calls.map((call) => call[0]).sort()).toEqual([...BILLING_RECONCILIATION_SECTIONS].sort());
     const html = render();
-    for (const label of ["Control totals", "Held purchases", "Credit balance", "Artist Pro allowance", "Credit pack purchases", "Credit pack refunds", "Needs review", "Subscription invoices"]) {
+    for (const label of ["Control totals", "Held purchases", "Credit balance", "Artist Pro allowance", "Credit pack purchases", "Credit pack refunds", "Card disputes", "Needs review", "Subscription invoices"]) {
       expect(html).toContain(`aria-label="Download ${label} as CSV"`);
     }
   });

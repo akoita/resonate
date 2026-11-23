@@ -14,7 +14,8 @@
  *   `checkout.session.async_payment_succeeded` and `charge.refunded` are credit
  *   packs (#1422), handed to `CreditTopUpService`. Checkout and invoice events re-read the
  *   subscription from Stripe, so the row mirrors the current state rather than
- *   the event's partial view. `invoice.paid` also records the invoice once
+ *   the event's partial view. `charge.dispute.*` (chargebacks, #2596) go to
+ *   `StripeDisputeService`. `invoice.paid` also records the invoice once
  *   (`subscription_invoices.ts`, #2497) for the billing reconciliation report.
  *
  * Logs carry the event id and type only: never a payload, an email, a card
@@ -28,11 +29,13 @@ import { GenerationAllowanceService } from "../credits/allowance.service";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { BillingConfig } from "./billing_config";
 import { CreditTopUpService } from "./credit_topup.service";
+import { HANDLED_DISPUTE_EVENTS, StripeDisputeService } from "./stripe_dispute.service";
 import { recordPaidInvoice } from "./subscription_invoices";
 import {
   STRIPE_GATEWAY,
   type StripeCharge,
   type StripeCheckoutSession,
+  type StripeDisputeObject,
   type StripeEvent,
   type StripeGateway,
   type StripeInvoice,
@@ -55,6 +58,8 @@ export const HANDLED_STRIPE_EVENTS = [
   // Credit packs (#1422).
   "checkout.session.async_payment_succeeded",
   "charge.refunded",
+  // Chargebacks (#2596).
+  ...HANDLED_DISPUTE_EVENTS,
 ] as const;
 
 export type WebhookResult = {
@@ -100,6 +105,7 @@ export class StripeWebhookService {
     // decorator metadata, so Nest found no provider and every credit-pack
     // event was silently ignored. `BillingModule` always provides it.
     private readonly topUps: CreditTopUpService,
+    private readonly disputes: StripeDisputeService,
     @Optional() allowance?: GenerationAllowanceService,
   ) {
     this.allowance = allowance ?? new GenerationAllowanceService();
@@ -185,6 +191,12 @@ export class StripeWebhookService {
         return this.topUps.fulfilFromCheckout(event.data.object as StripeCheckoutSession, createdAt);
       case "charge.refunded":
         return this.topUps.reverseFromRefund(event.data.object as StripeCharge, createdAt);
+      case "charge.dispute.created":
+      case "charge.dispute.updated":
+      case "charge.dispute.funds_withdrawn":
+      case "charge.dispute.funds_reinstated":
+      case "charge.dispute.closed":
+        return this.disputes.apply(event.data.object as StripeDisputeObject, createdAt);
       default:
         return "ignored_unhandled_type";
     }

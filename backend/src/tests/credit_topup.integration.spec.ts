@@ -21,6 +21,7 @@ import { StripeWebhookService } from "../modules/billing/stripe_webhook.service"
 import { GenerationCreditsService } from "../modules/credits/generation-credits.service";
 import { releaseDueTopUpHolds, releaseHeldTopUp } from "../modules/credits/top_up_ledger";
 import { EntitlementsService } from "../modules/entitlements/entitlements.service";
+import { StripeDisputeService } from "../modules/billing/stripe_dispute.service";
 import { NoticeService } from "../modules/notifications/notice.service";
 import { CONSENT_TEXT_VERSION, SUBSCRIPTION_CONSENT_TEXT_VERSION } from "../modules/purchase_consent/purchase_consent.constants";
 import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
@@ -75,7 +76,8 @@ const gateway = {
 
 const topUps = new CreditTopUpService(config, consents, notices, gateway, packs);
 const eurTopUps = new CreditTopUpService(new BillingConfig({ ...BILLING_ENV, STRIPE_EUR_PRICES: "true" }), consents, notices, gateway, packs);
-const webhooks = new StripeWebhookService(config, gateway, topUps);
+const disputes = new StripeDisputeService(notices);
+const webhooks = new StripeWebhookService(config, gateway, topUps, disputes);
 const billing = new BillingService(config, consents, gateway, new EntitlementsService());
 
 let eventSeq = 0;

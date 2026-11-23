@@ -234,6 +234,11 @@ fan→artist payout is touched (ADR-BM-4).
 - **Refunds** (`charge.refunded`) withdraw the refunded share with a
   `reversal` row (reason `top_up_refund`), never below a zero balance; spent
   credits stay spent. A refunded held purchase releases less, or nothing.
+- **Card disputes** (`charge.dispute.*`, #2596) pause the disputed share of a
+  pack's unused credits while the dispute is open (`reversal`, reason
+  `top_up_dispute_hold`), give them back when it is won (`grant`, reason
+  `top_up_dispute_release`) and keep them out when it is lost. A held purchase
+  is not released while a dispute on it is open.
 - **Expiry:** none. The RFC promises at least 24 months; the balance has no
   per-purchase lots, so no expiry date is recorded.
 

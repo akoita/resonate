@@ -26,6 +26,7 @@ import { METERED_ACTIONS, METERED_ACTION_KINDS, unitCostCents } from "../modules
 import { EntitlementsService } from "../modules/entitlements/entitlements.service";
 import type { GenerationService } from "../modules/generation/generation.service";
 import type { RemixProjectService } from "../modules/remix/remix-project.service";
+import { StripeDisputeService } from "../modules/billing/stripe_dispute.service";
 import { NoticeService } from "../modules/notifications/notice.service";
 import { PurchaseConsentService } from "../modules/purchase_consent/purchase_consent.service";
 import { EventBus } from "../modules/shared/event_bus";
@@ -191,7 +192,7 @@ describe("Generation allowance (integration, #2408)", () => {
         STRIPE_PRICE_ARTIST_PRO_ANNUAL: "price_year",
         FRONTEND_URL: "https://app.example.test",
       });
-      const webhooks = new StripeWebhookService(config, gateway, topUpsFor(config, gateway), allowance);
+      const webhooks = new StripeWebhookService(config, gateway, topUpsFor(config, gateway), new StripeDisputeService(new NoticeService(new EventBus(), new AuditService())), allowance);
       const invoice = paidInvoice(`in_${userId}`, subId, start, end, "subscription_create");
       const event = (id: string) =>
         ({ id, object: "event", type: "invoice.paid", created: sec(new Date()), livemode: false, data: { object: invoice } }) as unknown as StripeEvent;
@@ -212,7 +213,7 @@ describe("Generation allowance (integration, #2408)", () => {
     it("a payment_failed event grants nothing", async () => {
       const userId = await newUser("failed");
       await subscribe(userId);
-      const webhooks = new StripeWebhookService(new BillingConfig({}), null, topUpsFor(new BillingConfig({}), null), allowance);
+      const webhooks = new StripeWebhookService(new BillingConfig({}), null, topUpsFor(new BillingConfig({}), null), new StripeDisputeService(new NoticeService(new EventBus(), new AuditService())), allowance);
       const invoice = paidInvoice(`in_${userId}`, `sub_${userId}`, at(Date.now()), at(Date.now() + 30 * DAY));
       await webhooks.handle({
         id: `evt_${P}${userId}`,

@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { TOP_UP_REASON } from "../credits/top_up_ledger";
+import { TOP_UP_DISPUTE_HOLD_REASON, TOP_UP_DISPUTE_RELEASE_REASON, TOP_UP_REASON } from "../credits/top_up_ledger";
 import { DEFAULT_CREDIT_REQUEST_GRANT_REASON, SIGNUP_STARTER_REASON } from "../credits/generation-credits.service";
 
 /**
@@ -18,6 +18,8 @@ import { DEFAULT_CREDIT_REQUEST_GRANT_REASON, SIGNUP_STARTER_REASON } from "../c
  * Sections (also the CSV `section` values):
  * - `purchases`: credit packs paid in the month (not held for review).
  * - `refunds`: credit-pack refunds applied in the month.
+ * - `disputes`: card disputes (chargebacks, #2596) opened, closed or with
+ *   funds given back in the month, with Stripe's dispute fees.
  * - `needs_review`: packs paid in the month that were never credited.
  * - `held_purchases`: roll-forward of paid-but-not-yet-credited packs.
  * - `credit_balance`: roll-forward of the pooled bought and free balance.
@@ -37,6 +39,7 @@ export const REPORT_VERSION = "billing-reconciliation/v1";
 export const REPORT_SECTIONS = [
   "purchases",
   "refunds",
+  "disputes",
   "needs_review",
   "held_purchases",
   "credit_balance",
@@ -80,7 +83,8 @@ export function parseReportMonth(month: string, now: Date): ReportPeriod {
 }
 
 /**
- * Label of a ledger reason for the report. Grants: `top_up`, `signup_starter`,
+ * Label of a ledger reason for the report. Grants: `top_up`,
+ * `top_up_dispute_release` (paused credits given back, #2596), `signup_starter`,
  * `credit_request` (the default operator request grant) or `operator_grant` for
  * anything else, because an operator's free text must never appear here. Other
  * types keep their reason when it is a short code, else `other`.
@@ -88,6 +92,7 @@ export function parseReportMonth(month: string, now: Date): ReportPeriod {
 export function ledgerReasonLabel(type: string, reason: string): string {
   if (type === "grant") {
     if (reason === TOP_UP_REASON) return "top_up";
+    if (reason === TOP_UP_DISPUTE_RELEASE_REASON) return TOP_UP_DISPUTE_RELEASE_REASON;
     if (reason === SIGNUP_STARTER_REASON) return "signup_starter";
     if (reason === DEFAULT_CREDIT_REQUEST_GRANT_REASON) return "credit_request";
     return "operator_grant";
@@ -100,7 +105,15 @@ export const SAFE_REASON = /^[a-z0-9_.:-]{1,64}$/;
 export const SAFE_REASON_SQL = "^[a-z0-9_.:-]{1,64}$";
 
 /** Grant reasons the report names; every other grant reason is operator text. */
-export const KNOWN_GRANT_REASONS = [TOP_UP_REASON, SIGNUP_STARTER_REASON, DEFAULT_CREDIT_REQUEST_GRANT_REASON] as const;
+export const KNOWN_GRANT_REASONS = [
+  TOP_UP_REASON,
+  TOP_UP_DISPUTE_RELEASE_REASON,
+  SIGNUP_STARTER_REASON,
+  DEFAULT_CREDIT_REQUEST_GRANT_REASON,
+] as const;
+
+/** The reversal that pauses credits for an open card dispute (#2596); every other reversal is a refund. */
+export const DISPUTE_HOLD_REVERSAL_REASON = TOP_UP_DISPUTE_HOLD_REASON;
 
 // ---------------------------------------------------------------------------
 // Report shape
@@ -137,6 +150,34 @@ export interface RefundRow {
   statusBefore: string;
   refundedAt: string;
   backfilled: boolean;
+}
+
+export interface DisputeRow {
+  disputeId: string;
+  stripeDisputeId: string;
+  stripePaymentIntentId: string | null;
+  /** credit_topup | other (an Artist Pro invoice or any other payment). */
+  kind: string;
+  creditTopUpId: string | null;
+  /** Empty for a dispute that is not over a credit pack. */
+  accountId: string | null;
+  currency: string;
+  amountCents: number;
+  reason: string | null;
+  /** Money Stripe took back, its dispute fees (net of fees returned) and money it gave back. */
+  withdrawnCents: number;
+  feeCents: number;
+  reinstatedCents: number;
+  /** Credits: the disputed share, what was paused in the balance and what was given back. */
+  disputedCreditsCents: number;
+  heldCreditsCents: number;
+  releasedCreditsCents: number;
+  statusBefore: string | null;
+  openedAt: string;
+  closedAt: string | null;
+  fundsReinstatedAt: string | null;
+  /** Informational only: an open dispute can still close after the month. */
+  currentStatus: string;
 }
 
 export interface InvoiceRow {
@@ -178,6 +219,11 @@ export interface CurrencyControlTotals {
   creditPackRefunds: { count: number; amountCents: number };
   needsReview: ChargedTotals;
   subscriptionInvoices: { count: number; amountPaidCents: number };
+  /** Disputes opened in the month: money Stripe took back and its dispute fees. */
+  disputesOpened: { count: number; withdrawnCents: number; feeCents: number };
+  /** Disputes whose funds Stripe gave back in the month. */
+  disputesReinstated: { count: number; amountCents: number };
+  /** Purchases and invoices, less refunds and dispute withdrawals, plus reinstated funds. Fees are not deducted. */
   netCollectedCents: number;
 }
 
@@ -193,12 +239,15 @@ export interface BillingReconciliationReport {
     refunds: RefundRow[];
     needsReview: PurchaseRow[];
   };
+  disputes: DisputeRow[];
   heldPurchases: {
     unit: "credit_cents";
     openingCents: number;
     purchasedCents: number;
     creditedCents: number;
     refundWithdrawnCents: number;
+    /** Held credits removed by a lost card dispute (#2596). */
+    disputeWithdrawnCents: number;
     closingCents: number;
     computedClosingCents: number;
     balanced: boolean;
@@ -214,6 +263,9 @@ export interface BillingReconciliationReport {
     jobRefunds: CountCents;
     jobRefundsByReason: LabelledTotal[];
     topUpRefundReversals: CountCents;
+    /** Credits paused for open card disputes, and paused credits given back (#2596). */
+    disputeHolds: CountCents;
+    disputeReleases: CountCents;
     unclassified: { count: number };
     closingCents: number;
     computedClosingCents: number;
@@ -291,6 +343,28 @@ const REFUND_COLUMNS = [
   "refundedAt",
   "backfilled",
 ];
+const DISPUTE_COLUMNS = [
+  "disputeId",
+  "stripeDisputeId",
+  "stripePaymentIntentId",
+  "kind",
+  "creditTopUpId",
+  "accountId",
+  "currency",
+  "amountCents",
+  "reason",
+  "withdrawnCents",
+  "feeCents",
+  "reinstatedCents",
+  "disputedCreditsCents",
+  "heldCreditsCents",
+  "releasedCreditsCents",
+  "statusBefore",
+  "openedAt",
+  "closedAt",
+  "fundsReinstatedAt",
+  "currentStatus",
+];
 const INVOICE_COLUMNS = [
   "stripeInvoiceId",
   "subscriptionId",
@@ -320,6 +394,11 @@ const CONTROL_COLUMNS = [
   "invoiceCount",
   "invoiceAmountPaidCents",
   "netCollectedCents",
+  "disputeOpenedCount",
+  "disputeWithdrawnCents",
+  "disputeFeeCents",
+  "disputeReinstatedCount",
+  "disputeReinstatedCents",
 ];
 /**
  * Roll-forward sections are `line,count,cents` rows. The `balanced` line has
@@ -342,6 +421,8 @@ export function sectionToCsv(report: BillingReconciliationReport, section: Repor
       return toCsv(PURCHASE_COLUMNS, report.creditPacks.needsReview as unknown as Array<Record<string, unknown>>);
     case "refunds":
       return toCsv(REFUND_COLUMNS, report.creditPacks.refunds as unknown as Array<Record<string, unknown>>);
+    case "disputes":
+      return toCsv(DISPUTE_COLUMNS, report.disputes as unknown as Array<Record<string, unknown>>);
     case "subscription_invoices":
       return toCsv(INVOICE_COLUMNS, report.subscriptionInvoices as unknown as Array<Record<string, unknown>>);
     case "control_totals":
@@ -362,6 +443,11 @@ export function sectionToCsv(report: BillingReconciliationReport, section: Repor
           invoiceCount: t.subscriptionInvoices.count,
           invoiceAmountPaidCents: t.subscriptionInvoices.amountPaidCents,
           netCollectedCents: t.netCollectedCents,
+          disputeOpenedCount: t.disputesOpened.count,
+          disputeWithdrawnCents: t.disputesOpened.withdrawnCents,
+          disputeFeeCents: t.disputesOpened.feeCents,
+          disputeReinstatedCount: t.disputesReinstated.count,
+          disputeReinstatedCents: t.disputesReinstated.amountCents,
         })),
       );
     case "held_purchases": {
@@ -371,6 +457,7 @@ export function sectionToCsv(report: BillingReconciliationReport, section: Repor
         { line: "purchased", cents: h.purchasedCents },
         { line: "credited", cents: h.creditedCents },
         { line: "refund_withdrawn", cents: h.refundWithdrawnCents },
+        { line: "dispute_withdrawn", cents: h.disputeWithdrawnCents },
         { line: "closing", cents: h.closingCents },
         { line: "computed_closing", cents: h.computedClosingCents },
         { line: "balanced", cents: h.balanced ? 1 : 0 },
@@ -388,6 +475,8 @@ export function sectionToCsv(report: BillingReconciliationReport, section: Repor
         ...b.jobRefundsByReason.map((s) => ({ line: `job_refund:${s.label}`, count: s.count, cents: s.cents })),
         { line: "job_refunds", count: b.jobRefunds.count, cents: b.jobRefunds.cents },
         { line: "top_up_refund_reversals", count: b.topUpRefundReversals.count, cents: b.topUpRefundReversals.cents },
+        { line: "dispute_holds", count: b.disputeHolds.count, cents: b.disputeHolds.cents },
+        { line: "dispute_releases", count: b.disputeReleases.count, cents: b.disputeReleases.cents },
         { line: "unclassified", count: b.unclassified.count },
         { line: "closing", cents: b.closingCents },
         { line: "computed_closing", cents: b.computedClosingCents },
