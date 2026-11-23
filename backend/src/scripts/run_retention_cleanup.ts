@@ -133,6 +133,9 @@ export function scheduledBillingLogFields(billing: BillingRetentionResult) {
     stripeEventsPruned: billing.stripeEventsPruned,
     failed: billing.failed,
     ...(billing.reconciled ?? {}),
+    ...(billing.renewalReminders
+      ? { annualRenewalReminders: billing.renewalReminders.annualRenewal, yearlyReminders: billing.renewalReminders.yearly }
+      : {}),
   };
 }
 

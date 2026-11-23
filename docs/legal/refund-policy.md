@@ -184,6 +184,14 @@ price and how often you are charged next to the box you tick. You can cancel at
 any time from Manage billing; your plan then stays on until the end of the
 period you paid for.
 
+**Renewal emails.** When Artist Pro starts we email you the renewal terms, the
+date of your next charge and how to cancel. If you pay monthly, we remind you
+of the price, how often you are charged and how to cancel once a year, on the
+anniversary of your start. If you pay yearly, we remind you 15 to 45 days
+before each renewal, with the date and the amount. If the price changes, we
+tell you 7 to 30 days before the new price applies, and you can cancel before
+then. Each of these messages also appears in your notices in the app.
+
 **Withdrawing within 14 days.** You can withdraw within 14 days of subscribing,
 using **Withdraw from contract** in Usage & Billing or by writing to
 {{OPERATOR_CONTACT_EMAIL}} (the in-app button is
@@ -332,10 +340,11 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
    content (Deliver now ends the right) or a prepaid service (the right
    survives and only used credits are kept)?
 9. **Automatic renewal** ([#2597](https://github.com/akoita/resonate/issues/2597)).
-   The checkout now asks for consent to the renewal with the price and
-   interval beside the tick box. Which US state renewal laws apply, and are
-   the planned acknowledgement email, yearly reminder and price-change notice
-   enough?
+   The checkout asks for consent to the renewal with the price and interval
+   beside the tick box and links these terms and this policy. The
+   acknowledgement email, the yearly reminder, the reminder 15 to 45 days
+   before an annual renewal and the price-change notice 7 to 30 days ahead are
+   built. Which US state renewal laws apply, and are these enough?
 10. **Withdrawal button and chargebacks**
     ([#2594](https://github.com/akoita/resonate/issues/2594),
     [#2596](https://github.com/akoita/resonate/issues/2596)). Confirm the

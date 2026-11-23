@@ -13,6 +13,7 @@ import { CreditTopUpService } from "./credit_topup.service";
 import { StripeWebhookController } from "./stripe_webhook.controller";
 import { StripeDisputeService } from "./stripe_dispute.service";
 import { StripeWebhookService } from "./stripe_webhook.service";
+import { RenewalNoticeService } from "./renewal_notices.service";
 
 /**
  * Artist Pro subscriptions through Stripe (#2407, test mode). The Stripe SDK is
@@ -32,6 +33,7 @@ import { StripeWebhookService } from "./stripe_webhook.service";
     CreditTopUpService,
     StripeDisputeService,
     BillingReconciliationService,
+    RenewalNoticeService,
   ],
 })
 export class BillingModule {}
