@@ -32,6 +32,23 @@ class DiscoveryPopularityDataformTest(unittest.TestCase):
         self.assertNotIn("payload_artist_id", sql)
         self.assertNotIn("clean_artist_id", sql)
 
+    def test_artist_attribution_follows_the_tracks_latest_credit_stamp(self):
+        sql = (DISCOVERY / "discovery_popularity_eligible_events.sqlx").read_text()
+
+        # #2638: a credit fixed after listens were recorded re-credits them.
+        self.assertIn("current_track_credits AS (", sql)
+        self.assertIn("'playback.started'", sql)
+        self.assertIn("JSON_QUERY(payload, '$.creditedArtistIds') IS NOT NULL", sql)
+        self.assertIn("PARTITION BY CAST(trackId AS STRING)", sql)
+        self.assertIn("ORDER BY TIMESTAMP(occurredAt) DESC, eventId DESC", sql)
+        self.assertIn("LEFT JOIN current_track_credits", sql)
+        # A track that is ambiguous now must not fall back to an event-time id.
+        self.assertIn("has_current_credit OR COALESCE(ARRAY_LENGTH(credited_artist_ids), 0) > 0", sql)
+        # The latest-credit lookup stays inside the bounded 30-day partitions.
+        lookup = sql.split("current_track_credits AS (", 1)[1].split("candidate AS (", 1)[0]
+        self.assertIn("occurredDate >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)", lookup)
+        self.assertNotIn("actorId", lookup)
+
     def test_marts_cover_windows_counts_assertions_and_honest_cost_limits(self):
         track_sql = (DISCOVERY / "track_popularity.sqlx").read_text()
         artist_sql = (DISCOVERY / "artist_engagement.sqlx").read_text()
