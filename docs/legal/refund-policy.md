@@ -211,7 +211,8 @@ from a withdrawal refund.
   current period is not refunded beyond what this policy already gives you
   (for example, withdrawing within 14 days of subscribing). Before you confirm
   an erasure, we tell you this and the date your paid period would otherwise
-  end, so you can close your account instead and keep using it until then.
+  end, so you can cancel Artist Pro in Manage billing instead, keep using it
+  until then, and delete your account after that date.
   Your data is not erased until the payment provider has confirmed the
   cancellation; until then we keep trying.
 - **Your account is closed by us.** Your subscription is cancelled
