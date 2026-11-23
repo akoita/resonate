@@ -22,7 +22,8 @@ disputed payment bought.
   test mode than to retrofit after the first real charge.
 - **Small and checkable.** Each item is one or two PRs with tests, on the
   billing module and webhook that Sprint 44 built. The wording was decided by
-  the owner on 2026-11-09, so only one placement question is open.
+  the owner on 2026-11-09, and the one placement question was settled on
+  2026-11-23.
 
 ## Scope and order
 
@@ -50,13 +51,12 @@ keep their milestones. This sprint does not depend on them.
 
 ## Owner decisions
 
-1. **Where the erasure warning points.** The decided sentence says "close your
-   account instead", but the app has a single flow, "Delete your account",
-   which erases after 30 days. Recommended: keep the decided warning and
-   replace its last sentence with "If you want to keep using it until
-   {period end}, cancel Artist Pro in Manage billing and delete your account
-   after that date." The alternative is a new self-service closure that keeps
-   data and the paid period, which is a larger build and not in this sprint.
+1. **Where the erasure warning points.** Decided by the owner on 2026-11-23.
+   The app has a single flow, "Delete your account", which erases after 30
+   days, so the warning keeps the decided text and ends with: "If you want to
+   keep using it until {period end}, cancel Artist Pro in Manage billing and
+   delete your account after that date." A separate self-service closure is
+   not planned.
 2. **Legal check.** Unchanged from the 2026-11-09 review: a lawyer reads the
    withdrawal flow labels, the closure rule and the renewal notices before
    `BILLING_LIVE_MODE` is turned on.
@@ -77,7 +77,7 @@ keep their milestones. This sprint does not depend on them.
   review, VAT/OSS and Stripe Tax, a live Stripe account, a rollout decision)
   are outside the code.
 - Auto-reload, USDC top-up and the annual plan (#2410).
-- A separate self-service account closure (see owner decision 1).
+- A separate self-service account closure (owner decision 1: not planned).
 
 ## Revenue line
 
