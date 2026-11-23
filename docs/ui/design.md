@@ -112,6 +112,12 @@ spacing:
   section: "80px"
 ---
 
+> **Superseded for brand identity (2026-11).** Logo, colour roles, typeface and
+> tone now follow the [Resonate brand guide](../brand/README.md). In particular,
+> Space Grotesk is retired: Be Vietnam Pro is used for headings and body text.
+> The rest of this document is kept for its component history.
+
+
 # Resonate — Design System v2: Obsidian Frequency
 
 > **Status**: Proposed redesign. This document replaces the prior Stitch-era

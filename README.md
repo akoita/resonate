@@ -1,35 +1,6 @@
 <div align="center">
 
-<svg width="100%" height="220" viewBox="0 0 800 220" fill="none" xmlns="http://www.w3.org/2000/svg" style="background: #08080F; border-radius: 16px; border: 1px solid rgba(124, 92, 255, 0.2); box-shadow: 0 20px 40px rgba(8, 8, 15, 0.5);">
-  <!-- Background Patterns / Ambient Glow -->
-  <defs>
-    <linearGradient id="hyacinthGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#7C5CFF" stop-opacity="0.25"/>
-      <stop offset="50%" stop-color="#C4B5FD" stop-opacity="0.05"/>
-      <stop offset="100%" stop-color="#08080F" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="60%" stop-color="#C4B5FD"/>
-      <stop offset="100%" stop-color="#7C5CFF"/>
-    </linearGradient>
-  </defs>
-  
-  <!-- Glow -->
-  <rect width="800" height="220" fill="url(#hyacinthGlow)"/>
-  
-  <!-- Concentric design waves (Electric minimalist) -->
-  <circle cx="700" cy="110" r="150" stroke="#7C5CFF" stroke-opacity="0.15" stroke-width="1.5" stroke-dasharray="10 15"/>
-  <circle cx="700" cy="110" r="110" stroke="#7C5CFF" stroke-opacity="0.25" stroke-width="1.5"/>
-  <circle cx="700" cy="110" r="70" stroke="#C4B5FD" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="5 5"/>
-  <circle cx="700" cy="110" r="30" stroke="#7C5CFF" stroke-opacity="0.45" stroke-width="2"/>
-  <circle cx="700" cy="110" r="4" fill="#FFFFFF" opacity="0.9"/>
-  
-  <!-- Clean Minimalist Typographic Header -->
-  <text x="60" y="95" fill="url(#textGrad)" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="44" letter-spacing="-0.03em">RESONATE</text>
-  <text x="62" y="130" fill="#C4B5FD" font-family="system-ui, -apple-system, sans-serif" font-weight="600" font-size="14" letter-spacing="0.18em">FANS BRING THE SHOW • ON-CHAIN AUDIO IP</text>
-  <text x="62" y="165" fill="rgba(255,255,255,0.6)" font-family="system-ui, -apple-system, sans-serif" font-weight="400" font-size="12" letter-spacing="0.02em">Programmable Stems • Human Studio • x402 Commerce • MCP Server</text>
-</svg>
+<img src="docs/brand/assets/readme-banner.png" alt="Resonate. Fair music, from stem to stage." width="100%">
 
 <br/>
 <br/>

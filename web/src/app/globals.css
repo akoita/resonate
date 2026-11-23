@@ -537,18 +537,29 @@ a {
   text-align: left;
 }
 
-.logo-icon {
-  font-size: 24px;
+/* Brand lockup (BrandLogo): mark + wordmark, per docs/brand/README.md.
+ * The wordmark is solid white Be Vietnam Pro SemiBold, matching the
+ * outlined lockup SVGs in public/brand/. */
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  /* The mark SVG carries its own side bearing, so the gap stays small. */
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.brand-logo__mark {
+  display: block;
+  flex: none;
 }
 
 .logo-text {
+  margin: 0;
+  font-family: var(--brand-font);
   font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #fff 0%, var(--r-primary) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--brand-pure-white);
 }
 
 .sidebar-nav {
