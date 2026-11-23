@@ -185,6 +185,28 @@ served by `GET /billing/subscription`, so the web carries no copy. The generic
 `POST /purchase-consents` refuses the `subscription` surface
 (`400 use_subscription_checkout`).
 
+### Renewal notices (#2597)
+
+US automatic-renewal rules expect, besides the consent at checkout and online
+cancellation, an acknowledgement, a yearly reminder, an extra reminder before
+an annual renewal and notice of a price change.
+`billing/renewal_notices.service.ts` sends each as a `purchase` notice (always
+emailed to a confirmed contact address) with a dedupe key, so a rerun or a
+replayed webhook sends nothing twice:
+
+| Notice | When | Dedupe key |
+| --- | --- | --- |
+| "Artist Pro started: how renewal works" | `invoice.paid` with `billing_reason = subscription_create`: renewal terms with the price and tax wording, next charge date, how to cancel, the 14-day withdrawal | `artist-pro-start:<invoice>` |
+| "Your Artist Pro renews soon" | Yearly plans renewing in 15 to 45 days and not set to cancel; this is also their yearly reminder | `artist-pro-renewal:<subscription>:<renewal date>` |
+| "Your Artist Pro subscription: yearly reminder" | Monthly plans, within 14 days after each anniversary of the first paid invoice | `artist-pro-yearly:<subscription>:<years>` |
+| "Artist Pro price change" | `npm run billing:price-change-notice -- --interval month --currency usd --price-cents 1699 --effective 2027-01-15` (`--dry-run` only counts), refused unless the date is 7 to 30 days ahead; sent to running subscribers of that interval whose latest invoice is in that currency | `artist-pro-price-change:<interval>:<currency>:<date>:<subscription>` |
+
+The two reminders run daily with the retention job (`runBillingRetention`,
+result `renewalReminders`). The operator sends the price-change notice before
+a new Stripe price is used. Every Checkout Session (subscription and credit
+packs) also carries `custom_text.submit` linking the terms of service and the
+refund policy (`BillingConfig.checkoutTermsText`).
+
 ### The webhook
 
 `POST /billing/stripe/webhook` is public but authorised by the

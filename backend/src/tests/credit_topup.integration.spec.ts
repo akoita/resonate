@@ -229,6 +229,13 @@ describe("Credit packs (integration, #1422)", () => {
         cancel_url: "https://app.example.test/settings?section=usage&credits=cancel",
         metadata,
         payment_intent_data: { metadata },
+        custom_text: {
+          submit: {
+            message:
+              "By paying you agree to our [Terms of Service](https://app.example.test/terms) and " +
+              "[Refund Policy](https://app.example.test/refunds), which explain your right to withdraw, refunds and how to cancel.",
+          },
+        },
       });
       expect(key).toBe(`resonate-credits-checkout-${consent.id}`);
       expect(gateway.createCustomer).toHaveBeenCalledTimes(1);

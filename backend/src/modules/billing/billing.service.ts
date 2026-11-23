@@ -223,6 +223,8 @@ export class BillingService {
         cancel_url: this.config.returnUrl("cancel"),
         metadata: { userId, consentId: consent.id, interval },
         subscription_data: { metadata: { userId, consentId: consent.id } },
+        // #2597: the terms and the refund policy, linked on the payment page itself.
+        custom_text: { submit: { message: this.config.checkoutTermsText() } },
         ...(this.config.automaticTax
           ? { automatic_tax: { enabled: true }, customer_update: { address: "auto" as const } }
           : {}),
