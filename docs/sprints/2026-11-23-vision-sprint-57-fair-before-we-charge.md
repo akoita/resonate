@@ -1,6 +1,6 @@
 # Vision Sprint 57: Fair before we charge
 
-**Status:** 🟡 Proposed on 2026-11-23.
+**Status:** ✅ Closed on 2026-11-23 (all four slices merged).
 **Milestone:** [Vision Sprint 57: Fair before we charge](https://github.com/akoita/resonate/milestone/55).
 Issues also carry the `sprint:vision-57` label.
 **Goal:** Every promise the refund policy makes about Artist Pro and credit
@@ -8,6 +8,35 @@ packs is something the app actually does. A person can withdraw in the app,
 is refunded fairly when we close their account, is warned before erasure ends
 their plan, is told how renewal works, and a card dispute changes what the
 disputed payment bought.
+
+## Outcome
+
+The refund policy's Artist Pro and credit-pack promises are now built, in
+Stripe test mode:
+
+- **#2596** (PR #2619, credit packs; PR #2641, Artist Pro): a card dispute on
+  an Artist Pro invoice pauses Pro for that paid period while open or lost,
+  and restores it when won; disputes appear in the monthly reconciliation.
+- **#2594** (PR #2643): "Withdraw from contract" in Usage & Billing for Artist
+  Pro within 14 days and for held credit packs, statement then confirm, an
+  acknowledgement with the UTC time, and an automatic Stripe refund retried by
+  the retention job. Held on-chain purchases keep the written route and are
+  tracked in #2642 (no milestone yet).
+- **#2597** (PR #2644): acknowledgement on the first paid invoice, a yearly
+  reminder, the 15–45-day annual reminder, an operator-run price-change notice
+  7–30 days ahead, and Checkout links to the terms and the refund policy.
+- **#2595** (PR #2646): an operator closure must record whether it is for a
+  serious breach; if not, the unused days and unspent bought credits are
+  refunded. The deletion confirmation shows the owner's Artist Pro warning.
+- **Stretch:** the "planned" and "Not built yet" markers for these items were
+  removed from the refund policy, `/help` and the feature index in the same
+  PRs.
+
+**Carry-over:** the manual Stripe test-mode walk-through in the exit criteria
+(a withdrawal refund, won and lost disputes, a closure refund) is for the owner
+to run; the lawyer's read before `BILLING_LIVE_MODE` (owner decision 2) is
+unchanged. #2642 covers withdrawal from held on-chain purchases. The next
+milestone is not yet selected.
 
 ## Why this theme
 
