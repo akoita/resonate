@@ -14,6 +14,8 @@ import {
   AccountClosureCard,
   CLOSURE_CONFIRM_MESSAGE,
   cancelScheduledAccountClosure,
+  closureConfirmMessage,
+  erasureProWarning,
   describeTimeUntilClosure,
   formatClosureDate,
   isPasskeyDismissal,
@@ -416,5 +418,38 @@ describe("account deletion copy and helpers (#1771)", () => {
       isPasskeyDismissal(new Error("The operation either timed out or was not allowed.")),
     ).toBe(true);
     expect(isPasskeyDismissal(new Error("Network request failed"))).toBe(false);
+  });
+});
+
+describe("the Artist Pro warning before erasure (#2595)", () => {
+  const now = new Date("2026-11-23T12:00:00Z");
+  const sub = (overrides: Record<string, unknown> = {}) =>
+    ({
+      status: "active",
+      interval: "month",
+      currentPeriodEnd: "2026-12-10T08:00:00Z",
+      cancelAtPeriodEnd: false,
+      pastDueSince: null,
+      graceEndsAt: null,
+      ...overrides,
+    }) as Parameters<typeof erasureProWarning>[0];
+
+  it("states the owner's wording with the period end while a period runs", () => {
+    const warning = erasureProWarning(sub(), now)!;
+    expect(warning).toBe(
+      "Erasing your account ends Artist Pro straight away, and the unused part of your current period is not refunded. " +
+        `If you want to keep using it until ${formatClosureDate("2026-12-10T08:00:00.000Z")}, cancel Artist Pro in Manage billing and ` +
+        "delete your account after that date.",
+    );
+    const message = closureConfirmMessage(sub(), now).split("\n\n");
+    expect(message[1]).toBe(warning);
+    expect(message).toHaveLength(CLOSURE_CONFIRM_MESSAGE.split("\n\n").length + 1);
+  });
+
+  it("says nothing without a running period", () => {
+    expect(erasureProWarning(null, now)).toBeNull();
+    expect(erasureProWarning(sub({ status: "canceled" }), now)).toBeNull();
+    expect(erasureProWarning(sub({ currentPeriodEnd: "2026-11-01T00:00:00Z" }), now)).toBeNull();
+    expect(closureConfirmMessage(null, now)).toBe(CLOSURE_CONFIRM_MESSAGE);
   });
 });

@@ -256,7 +256,7 @@ describe("account suspension (integration)", () => {
       await request(server())
         .post(`/admin/accounts/${user}/close`)
         .set(as(admin, "admin"))
-        .send({ reason: "fraud", note: NOTE })
+        .send({ reason: "fraud", note: NOTE, seriousBreach: true })
         .expect(200);
 
       const events = await prisma.adminAuditEvent.findMany({
@@ -282,7 +282,7 @@ describe("account suspension (integration)", () => {
       await request(server())
         .post(`/admin/accounts/${user}/close`)
         .set(as(admin, "admin"))
-        .send({ reason: "terms_violation" })
+        .send({ reason: "terms_violation", seriousBreach: true })
         .expect(200);
       const res = await request(server()).post("/probe/write").set(as(user)).expect(403);
       expect(res.body.code).toBe("account_closed");
@@ -295,7 +295,7 @@ describe("account suspension (integration)", () => {
       const res = await request(server())
         .post(`/admin/accounts/${user}/close`)
         .set(as(admin, "admin"))
-        .send({ reason: "fraud", scheduleErasure: true, note: NOTE })
+        .send({ reason: "fraud", scheduleErasure: true, note: NOTE, seriousBreach: true })
         .expect(200);
       expect(res.body.erasureScheduledFor).toEqual(expect.any(String));
       const pending = await prisma.accountClosureRequest.findFirst({ where: { userId: user, status: "pending" } });
@@ -318,7 +318,7 @@ describe("account suspension (integration)", () => {
     });
 
     it("cannot be suspended again once closed", async () => {
-      await request(server()).post(`/admin/accounts/${user}/close`).set(as(admin, "admin")).send({ reason: "abuse" }).expect(200);
+      await request(server()).post(`/admin/accounts/${user}/close`).set(as(admin, "admin")).send({ reason: "abuse", seriousBreach: true }).expect(200);
       await suspend(user).expect(409);
     });
   });

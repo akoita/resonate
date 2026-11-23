@@ -134,7 +134,7 @@ the wiring. Defaults (sprint 45, for owner and legal review):
 | Account event | At Stripe | When it fails |
 | --- | --- | --- |
 | Erasure (the due-erasure run, `eraseAccount`) | Cancelled **immediately** (`prorate: false`, no final invoice), before anything is erased. The erasure does not run until Stripe answers with a canceled subscription | `SubscriptionCancellationPendingError`: the closure request stays `pending` with the reason, and the next due-erasure run retries |
-| Operator closure (`POST /admin/accounts/:id/close`) | Cancelled immediately; the audit record carries `subscription: canceled \| pending \| none` | The closure still applies; the retention job retries the cancellation |
+| Operator closure (`POST /admin/accounts/:id/close`) | Cancelled immediately; the audit record carries `subscription: canceled \| pending \| none`. Unless the admin records a serious or repeated breach (`seriousBreach`, required), the unused days of the running period and unspent bought credits are refunded (#2595, below) | The closure still applies; the retention job retries the cancellation and the refunds |
 | Self-service closure request (`POST /privacy/account/closure`) | `cancel_at_period_end`, so no renewal is charged during the 30-day window. Signing in to cancel the closure does not undo it: the person renews in the Customer Portal | The retention job retries |
 | Suspension (`POST /admin/accounts/:id/suspend`) | `pause_collection` with behavior `void` and `resumes_at` = the suspension's end when set; audit `billingCollection` | The retention job retries |
 | Suspension lifted (or past its end) | `pause_collection` cleared | The retention job retries |
@@ -206,6 +206,32 @@ result `renewalReminders`). The operator sends the price-change notice before
 a new Stripe price is used. Every Checkout Session (subscription and credit
 packs) also carries `custom_text.submit` linking the terms of service and the
 refund policy (`BillingConfig.checkoutTermsText`).
+
+### Refunds on an operator closure (#2595)
+
+`billing/closure_refunds.ts`, called by `AccountStatusService.close` through
+`SubscriptionLifecycleService.refundForOperatorClosure` when the closure is not
+for a serious or repeated breach:
+
+- **Unused days:** the latest paid invoice whose period is running, refunded
+  `amount paid × whole days left ÷ days in the period`, rounded down.
+- **Unspent bought credits:** by purchase, newest first; a held pack in full,
+  then credited packs up to the bought credits still in the balance, refunded
+  in proportion to what each pack charged (tax included). The
+  `charge.refunded` webhook then takes those credits back as for any refund.
+- A payment already withdrawn from (#2594) or under an open or lost dispute
+  (#2596) is skipped. The monthly allowance is never refunded in cash.
+- One `ClosureRefund` row per payment (unique `kind + subjectId`), Stripe
+  idempotency key `resonate-closure-<row id>`; failures are retried by the
+  retention job (`reconcile` step 7, `closureRefunds` in its result), up to 20
+  attempts.
+
+The erasure confirmation in Settings shows the owner's warning when an Artist
+Pro period is running: "Erasing your account ends Artist Pro straight away, and
+the unused part of your current period is not refunded. If you want to keep
+using it until {period end}, cancel Artist Pro in Manage billing and delete
+your account after that date." (`erasureProWarning` in
+`AccountClosurePanel.tsx`).
 
 ### The webhook
 

@@ -231,12 +231,8 @@ from a withdrawal refund.
   repeated breach of the terms of service by you, we refund the unused part of
   your current period, in proportion to the days left, and the money value of
   any credits you bought and did not use.
-
-> **Not built yet.** The warning before erasure and the refund on a closure by
-> us are tracked in [#2595](https://github.com/akoita/resonate/issues/2595).
-> Until it ships, the system cancels without these refunds and without the
-> warning; the wording above is the decided policy and must be live before
-> live charging.
+  The refund goes to the card you paid with; a payment you already withdrew
+  from or are disputing with your bank is not refunded a second time.
 - **Your account is suspended.** We stop charging you while the suspension
   lasts: invoices that fall due during a suspension are voided, not collected
   later. Billing starts again when the suspension ends.
@@ -321,7 +317,8 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
    (a) erasure at the person's request cancels at once with no proration
    beyond this policy, after a warning; an operator closure refunds the unused
    days and unspent bought credits unless it is for a serious or repeated
-   breach. Does the breach exception hold in the operator's jurisdiction (an
+   breach (both built, #2595: the operator must record the breach choice on
+   every closure). Does the breach exception hold in the operator's jurisdiction (an
    unfair-terms risk), and what counts as a serious breach;
    (b) a self-service closure request stops renewal at once and leaves the paid
    period running; (c) suspension voids the invoices that fall due while it

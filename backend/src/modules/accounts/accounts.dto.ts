@@ -36,4 +36,12 @@ export class CloseAccountDto {
   @IsOptional()
   @IsBoolean()
   scheduleErasure?: boolean;
+
+  /**
+   * #2595: whether the closure is for a serious or repeated breach of the
+   * terms by the person. Required, so the operator records it every time;
+   * when false, the unused days and unspent bought credits are refunded.
+   */
+  @IsBoolean()
+  seriousBreach!: boolean;
 }

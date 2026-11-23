@@ -132,7 +132,7 @@ describe("withAdminStepUp (#2173)", () => {
     const ctx = { token: TOKEN, signMessage };
 
     await withAdminStepUp(ctx, (proof) => suspendAccount(TOKEN, "user-2", { reason: "abuse" }, proof));
-    await withAdminStepUp(ctx, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud" }, proof));
+    await withAdminStepUp(ctx, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud", seriousBreach: true }, proof));
     await withAdminStepUp(ctx, (proof) =>
       sendBroadcastNotice(TOKEN, { audience: "all", category: "policy", title: "t", body: "b" }, proof),
     );
@@ -179,7 +179,7 @@ describe("withAdminStepUp (#2173)", () => {
     });
 
     await expect(
-      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud" }, proof)),
+      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud", seriousBreach: true }, proof)),
     ).rejects.toBeInstanceOf(AdminStepUpCancelledError);
 
     expect(paths()).toEqual(["/admin/accounts/user-2/close", "/admin/step-up/challenge"]);
@@ -193,12 +193,12 @@ describe("withAdminStepUp (#2173)", () => {
       "/admin/step-up/verify": () => jsonResponse({ statusCode: 400, message: "no" }, 400),
     });
     await expect(
-      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud" }, proof)),
+      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud", seriousBreach: true }, proof)),
     ).rejects.toBeInstanceOf(AdminStepUpRefusedError);
 
     signMessage.mockRejectedValue(new Error("authenticator exploded"));
     await expect(
-      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud" }, proof)),
+      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud", seriousBreach: true }, proof)),
     ).rejects.toBeInstanceOf(AdminStepUpRefusedError);
   });
 
@@ -209,7 +209,7 @@ describe("withAdminStepUp (#2173)", () => {
       "/admin/step-up/verify": () => jsonResponse(proofResponse()),
     });
     await expect(
-      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud" }, proof)),
+      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud", seriousBreach: true }, proof)),
     ).rejects.toBeInstanceOf(ApiRequestError);
     expect(signMessage).toHaveBeenCalledTimes(1);
   });
@@ -219,13 +219,13 @@ describe("withAdminStepUp (#2173)", () => {
       "/admin/accounts/user-2/close": () => jsonResponse({ statusCode: 403, message: "Admin accounts cannot be closed" }, 403),
     });
     await expect(
-      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud" }, proof)),
+      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud", seriousBreach: true }, proof)),
     ).rejects.toMatchObject({ status: 403 });
     expect(signMessage).not.toHaveBeenCalled();
 
     routes({ "/admin/accounts/user-2/close": () => jsonResponse({ statusCode: 500, message: "boom" }, 500) });
     await expect(
-      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud" }, proof)),
+      withAdminStepUp({ token: TOKEN, signMessage }, (proof) => closeAccount(TOKEN, "user-2", { reason: "fraud", seriousBreach: true }, proof)),
     ).rejects.toMatchObject({ status: 500 });
     expect(signMessage).not.toHaveBeenCalled();
   });

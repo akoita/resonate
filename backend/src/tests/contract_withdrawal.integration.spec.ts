@@ -218,12 +218,11 @@ describe("Withdrawal from contract (integration, #2594)", () => {
       refundLastError: "stripeconnectionerror",
     });
 
-    const reconciled = await lifecycle.reconcile();
-    expect(reconciled.withdrawalRefunds).toBeGreaterThanOrEqual(1);
-    expect(await prisma.contractWithdrawal.findFirstOrThrow({ where: { userId: U.retry } })).toMatchObject({
-      refundStatus: "refunded",
-      refundAttempts: 2,
-      refundLastError: null,
-    });
+    // Suites share the database, so another suite's retention pass may retry
+    // it first: assert the end state, not who retried it.
+    await lifecycle.reconcile();
+    const retried = await prisma.contractWithdrawal.findFirstOrThrow({ where: { userId: U.retry } });
+    expect(retried).toMatchObject({ refundStatus: "refunded", refundLastError: null });
+    expect(retried.refundAttempts).toBeGreaterThanOrEqual(2);
   });
 });

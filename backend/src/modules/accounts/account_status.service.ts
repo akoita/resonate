@@ -51,6 +51,10 @@ const REASON_LABELS: Record<AccountStatusReason, string> = {
   other: "another reason covered by the terms of service",
 };
 
+/** #2595: told to the person when an operator closure refunds them. */
+export const CLOSURE_REFUND_NOTE =
+  "Because this closure is not for a breach of our terms by you, we are refunding the unused part of your current " +
+  "Artist Pro period, in proportion to the days left, and the credits you bought and did not use, to the card you paid with.";
 const STILL_WORKS =
   "You can still sign in, claim any refund you are owed, read your notices, and export or request erasure of your data.";
 const APPEAL =
@@ -241,9 +245,13 @@ export class AccountStatusService {
   async close(
     actor: AccountActor,
     idOrAddress: string,
-    input: { reason: unknown; note?: unknown; scheduleErasure?: unknown },
+    input: { reason: unknown; note?: unknown; scheduleErasure?: unknown; seriousBreach?: unknown },
   ) {
     const reason = parseReason(input.reason);
+    if (typeof input.seriousBreach !== "boolean") {
+      throw new BadRequestException("seriousBreach must be true or false");
+    }
+    const seriousBreach = input.seriousBreach;
     const note = parseNote(input.note);
     if (input.scheduleErasure !== undefined && typeof input.scheduleErasure !== "boolean") {
       throw new BadRequestException("scheduleErasure must be a boolean");
@@ -279,8 +287,15 @@ export class AccountStatusService {
     // on the subscription row and the retention job retries it.
     const subscription = await this.billingStep(() => this.billing?.endForAccount(userId, "account_closure"));
 
+    // #2595: a closure that is not for a serious or repeated breach refunds the
+    // unused days and the unspent bought credits. Recorded and retried like the
+    // cancellation; a failure never undoes the closure.
+    const refunds = seriousBreach ? null : await this.closureRefunds(userId, changedAt);
+
     await this.record(actor, userId, "account.closed", reason, changedAt, {
       note,
+      seriousBreach,
+      refunds,
       scheduleErasure,
       erasureDueAt: closure?.dueAt.toISOString() ?? null,
       subscription,
@@ -292,6 +307,7 @@ export class AccountStatusService {
         closure
           ? `Your personal data is scheduled to be erased on ${closure.dueAt.toISOString().slice(0, 10)}. Export what you need before then.`
           : "",
+        typeof refunds === "object" && refunds !== null && refunds.planned > 0 ? CLOSURE_REFUND_NOTE : "",
         STILL_WORKS,
         APPEAL,
       ]
@@ -302,6 +318,22 @@ export class AccountStatusService {
   }
 
   // ============ Internals ============
+
+  /** The closure refunds, as counts for the audit trail; "plan_failed" when they could not be planned now. */
+  private async closureRefunds(userId: string, at: Date): Promise<{ planned: number; refunded: number; pending: number } | "plan_failed" | "none"> {
+    if (!this.billing) return "none";
+    try {
+      return await this.billing.refundForOperatorClosure(userId, at);
+    } catch (error) {
+      writeStructuredLog({
+        level: "error",
+        event: "billing.closure_refund_plan_failed",
+        message: "Could not plan the refunds of an operator closure",
+        error: error instanceof Error ? error.name : "error",
+      });
+      return "plan_failed";
+    }
+  }
 
   /** The billing outcome recorded in the audit trail; a Stripe failure is "pending", retried later. */
   private async billingStep(step: () => Promise<string> | undefined): Promise<string> {

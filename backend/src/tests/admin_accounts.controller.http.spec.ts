@@ -83,12 +83,12 @@ describe("AdminAccountsController (http)", () => {
     await request(server())
       .post("/admin/accounts/user-2/close")
       .set(confirmed)
-      .send({ reason: "fraud", scheduleErasure: true })
+      .send({ reason: "fraud", scheduleErasure: true, seriousBreach: true })
       .expect(200);
     expect(mockAccounts.close).toHaveBeenCalledWith(
       { userId: "admin-1", role: "admin" },
       "user-2",
-      expect.objectContaining({ scheduleErasure: true }),
+      expect.objectContaining({ scheduleErasure: true, seriousBreach: true }),
     );
     await request(server()).get("/admin/accounts/user-2/status").set(admin).expect(200);
   });
@@ -96,7 +96,7 @@ describe("AdminAccountsController (http)", () => {
   describe("step-up confirmation (#2173)", () => {
     const protectedRoutes: Array<[string, Record<string, unknown>]> = [
       ["/admin/accounts/user-2/suspend", { reason: "abuse" }],
-      ["/admin/accounts/user-2/close", { reason: "fraud" }],
+      ["/admin/accounts/user-2/close", { reason: "fraud", seriousBreach: true }],
     ];
     const staleProof = () => stepUpProof("admin-1", Date.now() - 6 * 60 * 1000);
 
@@ -179,7 +179,18 @@ describe("AdminAccountsController (http)", () => {
       await request(server())
         .post("/admin/accounts/user-2/close")
         .set(confirmed)
-        .send({ reason: "fraud", scheduleErasure: "yes" })
+        .send({ reason: "fraud", scheduleErasure: "yes", seriousBreach: false })
+        .expect(400);
+      expect(mockAccounts.suspend).not.toHaveBeenCalled();
+      expect(mockAccounts.close).not.toHaveBeenCalled();
+    });
+
+    it("requires the operator to say whether a closure is for a serious breach (#2595)", async () => {
+      await request(server()).post("/admin/accounts/user-2/close").set(confirmed).send({ reason: "fraud" }).expect(400);
+      await request(server())
+        .post("/admin/accounts/user-2/close")
+        .set(confirmed)
+        .send({ reason: "fraud", seriousBreach: "no" })
         .expect(400);
       expect(mockAccounts.suspend).not.toHaveBeenCalled();
       expect(mockAccounts.close).not.toHaveBeenCalled();

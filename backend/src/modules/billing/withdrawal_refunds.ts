@@ -20,6 +20,8 @@ import type { StripeGateway } from "./stripe_gateway";
 /** Give up retrying after this many attempts; the row stays `failed` for the operator. */
 export const MAX_WITHDRAWAL_REFUND_ATTEMPTS = 20;
 const RETRY_BATCH = 50;
+/** A pending refund untouched this long is retried (the request that created it died). */
+const STUCK_PENDING_MS = 10 * 60 * 1000;
 
 export type WithdrawalRefundOutcome = "refunded" | "not_needed" | "already_done" | "deferred";
 
@@ -122,7 +124,12 @@ export async function retryPendingWithdrawalRefunds(
   now: Date = new Date(),
 ): Promise<{ refunded: number; failed: number }> {
   const rows = await prisma.contractWithdrawal.findMany({
-    where: { refundStatus: { in: ["pending", "failed"] }, refundAttempts: { lt: MAX_WITHDRAWAL_REFUND_ATTEMPTS } },
+    where: {
+      refundAttempts: { lt: MAX_WITHDRAWAL_REFUND_ATTEMPTS },
+      // A pending row is normally being processed by the request that created
+      // it; take it over only once it is clearly stuck.
+      OR: [{ refundStatus: "failed" }, { refundStatus: "pending", updatedAt: { lt: new Date(now.getTime() - STUCK_PENDING_MS) } }],
+    },
     orderBy: { withdrawnAt: "asc" },
     take: RETRY_BATCH,
   });
