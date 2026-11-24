@@ -558,9 +558,11 @@ export default function Home() {
   const [rankedTopArtists, setRankedTopArtists] =
     useState<RailState<TopArtistItem>>(RAIL_LOADING);
   // Refetch the charts while Home stays open, so an old tab does not keep the
-  // ranking from before the hourly snapshot. A failed background refetch keeps
+  // ranking from before the hourly snapshot: right after the next snapshot is
+  // due, and every 15 minutes as a fallback. A failed background refetch keeps
   // the rails it already shows.
-  const popularityRefreshTick = usePopularityRefreshTick();
+  const [popularitySnapshotAt, setPopularitySnapshotAt] = useState<string | null>(null);
+  const popularityRefreshTick = usePopularityRefreshTick(popularitySnapshotAt);
   useEffect(() => {
     let cancelled = false;
     const keepOnError = popularityRefreshTick > 0;
@@ -581,6 +583,7 @@ export default function Home() {
       .then((artists) => {
         if (cancelled) return;
         setRankedTopArtists({ status: "ready", items: artists.items ?? [] });
+        setPopularitySnapshotAt(artists.computedAt ?? null);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
