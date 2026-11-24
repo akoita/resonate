@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { registerVisibleInterval } from "@/lib/visibleInterval";
+
 /** The warehouse rebuilds the popularity snapshot about hourly. */
 export const POPULARITY_REFRESH_INTERVAL_MS = 15 * 60_000;
 /** Returning to the tab refetches only when the rails are at least this old. */
@@ -57,11 +59,15 @@ export function usePopularityRefreshTick(
       isVisible: () => document.visibilityState === "visible",
       onRefresh: () => setTick((value) => value + 1),
     });
-    const timer = window.setInterval(() => scheduler.onInterval(), intervalMs);
+    // Paused while hidden; returning to the tab refetches only when stale,
+    // which the scheduler decides below, so the helper must not run on show.
+    const stopInterval = registerVisibleInterval(() => scheduler.onInterval(), intervalMs, {
+      runOnVisible: false,
+    });
     const onVisibility = () => scheduler.onVisibilityChange();
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      window.clearInterval(timer);
+      stopInterval();
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [intervalMs]);
