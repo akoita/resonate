@@ -14,6 +14,7 @@ import {
   isProduction,
 } from "../../lib/buildInfo";
 import { fetchAppEnvironment } from "../../lib/appEnvironment";
+import { BrandLogo } from "../brand/BrandLogo";
 
 type BuildStamp = NonNullable<ReturnType<typeof describeBuildStamp>>;
 
@@ -197,7 +198,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 32, lineHeight: 1 }}>✨</span>
+            <BrandLogo size={36} showWordmark={false} />
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <h2
                 id="about-modal-title"

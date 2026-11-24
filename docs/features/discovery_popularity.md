@@ -50,10 +50,13 @@ track charts in Trending is never missing from Top Artists because of a missing
 or stale attribution stamp. Warehouse rows for artist ids that no current
 credit names (an old duplicate profile) are dropped. Both rails sort by score,
 then distinct listeners, then plays, then id, so equal scores never swap
-between reads. Home refetches both rails every 15 minutes while it is visible
-and when the listener returns to a tab whose rails are more than 5 minutes old,
-so a tab opened before a snapshot refresh does not keep showing the previous
-ranking.
+between reads. Home refetches both rails a few minutes after the next hourly
+snapshot is due (from the served `computedAt`, retrying every 2 minutes while
+it is overdue), every 15 minutes as a fallback while it is visible, and when
+the listener returns to a tab whose rails are more than 5 minutes old or that
+missed a snapshot while hidden. Every open tab therefore switches to a new
+snapshot at about the same moment, instead of showing the previous ranking for
+up to a quarter of an hour.
 
 Both paths enforce `DISCOVERY_MIN_AUDIENCE` before snapshot storage and again
 on reads. An empty qualifying audience keeps the existing low-data UI.

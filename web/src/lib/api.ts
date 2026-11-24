@@ -3854,6 +3854,8 @@ export interface PopularityResponse<T> {
   window: PopularityWindow;
   genre: string | null;
   minimumAudience: number;
+  /** When the served snapshot was computed (ISO); null when there are no rows. */
+  computedAt?: string | null;
   items: T[];
 }
 
