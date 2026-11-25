@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { StorageProvider, StorageResult } from './storage_provider';
+import { StorageProvider, StorageRangeResult, StorageResult } from './storage_provider';
+import { openSync, readSync, closeSync, statSync } from 'fs';
+import { parseByteRange } from './byte_range';
 import { join } from 'path';
 import { resolveContainedPath } from './path_containment';
 import { writeFileSync, existsSync, mkdirSync, unlinkSync, readFileSync } from 'fs';
@@ -59,5 +61,32 @@ export class LocalStorageProvider extends StorageProvider {
             return readFileSync(absolutePath);
         }
         return null;
+    }
+
+    /**
+     * Reads one byte range from disk without loading the whole file (#2661),
+     * so the stream route's memory does not grow with file size.
+     */
+    async downloadRange(uri: string, range: string): Promise<StorageRangeResult | null> {
+        const { filename } = resolveLocalStorageUri(uri, { backendOrigin: this.backendOrigin });
+        const absolutePath = resolveContainedPath(this.uploadDir, filename);
+        if (!absolutePath || !existsSync(absolutePath)) return null;
+        const total = statSync(absolutePath).size;
+        const parsed = parseByteRange(range, total);
+        if (!parsed) return null;
+        const length = parsed.end - parsed.start + 1;
+        const data = Buffer.alloc(length);
+        const fd = openSync(absolutePath, 'r');
+        try {
+            let read = 0;
+            while (read < length) {
+                const n = readSync(fd, data, read, length - read, parsed.start + read);
+                if (n === 0) break;
+                read += n;
+            }
+            return { data: data.subarray(0, read), start: parsed.start, end: parsed.start + read - 1, total };
+        } finally {
+            closeSync(fd);
+        }
     }
 }

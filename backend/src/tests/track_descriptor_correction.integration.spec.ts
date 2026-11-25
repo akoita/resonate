@@ -21,6 +21,7 @@ import { EventBus } from "../modules/shared/event_bus";
 import { UploadRightsRoutingService } from "../modules/rights/upload-rights-routing.service";
 import { runBackfillTrackDescriptors } from "../scripts/backfill_track_descriptors";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { StreamRenditionService } from "../modules/catalog/stream_rendition.service";
 
 const P = `desccorr_${Date.now()}_`;
 const OWNER = `${P}owner`;
@@ -92,6 +93,7 @@ describe("artist descriptor corrections (integration)", () => {
     app = await createControllerTestApp(CatalogController, [
       { provide: CatalogService, useValue: catalog },
       { provide: DiscoveryPopularityService, useValue: {} },
+      { provide: StreamRenditionService, useValue: { sendRendition: jest.fn() } },
     ]);
     embeddings = new TrackEmbeddingService(new EmbeddingService(), new EmbeddingStore(), bus);
     embeddings.onModuleInit();
