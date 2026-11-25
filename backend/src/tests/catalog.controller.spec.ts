@@ -19,6 +19,9 @@ const mockCatalogService = {
   getStemBlob: jest.fn(),
   getTrackStream: jest.fn(),
   getStemPreview: jest.fn(),
+  resolvePublicStreamStem: jest.fn().mockResolvedValue(null),
+  resolveTrackStreamStem: jest.fn().mockResolvedValue(null),
+  resolveOwnerTrackRendition: jest.fn().mockResolvedValue(null),
   listByUserId: jest.fn().mockResolvedValue([]),
   getReleaseForUser: jest.fn().mockResolvedValue({ id: 'rel-1' }),
   createRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
@@ -42,6 +45,7 @@ function makeController() {
   return new CatalogController(
     mockCatalogService as any,
     mockDiscoveryPopularityService as any,
+    { sendRendition: jest.fn() } as any,
   );
 }
 

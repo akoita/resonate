@@ -24,7 +24,9 @@ import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
-import { CatalogService } from "./catalog.service";
+import { CatalogService, type StreamableStemRecord } from "./catalog.service";
+import { STREAM_CACHE_CONTROL, StreamRenditionService } from "./stream_rendition.service";
+import { withPublicStemUris } from "./public_stem_uri";
 import { UpdateTrackDescriptorDto } from "./track-descriptor.dto";
 import { CreateReleaseDto, UpdateReleaseDto } from "./release.dto";
 import { trackDescriptorVocabulary } from "../descriptors/track_descriptor";
@@ -46,7 +48,28 @@ export class CatalogController {
   constructor(
     private readonly catalogService: CatalogService,
     private readonly discoveryPopularity: DiscoveryPopularityService,
+    private readonly renditions: StreamRenditionService,
   ) { }
+
+  /**
+   * Public audio delivery (#2661): a listener receives the streaming
+   * rendition, never the archive file. Without a rendition the route answers
+   * 503 "not ready", except for two kinds of row that never carry an archive a
+   * listener could take: encrypted stems (ciphertext) and the local
+   * development storage provider. Returns false when the caller should use
+   * that legacy path.
+   */
+  private async servePublicRendition(
+    stem: StreamableStemRecord,
+    range: string | undefined,
+    res: Response,
+  ): Promise<boolean> {
+    if (!stem.streamUri && (stem.isEncrypted || stem.storageProvider === "local")) {
+      return false;
+    }
+    await this.renditions.sendRendition(stem, range, res);
+    return true;
+  }
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin", "operator")
@@ -77,7 +100,7 @@ export class CatalogController {
         "Accept-Ranges": "bytes",
         "Content-Length": stem.data.length,
         "Content-Type": stem.mimeType || "audio/mpeg",
-        "Cache-Control": "public, max-age=31536000",
+        "Cache-Control": STREAM_CACHE_CONTROL,
       });
 
       res.end(stem.data);
@@ -106,7 +129,7 @@ export class CatalogController {
         "Accept-Ranges": "bytes",
         "Content-Length": chunksize,
         "Content-Type": stem.mimeType || "audio/mpeg",
-        "Cache-Control": "public, max-age=31536000",
+        "Cache-Control": STREAM_CACHE_CONTROL,
       });
 
       res.end(file);
@@ -117,7 +140,7 @@ export class CatalogController {
       "Content-Length": fileSize,
       "Content-Type": stem.mimeType || "audio/mpeg",
       "Accept-Ranges": "bytes",
-      "Cache-Control": "public, max-age=31536000",
+      "Cache-Control": STREAM_CACHE_CONTROL,
     });
 
     res.end(stem.data);
@@ -161,6 +184,10 @@ export class CatalogController {
     @Headers("range") range: string,
     @Res() res: Response
   ) {
+    const streamable = await this.catalogService.resolvePublicStreamStem(stemId);
+    if (streamable && streamable.source !== "official") {
+      if (await this.servePublicRendition(streamable, range, res)) return;
+    }
     const stem = await this.catalogService.getStemBlob(stemId, { range });
     if (!stem) {
       res.status(404).send("Stem data not found");
@@ -176,6 +203,8 @@ export class CatalogController {
     @Headers("range") range: string,
     @Res() res: Response,
   ) {
+    const streamable = await this.catalogService.resolveTrackStreamStem(trackId);
+    if (streamable && (await this.servePublicRendition(streamable, range, res))) return;
     const streamData = await this.catalogService.getTrackStream(trackId, { range });
     if (!streamData) {
       res.status(404).send("Track audio not found");
@@ -194,6 +223,13 @@ export class CatalogController {
     @Request() req: any,
     @Res() res: Response,
   ) {
+    // The owner hears the rendition like everyone else once it exists; until
+    // then the authenticated owner path may still play the archive.
+    const rendition = await this.catalogService.resolveOwnerTrackRendition(releaseId, trackId, req.user.userId);
+    if (rendition) {
+      await this.renditions.sendRendition(rendition, range, res);
+      return;
+    }
     const streamData = await this.catalogService.getTrackStreamForUser(
       releaseId,
       trackId,
@@ -214,6 +250,10 @@ export class CatalogController {
     @Headers("range") range: string,
     @Res() res: Response
   ) {
+    const streamable = await this.catalogService.resolvePublicStreamStem(stemId);
+    if (streamable && streamable.source !== "official") {
+      if (await this.servePublicRendition(streamable, range, res)) return;
+    }
     const stem = await this.catalogService.getStemPreview(stemId, { range });
     this.sendAudioResponse(stem, range, res);
   }
@@ -330,10 +370,9 @@ export class CatalogController {
   ) {
     console.log(`[Catalog] Fetching published releases (limit: ${limit}, artist: ${primaryArtist})`);
     const parsedLimit = limit ? Number(limit) : 20;
-    return this.catalogService.listPublished(
-      Number.isNaN(parsedLimit) ? 20 : parsedLimit,
-      primaryArtist,
-    );
+    return this.catalogService
+      .listPublished(Number.isNaN(parsedLimit) ? 20 : parsedLimit, primaryArtist)
+      .then(withPublicStemUris);
   }
 
   @Get("trending")
@@ -364,7 +403,7 @@ export class CatalogController {
 
   @Get("releases/:releaseId")
   getRelease(@Param("releaseId") releaseId: string) {
-    return this.catalogService.getRelease(releaseId);
+    return this.catalogService.getRelease(releaseId).then(withPublicStemUris);
   }
 
   @UseGuards(OptionalJwtAuthGuard)
@@ -387,7 +426,7 @@ export class CatalogController {
 
   @Get("tracks/:trackId")
   getTrack(@Param("trackId") trackId: string) {
-    return this.catalogService.getTrack(trackId);
+    return this.catalogService.getTrack(trackId).then(withPublicStemUris);
   }
 
   @UseGuards(AuthGuard("jwt"))
@@ -466,7 +505,7 @@ export class CatalogController {
 
   @Get("artist/:artistId")
   listByArtist(@Param("artistId") artistId: string) {
-    return this.catalogService.listByArtist(artistId);
+    return this.catalogService.listByArtist(artistId).then(withPublicStemUris);
   }
 
 
@@ -485,6 +524,6 @@ export class CatalogController {
       stemType,
       hasIpnft: parsedHasIpnft,
       limit: Number.isNaN(parsedLimit) ? 50 : parsedLimit,
-    });
+    }).then(withPublicStemUris);
   }
 }
