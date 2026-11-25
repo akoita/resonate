@@ -34,6 +34,22 @@ when the release has mixer stems. See
 falls back to `http://localhost:3001`; deployments should always set the real
 HTTPS origin.
 
+## Search indexing per deployment
+
+Indexing is opt-in per deployment through the build-time variable
+`NEXT_PUBLIC_SEARCH_INDEXING`. Only the exact value `true` makes public pages
+indexable. Otherwise, public pages keep their full title, description,
+canonical and social card (so shared links still preview well) but emit
+`noindex, follow, noarchive, noimageindex`, so test data and catalog artwork on
+non-production deployments do not appear in search or image results.
+
+`/robots.txt` (`web/src/app/robots.ts`) allows crawling on every deployment.
+That is deliberate: a crawler blocked by robots.txt never sees a page's
+`noindex` tag and can still list the bare URL from outside links.
+
+A sitemap is not generated yet; add one (public releases, artists, Shows
+campaigns, help articles) once a deployment turns indexing on.
+
 ## Private pages
 
 Authenticated, administrative, and owner-management routes use the shared
@@ -68,8 +84,8 @@ Run the focused metadata tests from `web/`:
 npx vitest run src/lib/seo.test.ts src/lib/seoRoutePolicy.test.ts
 ```
 
-The helper tests cover canonical URLs, social-image fallbacks, and robots
-directives. The route-policy test keeps the named public and private route
+The helper tests cover canonical URLs, social-image fallbacks, robots
+directives, and the per-deployment indexing switch. The route-policy test keeps the named public and private route
 boundaries from regressing silently.
 
 ## References

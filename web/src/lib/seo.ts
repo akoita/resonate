@@ -26,6 +26,19 @@ const PUBLIC_ROBOTS = {
   nosnippet: false,
 } as const;
 
+/**
+ * Public pages on a deployment that has not opted in to search indexing
+ * (staging, previews, local builds). Crawlers may follow links but must not
+ * list the page or its images, so test data never surfaces in search results.
+ */
+export const UNLISTED_PUBLIC_ROBOTS = {
+  index: false,
+  follow: true,
+  noarchive: true,
+  noimageindex: true,
+  nosnippet: false,
+} as const;
+
 /** Explicit policy for authenticated, operator, and draft surfaces. */
 export const PRIVATE_ROBOTS = {
   index: false,
@@ -54,6 +67,8 @@ export type PublicMetadataInput = {
   openGraphType?: "website" | "article";
   /** Optional override used by pure callers/tests; deployment uses SITE_URL. */
   siteUrl?: string | null;
+  /** Optional override used by pure callers/tests; deployment uses SEARCH_INDEXING_ENABLED. */
+  searchIndexing?: boolean;
 };
 
 export type PrivateMetadataInput = {
@@ -88,6 +103,25 @@ export function normalizeSiteUrl(value?: string | null): string {
 /** Build-time/runtime site base derived from the public deployment setting. */
 export const SITE_URL = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL);
 export const SITE_URL_OBJECT = new URL(SITE_URL);
+
+/**
+ * Search indexing is opt-in per deployment. Only the exact value `true`
+ * enables it, so staging, previews, and misconfigured builds stay out of
+ * search results by default.
+ */
+export function isSearchIndexingEnabled(value?: string | null): boolean {
+  return typeof value === "string" && value.trim().toLowerCase() === "true";
+}
+
+/** Build-time indexing switch derived from the public deployment setting. */
+export const SEARCH_INDEXING_ENABLED = isSearchIndexingEnabled(
+  process.env.NEXT_PUBLIC_SEARCH_INDEXING,
+);
+
+/** Robots policy for public routes on this deployment. */
+export function publicRobots(searchIndexing = SEARCH_INDEXING_ENABLED) {
+  return searchIndexing ? PUBLIC_ROBOTS : UNLISTED_PUBLIC_ROBOTS;
+}
 
 function normalizedText(value: unknown): string {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -168,9 +202,10 @@ export function socialImageUrl(value?: unknown, siteUrl = SITE_URL): string {
 }
 
 /**
- * Build complete indexable metadata for a public route. Public robots flags
- * are explicit so a public child route can safely override a private parent
- * layout such as `/community`.
+ * Build complete metadata for a public route. Public robots flags are
+ * explicit so a public child route can safely override a private parent
+ * layout such as `/community`. The route is indexable only when the
+ * deployment opts in with `NEXT_PUBLIC_SEARCH_INDEXING=true`.
  */
 export function publicMetadata(input: PublicMetadataInput = {}): Metadata {
   const siteUrl = normalizeSiteUrl(input.siteUrl ?? SITE_URL);
@@ -186,7 +221,7 @@ export function publicMetadata(input: PublicMetadataInput = {}): Metadata {
     title,
     description,
     alternates: { canonical },
-    robots: PUBLIC_ROBOTS,
+    robots: publicRobots(input.searchIndexing ?? SEARCH_INDEXING_ENABLED),
     openGraph: {
       type: input.openGraphType ?? "website",
       url: canonical,
