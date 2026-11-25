@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
@@ -44,7 +44,7 @@ export class NoticeController {
   @RequireStepUp()
   @Post("broadcast")
   broadcast(@Req() req: any, @Body() body: BroadcastNoticeDto) {
-    const input = parseBroadcastNoticeInput(body);
+    const input = assertOperatorCategory(parseBroadcastNoticeInput(body));
     return this.notices.sendBroadcast(input, { userId: req.user.userId, role: req.user.role });
   }
 
@@ -52,7 +52,18 @@ export class NoticeController {
   @Roles("admin", "operator")
   @Post("targeted")
   targeted(@Req() req: any, @Body() body: TargetedNoticeDto) {
-    const input = parseTargetedNoticeInput(body);
+    const input = assertOperatorCategory(parseTargetedNoticeInput(body));
     return this.notices.sendTargeted(input, { userId: req.user.userId, role: req.user.role });
   }
+}
+
+/**
+ * #2665: `service` notices cannot be turned off for email, so only the
+ * platform's own service messages use it; an operator send never does.
+ */
+function assertOperatorCategory<T extends { category: string }>(input: T): T {
+  if (input.category === "service") {
+    throw new BadRequestException("service notices are sent by Resonate itself, not from the notice composer");
+  }
+  return input;
 }

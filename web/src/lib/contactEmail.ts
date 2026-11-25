@@ -24,6 +24,7 @@ export const EMAIL_CATEGORY_DESCRIPTIONS: Record<PlatformNoticeCategory, string>
   account: "Decisions about your account, and the reasons for them.",
   refund: "Refunds that are waiting for you.",
   purchase: "Confirmations of the delivery choice you made when you bought something.",
+  service: "Your welcome, a release going live, and notices about something you uploaded.",
 };
 
 /** Why a locked category cannot be switched off. Only required ones need one. */
@@ -31,6 +32,7 @@ export const EMAIL_REQUIRED_REASONS: Partial<Record<PlatformNoticeCategory, stri
   terms: "Required: we are obliged to tell you about changes to the terms.",
   account: "Required: you are entitled to know why we acted on your account.",
   purchase: "Required: we must confirm in writing that you asked for immediate delivery.",
+  service: "Required: these are about your own account and music, never marketing.",
 };
 
 /** Categories a person cannot switch off: they are emailed to every confirmed address. */

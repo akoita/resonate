@@ -8303,7 +8303,7 @@ export function respondToManagementTransfer(
 
 // ============ Platform notices (#2146) ============
 
-export type PlatformNoticeCategory = "policy" | "terms" | "incident" | "moderation" | "account" | "refund" | "purchase";
+export type PlatformNoticeCategory = "policy" | "terms" | "incident" | "moderation" | "account" | "refund" | "purchase" | "service";
 export type PlatformNoticeAudienceRole = "listener" | "artist" | "operator" | "admin";
 export type PlatformNoticeAudience = "all" | `role:${PlatformNoticeAudienceRole}`;
 

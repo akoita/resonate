@@ -13,6 +13,7 @@ import FoundingArtistInvitationsPanel from "../../components/settings/FoundingAr
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
 import DataExportPanel from "../../components/settings/DataExportPanel";
 import EmailNoticesPanel from "../../components/settings/EmailNoticesPanel";
+import EmailPromptCard from "../../components/email/EmailPromptCard";
 import FeatureTipsSettingsPanel from "../../components/settings/FeatureTipsSettingsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import UsageBillingPanel from "../../components/settings/UsageBillingPanel";
@@ -404,6 +405,9 @@ export default function SettingsPage() {
                     </nav>
 
                     <section className="settings-panel" aria-live="polite">
+                        {activeSection !== "email" ? (
+                            <EmailPromptCard context="settings" onNavigate={() => setActiveSection("email")} />
+                        ) : null}
                         {activeSection === "library" && !isSupported ? (
                             // Only local folders need the File System Access API;
                             // every other section works in any browser.

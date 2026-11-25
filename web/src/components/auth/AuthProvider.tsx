@@ -1,5 +1,6 @@
 "use client";
 
+import { markSignupEmailPrompt } from "../../lib/signupEmailPrompt";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchNonce, fetchWallet, verifySignature, type WalletRecord } from "../../lib/api";
 import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
@@ -491,6 +492,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       return;
     }
     await authenticate(WebAuthnMode.Register, inviteCode);
+    // #2665: a new account is offered an email address once.
+    markSignupEmailPrompt();
   }, [authenticate]);
 
   const connectPrivy = useCallback(async () => {

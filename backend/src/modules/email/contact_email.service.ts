@@ -300,6 +300,9 @@ export class ContactEmailService {
     // #2430: best effort; a failure leaves the billing row stale and the
     // retention job pushes the address later. Never fails the confirmation.
     await this.billing?.syncCustomerEmail(target.userId).catch(() => undefined);
+    // #2665: one welcome per account, queued as a service notice; the email
+    // job sends it to the address just confirmed. Never fails the confirmation.
+    await this.notices.notifyWelcome(target.userId).catch(() => undefined);
     return { status: "confirmed" };
   }
 

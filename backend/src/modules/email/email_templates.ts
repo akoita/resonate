@@ -41,6 +41,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   moderation: "Moderation",
   account: "Account",
   refund: "Refund",
+  service: "Your account",
 };
 
 function categoryLabel(category: string): string {

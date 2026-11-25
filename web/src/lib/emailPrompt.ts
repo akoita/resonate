@@ -24,6 +24,10 @@ export const EMAIL_PROMPT_CONTEXTS = [
   "artist_listing",
   /** Unread account or refund notices that have waited a few days. */
   "stale_notices",
+  /** #2665: a gentle reminder at the top of Settings. */
+  "settings",
+  /** #2665: on the artist upload page, where notices about releases matter most. */
+  "artist_upload",
 ] as const;
 
 export type EmailPromptContext = (typeof EMAIL_PROMPT_CONTEXTS)[number];
@@ -55,6 +59,14 @@ export const EMAIL_PROMPT_COPY: Record<EmailPromptContext, EmailPromptCopy> = {
   stale_notices: {
     heading: "Missed a notice? Get these by email too",
     body: "You have account or refund notices you have not opened yet. We can also email them to you if you add an address. It's optional.",
+  },
+  settings: {
+    heading: "Add an email address for notices about your account",
+    body: "A welcome, decisions about your account and changes to the terms. It's optional: everything also stays in the app.",
+  },
+  artist_upload: {
+    heading: "Hear when your release goes live",
+    body: "Notices about your releases are sent to your email: when a release goes live, and when a notice concerns something you uploaded. Adding one is optional.",
   },
 };
 
