@@ -5,10 +5,12 @@ import {
   DEFAULT_SOCIAL_IMAGE,
   PRIVATE_ROBOTS,
   SITE_NAME,
+  UNLISTED_PUBLIC_ROBOTS,
   SITE_TAGLINE,
   canonicalPath,
   canonicalUrl,
   configuredChainId,
+  isSearchIndexingEnabled,
   normalizeSiteUrl,
   privateMetadata,
   publicMetadata,
@@ -75,6 +77,7 @@ describe("SEO metadata primitives", () => {
       path: canonicalPath("artist", "artist id"),
       image: "https://cdn.example.test/profile.png",
       siteUrl: "https://music.example.test/",
+      searchIndexing: true,
     });
 
     expect(metadata.title).toBe("Artist Name");
@@ -103,6 +106,22 @@ describe("SEO metadata primitives", () => {
       description: "A public artist profile.",
       images: ["https://cdn.example.test/profile.png"],
     });
+  });
+
+  it("keeps public pages out of search unless the deployment opts in", () => {
+    const metadata = publicMetadata({ siteUrl: "https://music.example.test" });
+    expect(metadata.robots).toEqual(UNLISTED_PUBLIC_ROBOTS);
+    expect(UNLISTED_PUBLIC_ROBOTS).toMatchObject({ index: false, follow: true, noimageindex: true });
+    expect(publicMetadata({ searchIndexing: false }).robots).toEqual(UNLISTED_PUBLIC_ROBOTS);
+  });
+
+  it("enables indexing only for the exact value true", () => {
+    expect(isSearchIndexingEnabled("true")).toBe(true);
+    expect(isSearchIndexingEnabled(" TRUE ")).toBe(true);
+    expect(isSearchIndexingEnabled(undefined)).toBe(false);
+    expect(isSearchIndexingEnabled("")).toBe(false);
+    expect(isSearchIndexingEnabled("1")).toBe(false);
+    expect(isSearchIndexingEnabled("false")).toBe(false);
   });
 
   it("uses site defaults and a complete fallback image for sparse public metadata", () => {
