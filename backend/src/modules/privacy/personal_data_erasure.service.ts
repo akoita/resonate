@@ -149,6 +149,8 @@ const PERSON_KEY_OVERRIDES: Readonly<Record<string, readonly PersonKey[] | "casc
   CommunityDiscordSyncAttempt: "cascade",
   // ON DELETE CASCADE from ListenerTasteSignalControl, which this engine deletes.
   ListenerTasteNoteEmbedding: "cascade",
+  // Dangling `artistId` (#2670): a refusal count kept without a relation.
+  UploadLimitRefusal: [{ kind: "artistId", column: "artistId" }],
 };
 
 /**

@@ -1,0 +1,99 @@
+/* #2670: the admin preview measures page. */
+
+.preview-measures {
+  width: min(1100px, 100%);
+}
+
+.preview-measures__range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 20px;
+}
+
+.preview-measures__range label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.preview-measures__range input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+}
+
+.preview-measures__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
+}
+
+.preview-measures__grid > section {
+  padding: 16px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  min-width: 0;
+}
+
+.preview-measures__grid h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+
+.preview-measures__grid dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+  margin: 0 0 12px;
+}
+
+.preview-measures__grid dt {
+  color: var(--color-muted);
+}
+
+.preview-measures__grid dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-measures__wide {
+  grid-column: 1 / -1;
+}
+
+.preview-measures__scroll {
+  overflow-x: auto;
+}
+
+.preview-measures__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-measures__table caption {
+  text-align: left;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  padding-bottom: 6px;
+}
+
+.preview-measures__table th,
+.preview-measures__table td {
+  padding: 6px 8px;
+  border-top: 1px solid var(--color-border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.preview-measures__table th[scope="row"],
+.preview-measures__table thead th:first-child {
+  text-align: left;
+  white-space: normal;
+}

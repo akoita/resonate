@@ -825,6 +825,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "Releases this person published as an artist. Binary artwork is redacted for size.",
   },
   {
+    model: "UploadLimitRefusal",
+    primaryKey: "id",
+    keys: [{ kind: "artistId", column: "artistId" }],
+    note: "Added by #2670. Uploads by this person's artist profile that an upload limit refused: which limit and when.",
+  },
+  {
     model: "ReleaseArtistCredit",
     primaryKey: "id",
     keys: [{ kind: "artistId", column: "artistId" }],
