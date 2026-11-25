@@ -16,7 +16,7 @@ Application milestone: [#56](https://github.com/akoita/resonate/milestone/56). A
 
 ## Merged pull requests
 
-[#2674](https://github.com/akoita/resonate/pull/2674), [#2675](https://github.com/akoita/resonate/pull/2675), [#2676](https://github.com/akoita/resonate/pull/2676), and the closure PR.
+[#2674](https://github.com/akoita/resonate/pull/2674), [#2675](https://github.com/akoita/resonate/pull/2675), [#2676](https://github.com/akoita/resonate/pull/2676), [#2677](https://github.com/akoita/resonate/pull/2677) (closure).
 
 ## Carry-over and owner decisions
 
