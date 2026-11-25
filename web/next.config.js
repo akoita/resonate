@@ -1,3 +1,7 @@
+// #2660: a production build refuses development switches such as mock auth.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- next.config.js is CJS
+require("./src/lib/build/productionBuildGuard.cjs").assertProductionBuild(process.env);
+
 /** @type {import('next').NextConfig} */
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 const apiOrigin = new URL(apiUrl);

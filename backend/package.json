@@ -30,6 +30,8 @@
     "identity:report-case-variants": "ts-node --transpile-only src/scripts/report_case_variant_users.ts",
     "identity:merge-case-variants": "ts-node --transpile-only src/scripts/merge_case_variant_users.ts",
     "verify:migration": "ts-node --transpile-only src/scripts/verify_migration.ts",
+    "config:check": "ts-node --transpile-only src/scripts/config_check.ts",
+    "config:check:prod": "node dist/scripts/config_check.js",
     "credits:grant": "ts-node --transpile-only src/scripts/grant_credits.ts",
     "billing:price-change-notice": "ts-node --transpile-only src/scripts/send_price_change_notice.ts",
     "remix:watermark-false-positives": "ts-node --transpile-only src/scripts/remix_watermark_false_positive_run.ts",
