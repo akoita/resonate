@@ -60,7 +60,8 @@ are.
 Tracked in `resonate-iac` (private):
 
 - resonate-iac#341: audio storage (companion to #2661).
-- resonate-iac#248: preview data, a curated demo catalog and no test records.
+- resonate-iac#342 and resonate-iac#248: preview data, a curated demo catalog
+  and no test records.
 - resonate-iac#322 and resonate-iac#212: running cost of the preview
   environment.
 - resonate-iac#333: the watermark key.
@@ -79,7 +80,8 @@ Tracked in `resonate-iac` (private):
 ## Production opening (planned, not scheduled)
 
 The work that only makes sense with a production environment is kept as its
-own stage, with no date:
+own stage, with no date
+([milestone 59](https://github.com/akoita/resonate/milestone/59)):
 
 - [#2660](https://github.com/akoita/resonate/issues/2660): start-up guards
   that refuse development defaults in a production deployment, and a
