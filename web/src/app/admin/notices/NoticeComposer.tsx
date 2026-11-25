@@ -3,6 +3,7 @@
 import type { BroadcastNoticeInput, PlatformNoticeAudience, PlatformNoticeCategory } from "../../../lib/api";
 import { isEmailRequiredCategory } from "../../../lib/contactEmail";
 import { NOTICE_CATEGORY_LABELS } from "../../../lib/platformNotices";
+import { SERVICE_STATUS_TEMPLATES, type ServiceStatusTemplate } from "../../../lib/serviceStatus";
 
 /** Limits mirror the server's (#2146); the server re-checks them. */
 export const NOTICE_TITLE_MAX = 120;
@@ -46,6 +47,8 @@ export type NoticeDraft = {
   body: string;
   /** `YYYY-MM-DD` from a date input, or "". */
   effectiveDate: string;
+  /** #2667: set by a status template; the broadcast ends by itself this long after sending. */
+  expiresInHours?: number | null;
 };
 
 export const EMPTY_DRAFT: NoticeDraft = { category: "policy", audience: "all", title: "", body: "", effectiveDate: "" };
@@ -66,13 +69,26 @@ export function validateNoticeDraft(draft: NoticeDraft): NoticeDraftErrors {
   return errors;
 }
 
-export function toBroadcastInput(draft: NoticeDraft): BroadcastNoticeInput {
+export function toBroadcastInput(draft: NoticeDraft, now: number = Date.now()): BroadcastNoticeInput {
   return {
     category: draft.category,
     audience: draft.audience,
     title: draft.title.trim(),
     body: draft.body.trim(),
     ...(draft.effectiveDate ? { effectiveAt: new Date(`${draft.effectiveDate}T00:00:00Z`).toISOString() } : {}),
+    ...(draft.expiresInHours ? { expiresAt: new Date(now + draft.expiresInHours * 3_600_000).toISOString() } : {}),
+  };
+}
+
+/** #2667: a status template as a draft: an incident to everyone, ready to send. */
+export function draftFromStatusTemplate(template: ServiceStatusTemplate): NoticeDraft {
+  return {
+    category: "incident",
+    audience: "all",
+    title: template.title,
+    body: template.body,
+    effectiveDate: "",
+    expiresInHours: template.expiresInHours,
   };
 }
 
@@ -119,6 +135,7 @@ export default function NoticeComposer({
   audienceSize,
   onChange,
   onRequestSend,
+  onApplyTemplate,
 }: {
   draft: NoticeDraft;
   /** Problems found when the operator tried to send; cleared per field on edit. */
@@ -128,6 +145,8 @@ export default function NoticeComposer({
   audienceSize: number | null;
   onChange: (field: keyof NoticeDraft, value: string) => void;
   onRequestSend: () => void;
+  /** #2667: fill the draft from a service status template. */
+  onApplyTemplate?: (template: ServiceStatusTemplate) => void;
 }) {
   const found = validateNoticeDraft(draft);
   const valid = Object.keys(found).length === 0;
@@ -157,6 +176,28 @@ export default function NoticeComposer({
           be edited or recalled.
         </p>
       </div>
+
+      {onApplyTemplate ? (
+        <div className="admin-form-group" role="group" aria-labelledby="notice-status-templates">
+          <p id="notice-status-templates" className="admin-form-label">Service status</p>
+          <p className="admin-form-hint">
+            Start from a ready-made status for everyone. It also shows on the sign-in screen until it ends.
+          </p>
+          <div className="admin-notices-templates">
+            {SERVICE_STATUS_TEMPLATES.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className="ui-btn ui-btn-ghost ui-btn-sm"
+                data-template={template.id}
+                onClick={() => onApplyTemplate(template)}
+              >
+                {template.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <fieldset className="admin-form-group">
         <legend className="admin-form-label">Category</legend>
@@ -259,6 +300,10 @@ export default function NoticeComposer({
         />
         {dateError ? <p id="notice-effective-error" role="alert" className="admin-form-error">{dateError}</p> : null}
       </div>
+
+      {draft.expiresInHours ? (
+        <p className="admin-form-hint">This notice ends by itself {draft.expiresInHours} hours after it is sent.</p>
+      ) : null}
 
       <div className="admin-notices-composer__actions">
         <button type="submit" className="ui-btn ui-btn-primary" disabled={sending || !valid}>

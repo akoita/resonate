@@ -40,7 +40,17 @@ function ReadCount({ notice, audienceSize }: { notice: SentBroadcastNotice; audi
   );
 }
 
-function SentNoticeCard({ notice, audienceSize }: { notice: SentBroadcastNotice; audienceSize: number | null }) {
+function SentNoticeCard({
+  notice,
+  audienceSize,
+  onEnd,
+  ending,
+}: {
+  notice: SentBroadcastNotice;
+  audienceSize: number | null;
+  onEnd?: (notice: SentBroadcastNotice) => void;
+  ending?: boolean;
+}) {
   const sent = formatDay(notice.createdAt);
   const effective = formatNoticeEffectiveDate(notice.effectiveAt);
   const expires = notice.expiresAt ? formatDay(notice.expiresAt) : null;
@@ -66,6 +76,13 @@ function SentNoticeCard({ notice, audienceSize }: { notice: SentBroadcastNotice;
         </p>
       ) : null}
       <ReadCount notice={notice} audienceSize={audienceSize} />
+      {notice.active && onEnd ? (
+        <div className="admin-notices-sent__actions">
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={ending} onClick={() => onEnd(notice)}>
+            {ending ? "Ending..." : "End now"}
+          </button>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -74,10 +91,15 @@ export default function SentNoticesList({
   state,
   audienceSize,
   onRetry,
+  onEnd,
+  endingId,
 }: {
   state: SentNoticesState;
   audienceSize: number | null;
   onRetry: () => void;
+  /** #2667: end an active broadcast now (clears its banner and the status line). */
+  onEnd?: (notice: SentBroadcastNotice) => void;
+  endingId?: string | null;
 }) {
   return (
     <section className="admin-notices-sent" aria-labelledby="notice-sent-title">
@@ -108,7 +130,13 @@ export default function SentNoticesList({
       {state.status === "ready" && state.notices.length > 0 ? (
         <div className="admin-notices-sent__list">
           {state.notices.map((notice) => (
-            <SentNoticeCard key={notice.id} notice={notice} audienceSize={audienceSize} />
+            <SentNoticeCard
+              key={notice.id}
+              notice={notice}
+              audienceSize={audienceSize}
+              onEnd={onEnd}
+              ending={endingId === notice.id}
+            />
           ))}
         </div>
       ) : null}

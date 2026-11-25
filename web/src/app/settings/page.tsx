@@ -118,7 +118,7 @@ const SETTINGS_SECTIONS: Array<{
         id: "troubleshooting",
         label: "Troubleshooting",
         eyebrow: "This browser",
-        description: "Reset this browser's saved session if something looks off.",
+        description: "Reset this browser's saved session, or contact support.",
     },
 ];
 
@@ -691,6 +691,13 @@ export default function SettingsPage() {
                                         Reset local session
                                     </Button>
                                 </div>
+                                <Link href="/support" className="settings-pointer-card">
+                                    <div>
+                                        <strong>Contact support</strong>
+                                        <span>Still stuck? Send a message to the Resonate team and get an answer by email.</span>
+                                    </div>
+                                    <span className="settings-pointer-card__arrow" aria-hidden="true">→</span>
+                                </Link>
                             </div>
                         ) : null}
                     </section>

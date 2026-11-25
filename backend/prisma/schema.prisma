@@ -110,6 +110,7 @@ model User {
   participationAcceptances    ParticipationAcceptance[]
   artistConsentChanges        ArtistConsentChange[]
   waitlistEntries             WaitlistEntry[]
+  supportRequests             SupportRequest[]
   emailDeliveries             EmailDelivery[]
   // #2166 operational activity for account administration (legitimate interest):
   // the last sign-in and the last authenticated request, the latter written at
@@ -4136,6 +4137,31 @@ model WaitlistEntry {
 
   @@index([userId])
   @@index([createdAt])
+}
+
+/// #2667: a request for help sent from the Contact support form. Signed-out
+/// visitors give an email address so we can answer; signed-in people are
+/// linked to their account. Operators move it from new to answered or closed.
+model SupportRequest {
+  id              String    @id @default(uuid())
+  userId          String?
+  /// Reply address given by a signed-out visitor (as entered, trimmed).
+  email           String?   @db.VarChar(254)
+  /// account | uploads | payments | listening | rights | other
+  topic           String    @db.VarChar(32)
+  message         String    @db.Text
+  /// new | answered | closed
+  status          String    @default("new") @db.VarChar(16)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  statusChangedAt DateTime?
+  /// The operator who last changed the status.
+  statusChangedBy String?
+  user            User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@index([email, createdAt])
 }
 
 /// #2666: an artist's acceptance of one version of the participation

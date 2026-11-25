@@ -58,6 +58,12 @@ function acceptedPaymentAssets(env: NodeJS.ProcessEnv, strict: boolean): string 
   }
 }
 
+/** The operator's public contact address (#2667), or null when this deployment has not set one. */
+export function operatorContactEmail(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = env[REQUIRED_ENV.OPERATOR_CONTACT_EMAIL]?.trim();
+  return value ? value : null;
+}
+
 export function legalTemplateValues(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const values: Record<string, string> = {};
   const missing: string[] = [];

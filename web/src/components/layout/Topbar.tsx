@@ -34,6 +34,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/admin/notices", "Platform Notices"],
   ["/admin/management-recovery", "Management Transfer Recovery"],
   ["/admin/takedowns", "Takedown Notices"],
+  ["/admin/support", "Support Requests"],
   ["/artist/catalog", "Catalog"],
   ["/artist/listings", "Listings"],
   ["/artist/upload", "Upload"],
@@ -46,6 +47,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/privacy", "Privacy Policy"],
   ["/refunds", "Refund Policy"],
   ["/imprint", "Imprint & Contact"],
+  ["/support", "Contact Support"],
   ["/report/respond", "Notices About Your Tracks"],
   ["/report", "Report Content"],
 ];

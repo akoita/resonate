@@ -269,6 +269,49 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * The service status line (#2667): the newest active `incident` broadcast to
+   * everyone. Public, so people who cannot sign in still see it; it carries
+   * only what the banner already shows to every signed-in person.
+   */
+  async currentStatus() {
+    const now = new Date();
+    const row = await prisma.notice.findFirst({
+      where: {
+        recipientUserId: null,
+        audience: "all",
+        category: "incident",
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, title: true, body: true, link: true, createdAt: true },
+    });
+    return {
+      status: row
+        ? { id: row.id, title: row.title, body: row.body, link: row.link, createdAt: row.createdAt.toISOString() }
+        : null,
+    };
+  }
+
+  /**
+   * End a broadcast now (#2667): it stops being listed, its banner clears, and
+   * an `incident` broadcast leaves the public status line. Already-ended
+   * broadcasts keep their original end time.
+   */
+  async endBroadcast(noticeId: string) {
+    const notice = await prisma.notice.findFirst({
+      where: { id: noticeId, recipientUserId: null },
+      select: { id: true, expiresAt: true },
+    });
+    if (!notice) throw new NotFoundException("Notice not found");
+    const now = new Date();
+    if (notice.expiresAt && notice.expiresAt.getTime() <= now.getTime()) {
+      return { id: notice.id, expiresAt: notice.expiresAt.toISOString() };
+    }
+    const updated = await prisma.notice.update({ where: { id: notice.id }, data: { expiresAt: now } });
+    return { id: updated.id, expiresAt: updated.expiresAt!.toISOString() };
+  }
+
+  /**
    * The audiences a person belongs to: everyone, their session role, and
    * `artist` when they own an artist profile (artist sessions carry the
    * `listener` role, so the profile is the reliable signal).

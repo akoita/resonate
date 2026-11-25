@@ -341,6 +341,11 @@ const AUTH_TARGETS = [
     viewportHeight: 1500,
     prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); },
   }],
+  // #2667: Contact support, signed out.
+  ["/support", "contact-support.png", {
+    selectors: ["form[aria-label='Contact support']"],
+    prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); },
+  }],
   ["/artist/management", "artist-management.png", {
     selectors: ["section[aria-labelledby='owned-heading']"],
     viewportHeight: 1900,
