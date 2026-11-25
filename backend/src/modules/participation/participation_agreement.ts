@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { readFileSync } from "fs";
+import { isProductionEnvironment } from "../../config/product_surfaces";
 
 /**
  * The artist participation agreement (#2666). The operator supplies the text:
@@ -8,7 +9,18 @@ import { readFileSync } from "fs";
  * marked placeholder is served; production refuses to let artists accept it,
  * so artist onboarding stays closed there (deployment wiring lives outside
  * this repository).
+ *
+ * "Production" is the deployment identity, not `NODE_ENV`: every container
+ * image sets `NODE_ENV=production`, staging included, so reading it alone
+ * closed artist onboarding on staging too. A production-tier
+ * `RESONATE_ENVIRONMENT_ID` closes it, and so does a `NODE_ENV=production`
+ * process with no identity at all, so an unlabeled deployment fails closed.
  */
+export function placeholderRefused(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (isProductionEnvironment(env)) return true;
+  const labeled = Boolean(env.RESONATE_ENVIRONMENT_ID?.trim());
+  return !labeled && env.NODE_ENV?.trim().toLowerCase() === "production";
+}
 export const PLACEHOLDER_AGREEMENT_VERSION = "placeholder";
 
 export const PLACEHOLDER_AGREEMENT_TEXT = `# Artist participation agreement (placeholder)
@@ -46,7 +58,7 @@ let cached: { key: string; agreement: ParticipationAgreement } | null = null;
 export function loadParticipationAgreement(env: NodeJS.ProcessEnv = process.env): ParticipationAgreement {
   const file = (env.PARTICIPATION_AGREEMENT_FILE ?? "").trim();
   const version = (env.PARTICIPATION_AGREEMENT_VERSION ?? "").trim().slice(0, 64);
-  const production = env.NODE_ENV === "production";
+  const production = placeholderRefused(env);
   const key = `${file}\u0000${version}\u0000${production}`;
   if (cached?.key === key) return cached.agreement;
 

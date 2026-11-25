@@ -28,6 +28,7 @@ const ENV_KEYS = [
   "PARTICIPATION_AGREEMENT_VERSION",
   "PARTICIPATION_AGREEMENT_REQUIRED",
   "NODE_ENV",
+  "RESONATE_ENVIRONMENT_ID",
 ] as const;
 
 describe("participation agreement (integration)", () => {
@@ -186,6 +187,7 @@ describe("participation agreement (integration)", () => {
     delete process.env.PARTICIPATION_AGREEMENT_FILE;
     delete process.env.PARTICIPATION_AGREEMENT_VERSION;
     process.env.NODE_ENV = "production";
+    delete process.env.RESONATE_ENVIRONMENT_ID;
     try {
       const agreement = loadParticipationAgreement();
       expect(agreement.available).toBe(false);
@@ -196,6 +198,8 @@ describe("participation agreement (integration)", () => {
       await expect(assertParticipationAccepted(ARTIST)).rejects.toMatchObject({ status: 403 });
     } finally {
       process.env.NODE_ENV = savedEnv.NODE_ENV;
+      if (savedEnv.RESONATE_ENVIRONMENT_ID === undefined) delete process.env.RESONATE_ENVIRONMENT_ID;
+      else process.env.RESONATE_ENVIRONMENT_ID = savedEnv.RESONATE_ENVIRONMENT_ID;
     }
   });
 });
