@@ -162,6 +162,29 @@ describe('SessionsService (integration)', () => {
     expect(wallet!.monthlyCapUsd).toBe(10);
   });
 
+  it('ends the listener\'s open session when a new one starts, and announces it', async () => {
+    const { service, eventBus } = makeService();
+    const ended: Array<{ sessionId: string; reason: string }> = [];
+    eventBus.subscribe('session.ended', (event: any) => ended.push({ sessionId: event.sessionId, reason: event.reason }));
+    const otherOpen = await prisma.session.create({
+      data: { userId: `${TEST_PREFIX}other`, budgetCapUsd: 5 },
+    });
+
+    const first = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+    const second = await service.startSession({ userId: `${TEST_PREFIX}user`, budgetCapUsd: 10 });
+
+    const open = await prisma.session.findMany({
+      where: { userId: `${TEST_PREFIX}user`, endedAt: null },
+      select: { id: true },
+    });
+    expect(open.map((s) => s.id)).toEqual([second.id]);
+    expect((await prisma.session.findUnique({ where: { id: first.id } }))!.endedAt).not.toBeNull();
+    expect(ended).toContainEqual({ sessionId: first.id, reason: 'replaced' });
+    // Another listener's open session is not touched.
+    expect((await prisma.session.findUnique({ where: { id: otherOpen.id } }))!.endedAt).toBeNull();
+    await prisma.session.delete({ where: { id: otherOpen.id } });
+  });
+
   it('rejects an unknown My Mix lane before creating the session or wallet budget', async () => {
     const { service } = makeService();
     const beforeSessions = await prisma.session.count({ where: { userId: `${TEST_PREFIX}user` } });

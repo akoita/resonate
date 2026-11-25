@@ -118,6 +118,22 @@ describe("Session filters summary (integration)", () => {
     expect(await storedFilters(sessionId)).toEqual({ genres: [], moods: [], explicit: false });
   });
 
+  it("keeps one AI DJ session open per listener: a new start ends the old one, and stop ends them all", async () => {
+    const first = (await controller.startSession(req, {})) as { sessionId: string };
+    const second = (await controller.startSession(req, {})) as { sessionId: string };
+    const open = await prisma.session.findMany({ where: { userId: USER, endedAt: null }, select: { id: true } });
+    expect(open.map((s) => s.id)).toEqual([second.sessionId]);
+    expect((await prisma.session.findUniqueOrThrow({ where: { id: first.sessionId } })).endedAt).not.toBeNull();
+
+    // A stray open row (an older build, a crash) is closed by stop too.
+    await prisma.session.create({ data: { userId: USER, budgetCapUsd: 1 } });
+    await controller.stopSession(req);
+    expect(await prisma.session.count({ where: { userId: USER, endedAt: null } })).toBe(0);
+    // Let both starts' deferred runs land, so later tests count from zero.
+    await waitFor(() => expect(runtime.run).toHaveBeenCalledTimes(2));
+    runtime.run.mockClear();
+  });
+
   it("SessionsService.startSession stores the summary too", async () => {
     const walletStub = { setBudget: jest.fn().mockResolvedValue({}) };
     const service = new SessionsService(walletStub as any, new EventBus(), { runCommerce } as any, {} as any);

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from "@nes
 import type { Prisma } from "@prisma/client";
 import { WalletService } from "../identity/wallet.service";
 import { prisma } from "../../db/prisma";
+import { endOpenSessions } from "./open_sessions";
 import { EventBus } from "../shared/event_bus";
 import { AgentPurchaseService } from "../agents/agent_purchase.service";
 import { AgentRuntimeCommerceResult } from "../agents/agent_runtime.types";
@@ -142,6 +143,18 @@ export class SessionsService {
       monthlyCapUsd: input.budgetCapUsd,
     });
     const filters = await this.startFilters(input.userId, input.preferences);
+    // One open session per listener: a new start ends the previous one.
+    for (const previous of await endOpenSessions(input.userId)) {
+      this.forgetSession(input.userId, previous.id);
+      this.eventBus.publish({
+        eventName: "session.ended",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        sessionId: previous.id,
+        spentTotalUsd: previous.spentUsd,
+        reason: "replaced",
+      });
+    }
     const session = await prisma.session.create({
       data: {
         userId: input.userId,
@@ -183,10 +196,7 @@ export class SessionsService {
       where: { id: sessionId },
       data: { endedAt: new Date() },
     });
-    // A stopped session's remembered preferences and picks are not needed again.
-    this.agentPreferences.delete(sessionId);
-    this.recentTrackIds.delete(sessionId);
-    this.agentRuntimeService.clearMyMixSession?.(session.userId, sessionId);
+    this.forgetSession(session.userId, sessionId);
     this.eventBus.publish({
       eventName: "session.ended",
       eventVersion: 1,
@@ -201,6 +211,13 @@ export class SessionsService {
       spentUsd: session.spentUsd,
       remaining: session.budgetCapUsd - session.spentUsd,
     };
+  }
+
+  /** A session that has ended needs none of its remembered preferences or picks. */
+  private forgetSession(userId: string, sessionId: string) {
+    this.agentPreferences.delete(sessionId);
+    this.recentTrackIds.delete(sessionId);
+    this.agentRuntimeService.clearMyMixSession?.(userId, sessionId);
   }
 
   async playTrack(userId: string, input: {

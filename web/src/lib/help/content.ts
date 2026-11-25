@@ -1148,6 +1148,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
+            text: "You have one AI DJ session at a time. Starting a new one, on this device or another, ends the one that was running, and it shows as ended in Session History. You are never blocked from starting, even if an earlier session was left open by a closed tab.",
+          },
+          {
+            kind: "paragraph",
             text: "By default the AI DJ leaves out tracks marked explicit. Turn on Include explicit tracks in the Adjust row under What's this session for? to let them in; the setting is saved to your DJ and applies from the next pick, including in a session that is already running.",
           },
           {

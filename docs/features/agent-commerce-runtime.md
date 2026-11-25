@@ -76,6 +76,17 @@ mode that once existed behind `AGENT_SESSION_BUY_MODE_ENABLED` was removed
 
 Variable reference: [Environment variables](../deployment/environment.md).
 
+### One open session per listener
+
+A listener has at most one open session. Starting one (the AI DJ start or the
+listening-session start) first ends any session the listener still has open,
+announces `session.ended` with reason `replaced`, and drops that session's
+in-memory state; stopping ends every open session. A new start never fails
+because of an old one, so a closed tab, a crash or a second device cannot lock
+anyone out, and one account never keeps several model-backed sessions running.
+Both start routes are also paced at 6 a minute per listener
+(`SESSION_START_LIMIT`). The shared helper is `sessions/open_sessions.ts`.
+
 ### Session history
 
 - `GET /agents/config/history` returns the listener's most recent AI DJ sessions, newest first, capped by `AGENT_SESSION_HISTORY_LIMIT` (default 5, maximum 50; invalid or non-positive values fall back to 10).

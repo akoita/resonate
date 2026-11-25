@@ -15,6 +15,9 @@ jest.mock("../db/prisma", () => ({
     session: {
       create: (...args: unknown[]) => createSession(...args),
       update: (...args: unknown[]) => updateSession(...args),
+      // One open session per listener (endOpenSessions): none open here.
+      findMany: async () => [],
+      updateMany: async () => ({ count: 0 }),
     },
     wallet: {
       findFirst: (...args: unknown[]) => findFirstWallet(...args),
