@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from "@n
 import { AuthGuard } from "@nestjs/passport";
 import { LinkPurchaseConsentDto, RecordPurchaseConsentDto } from "./purchase_consent.dto";
 import { PurchaseConsentService } from "./purchase_consent.service";
+import { RequireSurface } from "../product_surfaces/product_surface.guard";
 
 /**
  * Immediate-delivery consent at checkout (#1776). The wording is public so the
@@ -23,6 +24,7 @@ export class PurchaseConsentController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @RequireSurface("stemPurchases")
   @Post()
   record(@Req() req: any, @Body() body: RecordPurchaseConsentDto) {
     return this.consents.record(req.user.userId, body);

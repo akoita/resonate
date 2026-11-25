@@ -55,6 +55,7 @@ import {
 import { X402_SMART_ACCOUNT_RECEIPT_TIMEOUT_MS } from './x402.smart-account';
 import { knownStemFileExtension } from '../shared/stem-media';
 import { STEM_SOURCE_HOLD_REFUSAL } from '../catalog/remix-source-hold';
+import { RequireSurface } from "../product_surfaces/product_surface.guard";
 
 /**
  * Body of `POST /api/stems/:stemId/x402/smart-account`. Only shapes are checked
@@ -198,6 +199,7 @@ export class X402Controller {
    * Protected by x402 paymentMiddleware (configured in X402Module).
    * When this handler runs, payment has already been verified and settled.
    */
+  @RequireSurface("stemPurchases")
   @Get(':stemId/x402')
   async downloadWithPayment(
     @Param('stemId') stemId: string,

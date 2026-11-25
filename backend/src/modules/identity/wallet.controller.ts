@@ -40,6 +40,7 @@ import { AgentPurchaseService } from "../agents/agent_purchase.service";
 import { AdminAudit, auditBody, auditCount, auditNumber, auditRef } from "../admin_audit/admin_audit.interceptor";
 import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
+import { RequireSurface } from "../product_surfaces/product_surface.guard";
 
 @Controller("wallet")
 export class WalletController {
@@ -80,6 +81,7 @@ export class WalletController {
     });
   }
 
+  @RequireSurface("wallet")
   @Post("fund")
   @UseGuards(AuthGuard("jwt"))
   async fund(@Req() req: any, @Body() body: FundWalletDto) {
@@ -89,6 +91,7 @@ export class WalletController {
     return result;
   }
 
+  @RequireSurface("wallet")
   @Post("budget")
   @UseGuards(AuthGuard("jwt"))
   async setBudget(
@@ -101,6 +104,7 @@ export class WalletController {
     return result;
   }
 
+  @RequireSurface("wallet")
   @Post("provider")
   @UseGuards(AuthGuard("jwt"))
   @Roles("admin")
@@ -215,6 +219,7 @@ export class WalletController {
    * and returns the agent's public address for the frontend to build
    * the permission validator around.
    */
+  @RequireSurface("agentPayments")
   @Post("agent/enable")
   @UseGuards(AuthGuard("jwt"))
   enableAgentWallet(
@@ -239,6 +244,7 @@ export class WalletController {
    * Activate the session key after the user signs the approval.
    * The frontend sends the approval data (NOT the private key).
    */
+  @RequireSurface("agentPayments")
   @Post("agent/session-key/activate")
   @UseGuards(AuthGuard("jwt"))
   activateSessionKey(
@@ -301,6 +307,7 @@ export class WalletController {
     );
   }
 
+  @RequireSurface("agentPayments")
   @Post("agent/purchase")
   @UseGuards(AuthGuard("jwt"))
   agentPurchase(@Req() req: any, @Body() body: AgentPurchaseDto) {

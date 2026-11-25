@@ -16,6 +16,7 @@ import {
   stemTransformPromptLead,
   type RemixStemTransform,
 } from "./remix-generation.provider";
+import { isRemixGenerationEnabled } from "../../config/product_surfaces";
 
 /**
  * First real remix draft provider (#1162, backlog D2), reusing the catalog
@@ -42,7 +43,7 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
    * bytes are conformed and stored by the caller, never here.
    */
   async createPartClip(request: RemixPartClipRequest): Promise<RemixPartClip> {
-    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+    if (!isRemixGenerationEnabled()) {
       throw new RemixGenerationProviderError(
         "provider_disabled",
         "AI remix generation is not enabled on this environment yet.",
@@ -89,7 +90,7 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
     // Master gate, identical semantics to the stub: provider kind selects
     // the implementation, REMIX_GENERATION_ENABLED decides whether any
     // generation runs at all (checked per call so tests can toggle it).
-    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+    if (!isRemixGenerationEnabled()) {
       throw new RemixGenerationProviderError(
         "provider_disabled",
         "AI remix generation is not enabled on this environment yet.",

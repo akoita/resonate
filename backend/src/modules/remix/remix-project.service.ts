@@ -192,6 +192,7 @@ import {
   AI_DISCLOSURE_VERSION,
   deriveRemixAiDisclosure,
 } from "../catalog/ai-disclosure.policy";
+import { isRemixGenerationEnabled } from "../../config/product_surfaces";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
@@ -2773,7 +2774,7 @@ export class RemixProjectService {
         message: "Only draft remix projects can generate AI parts.",
       });
     }
-    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+    if (!isRemixGenerationEnabled()) {
       throw new RemixGenerationProviderError(
         "provider_disabled",
         "AI remix generation is not enabled on this environment yet.",
