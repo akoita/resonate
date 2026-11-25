@@ -19,6 +19,7 @@ import {
   parseStubPartPrompt,
   synthesizeStubPartClip,
 } from "./remix-part-stub-clip";
+import { isRemixGenerationEnabled } from "../../config/product_surfaces";
 
 /**
  * Provider boundary for AI-assisted remix draft generation (#896, backlog D1).
@@ -791,7 +792,7 @@ export class StubRemixGenerationProvider implements RemixGenerationProvider {
    * offset, so the conform has real work to do. Same master gate as drafts.
    */
   async createPartClip(request: RemixPartClipRequest): Promise<RemixPartClip> {
-    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+    if (!isRemixGenerationEnabled()) {
       throw new RemixGenerationProviderError(
         "provider_disabled",
         "AI remix generation is not enabled on this environment yet.",
@@ -827,7 +828,7 @@ export class StubRemixGenerationProvider implements RemixGenerationProvider {
     input: RemixGenerationInput,
     _authorization: StemRenderAuthorization,
   ): Promise<RemixGenerationJob> {
-    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+    if (!isRemixGenerationEnabled()) {
       throw new RemixGenerationProviderError(
         "provider_disabled",
         "AI remix generation is not enabled on this environment yet.",

@@ -1,3 +1,4 @@
+import type { ProductSurface } from "../productSurfaces";
 /**
  * Types for the in-app User Guide (`/help`).
  *
@@ -142,6 +143,11 @@ export interface HelpArticle {
   appLinks?: HelpAppLink[];
   /** Slugs of related articles. */
   related?: string[];
+  /**
+   * Product surfaces this guide describes (#2658). When the deployment
+   * switches one off, the article shows a "not offered here" notice.
+   */
+  surfaces?: ProductSurface[];
 }
 
 /** Lightweight projection sent to the client search/browse island. */

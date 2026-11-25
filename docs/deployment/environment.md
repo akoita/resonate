@@ -230,7 +230,7 @@ When adding a new environment variable:
 | `AGENT_KEY_ENCRYPTION_KEY` | Backend | Generate with `./backend/scripts/generate-agent-encryption-key.sh` for local KMS mode |
 | `REMIX_GENERATION_ENABLED` | Backend | Optional opt-in flag (`true`) for AI remix draft generation through the `RemixGenerationProvider` boundary. Default off: `POST /remix/projects/:id/generate` returns a normalized `provider_disabled` error until a real provider rollout enables it |
 | `PROMPT_MODERATION_ENABLED` | Backend | Prompt-safety moderation for the self-hosted generation path (#1343). **Default `true` (on)** — the self-hosted Stable Audio worker has no vendor filter, so `PromptModerationService` screens generation prompts for PUP categories 2–4 (illegal/malicious incl. safety-bypass, deceptive voice-impersonation, sexually explicit, and zero-tolerance minor-sexualization) before dispatch; violations return HTTP 422 `prompt_rejected` and emit `remix.policy_rejected`. Set to `false` only to disable (not recommended in production) |
-| `REMIX_GENERATION_PROVIDER_KIND` | Backend | Selects the remix generation implementation: `stub` (default), `lyria` (#1162 — reuses the catalog Lyria stack: `GOOGLE_AI_API_KEY` or `LYRIA_PROJECT_ID`/`LYRIA_LOCATION`, plus the storage provider for draft output), or `audio-conditioned` (#1182 slice 4 — sends the mixed unmuted stems to the self-hosted Stable Audio 3 worker for a true audio-conditioned draft). `REMIX_GENERATION_ENABLED` remains the master gate regardless of kind |
+| `REMIX_GENERATION_PROVIDER_KIND` | Backend | Selects the remix generation implementation: `stub` (default), `lyria` (#1162 — reuses the catalog Lyria stack: `GOOGLE_AI_API_KEY` or `LYRIA_PROJECT_ID`/`LYRIA_LOCATION`, plus the storage provider for draft output), or `audio-conditioned` (#1182 slice 4 — sends the mixed unmuted stems to the self-hosted Stable Audio 3 worker for a true audio-conditioned draft). `REMIX_GENERATION_ENABLED` remains the master gate regardless of kind, together with `AI_GENERATION_ENABLED` (see Product Surface Switches) |
 | `REMIX_AUDIO_WORKER_URL` | Backend | Base URL of the Stable Audio 3 worker for `audio-conditioned` generation (`POST /generate`). Defaults to `http://localhost:8000` |
 | `REMIX_AUDIO_CFG_SCALE` | Backend | Prompt strength sent to the audio worker (default `7`, the #1193 spike sweet spot — higher steers harder but degrades the source) |
 | `REMIX_AUDIO_NOISE_LEVEL` | Backend | `init_noise_level` sent to the audio worker (default `0.2`; low = faithful to the source, high = free regeneration) |
@@ -426,6 +426,32 @@ bounded by `INGESTION_MULTIPART_MAX_ACTIVE_WRITERS × 65536` bytes (256 KiB at
 the default of four writers); no later chunks are accepted or written. The
 bound covers bytes already handed to a writer when the rejection is observed,
 not the bytes received before rejection.
+
+## Product Surface Switches
+
+One switch per surface where money moves or where generative AI runs (#2658).
+The backend refuses the matching routes with `403 { code: "surface_disabled", surface }`,
+and the web app reads `GET /config/surfaces` and hides the entry points, so hiding a
+button is never the only protection. Values are read per request: a new revision
+with a changed value takes effect without new code.
+
+Default: on everywhere, except when `RESONATE_ENVIRONMENT_ID` names a `prod`
+tier, where every switch is **off** unless set to `true`. `NODE_ENV` is not the
+signal (every image sets it to `production`). Accepted values: `true`/`false`
+(also `1`/`0`, `on`/`off`, `yes`/`no`); any other value counts as off.
+
+| Variable | Surface | Refused routes when off |
+|---|---|---|
+| `SHOWS_PLEDGING_ENABLED` | Shows pledging. Campaign pages, interest signals and refunds stay available | `POST /shows/campaigns/:id/pledges/intent` |
+| `PAID_COLLECTS_ENABLED` | Paid Punchline collects. Free collects stay available | `GET /punchline/moments/:id/collect/quote` |
+| `STEM_PURCHASES_ENABLED` | Stem and licence buying, the Crate quote and purchase path | `GET /api/stems/:id/x402`, `POST /crates/:id/quote`, `POST /purchase-consents`; MCP `stem.quote`/`stem.download` answer `X402_DISABLED` |
+| `WALLET_ENABLED` | The Wallet page, self-custody and budget-cap panels | `POST /wallet/fund`, `POST /wallet/budget`, `POST /wallet/provider` |
+| `AGENT_PAYMENTS_ENABLED` | Agent payments and the agent storefront purchase tools | `POST /wallet/agent/enable`, `POST /wallet/agent/session-key/activate`, `POST /wallet/agent/purchase`; MCP `stem.quote`/`stem.download` answer `X402_DISABLED` |
+| `AI_GENERATION_ENABLED` | AI generation and prompted remix drafts. Stem-mix renders (no AI) stay available | `POST /generation/create`, `/generation/complementary`, `/generation/artwork`; prompted remix drafts and AI parts answer `provider_disabled` (also requires `REMIX_GENERATION_ENABLED=true`) |
+
+Routes that complete something already paid (pledge confirm and refund, paid
+collect and x402 smart-account settlement, crate quote settle) stay open so an
+in-flight payment is never stranded when a switch is turned off.
 
 ## Release-Gated Deployment Workflows
 

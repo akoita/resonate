@@ -7,8 +7,36 @@ import VaultSmartAccountCard from "../../components/wallet/VaultSmartAccountCard
 import VaultSecurityCard from "../../components/wallet/VaultSecurityCard";
 import MyStakesCard from "../../components/wallet/MyStakesCard";
 import { useIsDeployed } from "../../hooks/useIsDeployed";
+import { SurfaceGate } from "../../components/system/SurfaceGate";
+import Link from "next/link";
 
 export default function WalletPage() {
+  return (
+    <SurfaceGate surface="wallet" fallback={<WalletUnavailable />}>
+      <WalletContent />
+    </SurfaceGate>
+  );
+}
+
+/** Shown when the deployment switches the wallet off (#2658). */
+function WalletUnavailable() {
+  return (
+    <main className="vault-stage fade-in-up">
+      <section className="vault-hero" role="status">
+        <h1>The wallet is not available here</h1>
+        <p>
+          This version of Resonate does not offer payments, so there is nothing to fund or spend.
+          Your account and your library work as usual.
+        </p>
+        <p>
+          <Link href="/settings">Open settings</Link>
+        </p>
+      </section>
+    </main>
+  );
+}
+
+function WalletContent() {
   const { status, wallet, address, smartAccountAddress, refreshWallet } = useAuth();
   const saAddress = smartAccountAddress || address;
   const { isDeployed, recheck } = useIsDeployed(saAddress);

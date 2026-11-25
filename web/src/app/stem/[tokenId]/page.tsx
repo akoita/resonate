@@ -37,6 +37,7 @@ import {
     StemHero,
 } from "../../../components/stem/StemDetailSections";
 import { type Address } from "viem";
+import { useSurfaceEnabled } from "../../../hooks/useProductSurfaces";
 
 type CatalogMeta = {
     name?: string;
@@ -86,6 +87,8 @@ type TierPricing = {
 };
 
 export default function StemDetailPage() {
+    // Product surface switch (#2658): no Buy entry point while buying is off.
+    const stemPurchasesEnabled = useSurfaceEnabled("stemPurchases");
     const params = useParams();
     const tokenIdStr = params.tokenId as string;
     const tokenId = tokenIdStr ? BigInt(tokenIdStr) : undefined;
@@ -437,7 +440,7 @@ export default function StemDetailPage() {
                 {/* Action rail: the page's purpose, lifted onto the hero edge. */}
                 <div className="relative z-10 -mt-7 mb-10 rounded-xl border border-zinc-800 bg-zinc-900/80 backdrop-blur px-4 py-3 flex items-center gap-3 flex-wrap justify-between stem-action-rail">
                     <div className="flex items-center gap-3 flex-wrap">
-                        {primaryListing && !isOwnListing && (
+                        {primaryListing && !isOwnListing && stemPurchasesEnabled && (
                             <button
                                 type="button"
                                 onClick={() => setBuyListing(primaryListing)}
@@ -545,7 +548,7 @@ export default function StemDetailPage() {
                         <LicenseTiersPanel
                             rows={buildTierRows({ listedTiers, pricing, listedPriceLabels: tierPriceLabels })}
                             stemType={stemType}
-                            onBuyTier={isOwnListing ? undefined : openTierPurchase}
+                            onBuyTier={isOwnListing || !stemPurchasesEnabled ? undefined : openTierPurchase}
                         />
 
                         {/* On-Chain Metadata */}
