@@ -691,6 +691,22 @@ export async function mockCrateApi(page, options = {}) {
     if (method === "OPTIONS") return route.fallback();
     return route.fulfill({ json: [] });
   });
+  // Every product surface is on, as on a non-production deployment (#2658):
+  // the quote panel and stem purchases hide when a surface reads as off.
+  await page.route(apiPath(/^\/config\/surfaces$/), (route) =>
+    route.fulfill({
+      json: {
+        surfaces: {
+          showsPledging: true,
+          paidCollects: true,
+          stemPurchases: true,
+          wallet: true,
+          agentPayments: true,
+          aiGeneration: true,
+        },
+      },
+    }),
+  );
   // The checkout's delivery step (#1776) loads its wording and records the choice.
   await page.route(apiPath(/^\/purchase-consents\/wording$/), (route) =>
     route.fulfill({ json: PURCHASE_CONSENT_WORDING }),
