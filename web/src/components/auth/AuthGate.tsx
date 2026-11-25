@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
 import { AUTH_COPY } from "../../lib/authCopy";
+import ServiceStatusLine from "../notifications/ServiceStatusLine";
 
 /**
  * Shows its children to a signed-in person, and a sign-in prompt otherwise.
@@ -71,6 +72,7 @@ export default function AuthGate({
         </button>
         <p className="auth-new-here">{AUTH_COPY.gateNewHere}</p>
       </div>
+      <ServiceStatusLine />
       {status === "error" && error ? (
         <div className="wallet-error">{error}</div>
       ) : null}

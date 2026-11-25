@@ -13,6 +13,7 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "agent_session.events_viewed", label: "Opened a session's agent events" },
   { value: "notice.broadcast_sent", label: "Sent a broadcast notice" },
   { value: "notice.targeted_sent", label: "Sent a notice to named people" },
+  { value: "notice.broadcast_ended", label: "Ended a broadcast notice" },
   { value: "admin.step_up_verified", label: "Confirmed with a passkey" },
   { value: "admin.step_up_refused", label: "Passkey confirmation refused" },
   { value: "credits.granted", label: "Granted credits" },
@@ -107,6 +108,8 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "remix_watermark.detect_started", label: "Checked a clip for the remix mark" },
   { value: "remix_watermark.detect_viewed", label: "Opened remix mark check results" },
   { value: "remix_watermark.evidence_attached", label: "Attached a remix mark match as evidence" },
+  { value: "support.requests_viewed", label: "Opened the support requests" },
+  { value: "support.request_status_changed", label: "Changed a support request's status" },
 ];
 
 export const ADMIN_AUDIT_OUTCOME_OPTIONS: ReadonlyArray<{ value: AdminAuditOutcome; label: string }> = [

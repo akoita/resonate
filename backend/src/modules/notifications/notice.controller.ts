@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
+import { AdminAudit, auditRef } from "../admin_audit/admin_audit.interceptor";
 import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
@@ -22,6 +23,15 @@ export class NoticeController {
   @Get()
   list(@Req() req: any) {
     return this.notices.listForUser(req.user.userId, req.user.role);
+  }
+
+  /**
+   * GET /notices/status — public (#2667): the active service status, if any,
+   * for the sign-in screen. No session needed.
+   */
+  @Get("status")
+  status() {
+    return this.notices.currentStatus();
   }
 
   @UseGuards(AuthGuard("jwt"))
@@ -54,6 +64,16 @@ export class NoticeController {
   targeted(@Req() req: any, @Body() body: TargetedNoticeDto) {
     const input = assertOperatorCategory(parseTargetedNoticeInput(body));
     return this.notices.sendTargeted(input, { userId: req.user.userId, role: req.user.role });
+  }
+
+  /** End a broadcast now (#2667): clears its banner and the status line. */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @AdminAudit("notice.broadcast_ended", (c) => ({ detail: { noticeId: auditRef(c.params.id) } }))
+  @HttpCode(200)
+  @Post(":id/end")
+  end(@Param("id") id: string) {
+    return this.notices.endBroadcast(id);
   }
 }
 

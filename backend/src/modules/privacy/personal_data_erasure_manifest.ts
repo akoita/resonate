@@ -933,6 +933,13 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "basis once the account is erased. Counts the artist already saw were aggregates.",
   },
   {
+    model: "SupportRequest",
+    disposition: "delete",
+    reason:
+      "Messages the person sent to support while signed in (#2667). They exist to answer the person and have no "
+      + "retention basis once the account is erased.",
+  },
+  {
     model: "Invitation",
     disposition: "retain",
     reason:

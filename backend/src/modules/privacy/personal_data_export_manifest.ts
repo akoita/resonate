@@ -592,6 +592,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "Added by #2668. Shows this person said they would come to, the city they chose and whether they asked to be told when it opens.",
   },
   {
+    model: "SupportRequest",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2667. Messages this person sent to support while signed in: topic, message, the reply address "
+      + "they gave, status and dates. Requests sent signed out are not linked to an account.",
+  },
+  {
     model: "Invitation",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "createdByUserId" }],

@@ -53,3 +53,12 @@ describe("legal documents", () => {
     });
   });
 });
+
+describe("operatorContactEmail (#2667)", () => {
+  it("returns the configured address, or null when it is not set", async () => {
+    const { operatorContactEmail } = await import("./legalDocuments");
+    expect(operatorContactEmail({ NEXT_PUBLIC_OPERATOR_CONTACT_EMAIL: " help@example.org " } as unknown as NodeJS.ProcessEnv)).toBe("help@example.org");
+    expect(operatorContactEmail({ NEXT_PUBLIC_OPERATOR_CONTACT_EMAIL: "  " } as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(operatorContactEmail({} as NodeJS.ProcessEnv)).toBeNull();
+  });
+});

@@ -5,6 +5,8 @@ import {
   ReviewQueuePage,
   ReviewQueueStatePanel,
 } from "../../../components/admin/review-queue/ReviewQueue";
+import type { SentBroadcastNotice } from "../../../lib/api";
+import type { ServiceStatusTemplate } from "../../../lib/serviceStatus";
 import NoticeComposer, { type NoticeDraft, type NoticeDraftErrors } from "./NoticeComposer";
 import NoticePreview from "./NoticePreview";
 import SentNoticesList, { type SentNoticesState } from "./SentNoticesList";
@@ -20,6 +22,9 @@ export type NoticesViewProps = {
   onChange: (field: keyof NoticeDraft, value: string) => void;
   onRequestSend: () => void;
   onRetrySent: () => void;
+  onApplyTemplate?: (template: ServiceStatusTemplate) => void;
+  onEndNotice?: (notice: SentBroadcastNotice) => void;
+  endingId?: string | null;
 };
 
 /**
@@ -32,7 +37,7 @@ export default function NoticesView(props: NoticesViewProps) {
       <ReviewQueueHeader
         eyebrow="Operator"
         title="Platform notices"
-        description="Tell people about a policy or terms change, or an incident. Moderation notices are sent automatically to the person affected."
+        description="Tell people about a policy or terms change, or post a service status. Moderation notices are sent automatically to the person affected."
       />
       {props.canSend ? (
         <>
@@ -44,10 +49,17 @@ export default function NoticesView(props: NoticesViewProps) {
               audienceSize={props.audienceSize}
               onChange={props.onChange}
               onRequestSend={props.onRequestSend}
+              onApplyTemplate={props.onApplyTemplate}
             />
             <NoticePreview draft={props.draft} />
           </div>
-          <SentNoticesList state={props.sent} audienceSize={props.audienceSize} onRetry={props.onRetrySent} />
+          <SentNoticesList
+            state={props.sent}
+            audienceSize={props.audienceSize}
+            onRetry={props.onRetrySent}
+            onEnd={props.onEndNotice}
+            endingId={props.endingId}
+          />
         </>
       ) : (
         <ReviewQueueStatePanel

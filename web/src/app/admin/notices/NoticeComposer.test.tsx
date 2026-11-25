@@ -421,3 +421,38 @@ describe("notices page view (#2146)", () => {
     expect(html).not.toContain("Sent broadcasts");
   });
 });
+
+describe("service status (#2667)", () => {
+  it("offers three ready-made statuses that become an incident for everyone", async () => {
+    const { SERVICE_STATUS_TEMPLATES, serviceStatusTemplate } = await import("../../../lib/serviceStatus");
+    const { draftFromStatusTemplate } = await import("./NoticeComposer");
+    expect(SERVICE_STATUS_TEMPLATES.map((t) => t.id)).toEqual(["degraded", "incident", "resolved"]);
+    for (const template of SERVICE_STATUS_TEMPLATES) {
+      const next = draftFromStatusTemplate(template);
+      expect(next).toMatchObject({ category: "incident", audience: "all", title: template.title, body: template.body });
+      expect(validateNoticeDraft(next)).toEqual({});
+    }
+    // A "resolved" status ends by itself; the others stay until an operator ends them.
+    const resolved = toBroadcastInput(draftFromStatusTemplate(serviceStatusTemplate("resolved")), Date.UTC(2026, 10, 26));
+    expect(resolved.expiresAt).toBe("2026-11-27T00:00:00.000Z");
+    expect(toBroadcastInput(draftFromStatusTemplate(serviceStatusTemplate("incident")))).not.toHaveProperty("expiresAt");
+  });
+
+  it("shows the template buttons only when the page can apply them", () => {
+    expect(render()).not.toContain('data-template="incident"');
+    const html = render({ onApplyTemplate: vi.fn() });
+    for (const id of ["degraded", "incident", "resolved"]) expect(html).toContain(`data-template="${id}"`);
+  });
+
+  it("offers End now on active sent broadcasts only", () => {
+    const active = renderToStaticMarkup(
+      <SentNoticesList
+        state={{ status: "ready", notices: [SENT, { ...SENT, id: "n-old", active: false }] }}
+        audienceSize={null}
+        onRetry={() => {}}
+        onEnd={() => {}}
+      />,
+    );
+    expect(active.match(/End now/g)).toHaveLength(SENT.active ? 1 : 0);
+  });
+});
