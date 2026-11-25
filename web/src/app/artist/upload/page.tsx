@@ -1,5 +1,6 @@
 "use client";
 
+import EmailPromptCard from "../../../components/email/EmailPromptCard";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import AuthGate from "../../../components/auth/AuthGate";
@@ -1069,6 +1070,7 @@ export default function ArtistUploadPage() {
   return (
     <AuthGate title="Sign in to upload releases.">
       <ArtistGate>
+        <EmailPromptCard context="artist_upload" />
         <main className="upload-grid">
           <Card>
             <div className="upload-panel">

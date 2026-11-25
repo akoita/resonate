@@ -57,6 +57,8 @@ const U = {
   snsSpam: name("sns_spam"),
   unsub: name("unsub"),
   rate: name("rate"),
+  welcome: name("welcome"),
+  releaseArtist: name("release_artist"),
 };
 const OPERATOR_WALLET = "0x" + "0e".repeat(20);
 
@@ -119,11 +121,21 @@ function lastTokenIn(message: { text: string }, path: string): string {
   return decodeURIComponent(match[1]);
 }
 
+/**
+ * Confirming queues a one-time welcome notice (#2665). Suites that count
+ * fan-out and sends drop it so they measure only the notices they create;
+ * the welcome itself is covered in "service emails" below.
+ */
+async function dropWelcome(userId: string) {
+  await prisma.notice.deleteMany({ where: { recipientUserId: userId, dedupeKey: "welcome" } });
+}
+
 /** Set an address and confirm it from the emailed link, the way a person would. */
 async function confirmed(userId: string) {
   await contacts.setAddress(userId, addressOf(userId.slice(TEST_PREFIX.length)));
   const mail = transport.sent[transport.sent.length - 1];
   await contacts.confirm(lastTokenIn(mail, "email/confirm"));
+  await dropWelcome(userId);
 }
 
 async function expectRejects(promise: Promise<unknown>, type: new (...a: never[]) => Error) {
@@ -172,6 +184,7 @@ describe("email notices integration", () => {
     await prisma.notice.deleteMany({ where: { OR: [{ id: { in: trackedNoticeIds } }, { createdBy: { startsWith: "system:email-delivery" }, recipientUserId: { startsWith: TEST_PREFIX } }] } });
     await prisma.notice.deleteMany({ where: { recipientUserId: { startsWith: TEST_PREFIX } } });
     await prisma.wallet.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.release.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.$disconnect();
@@ -212,6 +225,7 @@ describe("email notices integration", () => {
         "email/confirm",
       );
       await expect(contacts.confirm(token)).resolves.toEqual({ status: "confirmed" });
+      await dropWelcome(U.bare);
       expect(await contacts.getState(U.bare)).toMatchObject({ status: "confirmed" });
       await expectRejects(contacts.confirm(token), BadRequestException);
       await expect(contacts.confirm(token)).rejects.toMatchObject({ response: { code: "invalid_or_expired" } });
@@ -236,6 +250,7 @@ describe("email notices integration", () => {
       expect(transport.sent[transport.sent.length - 1].to).toBe(addressOf("bare_4"));
       await expectRejects(contacts.confirm(oldToken), BadRequestException);
       await expect(contacts.confirm(newToken)).resolves.toEqual({ status: "confirmed" });
+      await dropWelcome(U.bare);
       const state = await contacts.getState(U.bare);
       expect(state.categories.find((c) => c.category === "refund")?.enabled).toBe(false);
     });
@@ -304,7 +319,7 @@ describe("email notices integration", () => {
       }
       await expectRejects(contacts.setPreferences(U.listener, ["bogus"]), BadRequestException);
       await expectRejects(contacts.setPreferences(U.listener, "policy"), BadRequestException);
-      expect((await contacts.getState(U.listener)).categories.filter((c) => c.required).map((c) => c.category)).toEqual(["terms", "account", "purchase"]);
+      expect((await contacts.getState(U.listener)).categories.filter((c) => c.required).map((c) => c.category)).toEqual(["terms", "account", "purchase", "service"]);
     });
   });
 
@@ -730,11 +745,90 @@ describe("email notices integration", () => {
       at(CONFIRMATION_WINDOW_MS + 200_000);
       await contacts.resend(U.rate);
       await contacts.confirm(lastTokenIn(transport.sent[transport.sent.length - 1], "email/confirm"));
+      await dropWelcome(U.rate);
       const before = await prisma.user.findUniqueOrThrow({ where: { id: U.rate } });
       expect(before.confirmationSendCount).toBe(2);
       await contacts.setAddress(U.rate, addressOf("rate_7"));
       const after = await prisma.user.findUniqueOrThrow({ where: { id: U.rate } });
       expect(after.confirmationSendCount).toBe(2);
+    });
+  });
+
+  describe("service emails (#2665)", () => {
+    const welcomeMail = () => transport.sent.filter((m) => m.to === addressOf("welcome") && /Welcome to Resonate/.test(m.subject));
+
+    it("sends no welcome to an unconfirmed address, then exactly one once it is confirmed", async () => {
+      await contacts.setAddress(U.welcome, addressOf("welcome"));
+      const token = lastTokenIn(transport.sent[transport.sent.length - 1], "email/confirm");
+      await delivery.run();
+      expect(welcomeMail()).toHaveLength(0);
+      // Only the confirmation itself went to the pending address.
+      expect(transport.sent.filter((m) => m.to === addressOf("welcome"))).toHaveLength(1);
+
+      await contacts.confirm(token);
+      await delivery.run();
+      expect(welcomeMail()).toHaveLength(1);
+      await delivery.run();
+      expect(welcomeMail()).toHaveLength(1);
+    });
+
+    it("never welcomes the same account twice, even after the address is removed and added again", async () => {
+      await contacts.remove(U.welcome);
+      await contacts.setAddress(U.welcome, addressOf("welcome"));
+      await contacts.confirm(lastTokenIn(transport.sent[transport.sent.length - 1], "email/confirm"));
+      await delivery.run();
+      expect(welcomeMail()).toHaveLength(0);
+      expect(await prisma.notice.count({ where: { recipientUserId: U.welcome, dedupeKey: "welcome" } })).toBe(1);
+    });
+
+    it("does not let a person turn service emails off", async () => {
+      await expect(contacts.setPreferences(U.welcome, ["service"])).rejects.toMatchObject({
+        response: { code: "required_category" },
+      });
+    });
+
+    it("sends one \"release is live\" email per release, retrying a failed send without a duplicate", async () => {
+      await confirmed(U.releaseArtist);
+      await prisma.artist.create({ data: { id: name("release_artist_profile"), userId: U.releaseArtist, displayName: "Live Artist" } });
+      const live = await prisma.release.create({
+        data: { id: name("release_live"), title: "Night Bloom", artistId: name("release_artist_profile"), status: "ready", rightsRoute: "STANDARD_ESCROW" },
+      });
+      const hidden = await prisma.release.create({
+        data: { id: name("release_hidden"), title: "Held Back", artistId: name("release_artist_profile"), status: "ready", rightsRoute: "QUARANTINED_REVIEW" },
+      });
+
+      // The event the catalog publishes when processing finishes.
+      const bus = new EventBus();
+      const subscribed = new NoticeService(bus, new AuditService());
+      subscribed.onModuleInit();
+      try {
+        bus.publish({ eventName: "catalog.release_ready", eventVersion: 1, occurredAt: new Date().toISOString(), releaseId: live.id, artistId: name("release_artist_profile") });
+        bus.publish({ eventName: "catalog.release_ready", eventVersion: 1, occurredAt: new Date().toISOString(), releaseId: hidden.id, artistId: name("release_artist_profile") });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      } finally {
+        subscribed.onModuleDestroy();
+      }
+      // A replay (reprocessing the same release) creates nothing new.
+      await notices.notifyReleaseLive(live.id);
+      const rows = await prisma.notice.findMany({ where: { recipientUserId: U.releaseArtist } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        category: "service",
+        dedupeKey: `release_live:${live.id}`,
+        link: `/release/${live.id}`,
+        title: "Your release is live: Night Bloom",
+      });
+
+      transport.failWith = new TransientEmailError("timeout");
+      expect(await delivery.run()).toMatchObject({ sent: 0 });
+      expect(await prisma.emailDelivery.findFirstOrThrow({ where: { noticeId: rows[0].id } })).toMatchObject({ status: "queued", attempts: 1 });
+      transport.failWith = null;
+      await prisma.emailDelivery.updateMany({ where: { noticeId: rows[0].id }, data: { nextAttemptAt: new Date(0) } });
+      const retried = await delivery.run();
+      expect(retried).toMatchObject({ sent: 1 });
+      await delivery.run();
+      const mails = transport.sent.filter((m) => m.to === addressOf("release_artist") && /Your release is live/.test(m.subject));
+      expect(mails).toHaveLength(1);
     });
   });
 

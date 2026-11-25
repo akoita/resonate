@@ -207,7 +207,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "account",
     audiences: ["everyone", "operator"],
     status: "partial",
-    keywords: ["notice", "announcement", "policy change", "terms change", "incident", "outage", "moderation", "removed", "banned", "bell", "banner", "email", "email notices", "unsubscribe", "confirm email"],
+    keywords: ["notice", "announcement", "policy change", "terms change", "incident", "outage", "moderation", "removed", "banned", "bell", "banner", "email", "email notices", "unsubscribe", "confirm email", "welcome email", "release live", "service email", "add email at sign-up"],
     sections: [
       {
         id: "where-notices-appear",
@@ -242,7 +242,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "You may see a small card offering this: on Home the first time you visit, after you pledge to a show (so we can tell you if a refund is ever owed), after your first listing, and when an account or refund notice has sat unread for a few days. Choose Add an email to go ahead, or Skip or Not now to dismiss it. We do not ask again for that moment on this browser, nothing is ever blocked, and you can add an address later in Settings. If you do not add one, nothing changes: every notice still reaches you in the app.",
+            text: "Right after you create your account, Resonate offers once to add an address. Enter it and choose Send confirmation link, or choose Skip for now. You may also see a small card offering this: at the top of Settings, on the Upload page for artists, on Home the first time you visit, after you pledge to a show (so we can tell you if a refund is ever owed), after your first listing, and when an account or refund notice has sat unread for a few days. Choose Add an email to go ahead, or Skip or Not now to dismiss it. We do not ask again for that moment on this browser, nothing is ever blocked, and you can add an address later in Settings. If you do not add one, nothing changes: every notice still reaches you in the app.",
           },
           {
             kind: "paragraph",
@@ -252,7 +252,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Required notices",
-            text: "Terms, Account and Purchase notices are always emailed to a confirmed address, because they are legal notices, explain why we acted on your account, or confirm the delivery choice you made when you bought something. They are marked Required and cannot be switched off. To stop them, remove your address. You still see them in the app.",
+            text: "Terms, Account, Purchase and Your account notices are always emailed to a confirmed address, because they are legal notices, explain why we acted on your account, confirm the delivery choice you made when you bought something, or are about your own account and music. They are marked Required and cannot be switched off. To stop them, remove your address. You still see them in the app.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              { term: "Welcome", description: "Sent once, after you confirm your address for the first time." },
+              { term: "Your release is live", description: "Sent once per release, when it finishes processing and is listed on Resonate." },
+              { term: "A notice concerns your track", description: "Sent when someone files a report or takedown notice about something you uploaded, and when it is decided." },
+            ],
           },
           {
             kind: "paragraph",

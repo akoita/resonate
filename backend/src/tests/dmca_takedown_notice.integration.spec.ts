@@ -87,7 +87,7 @@ describe("DMCA takedown notice (integration)", () => {
     const [notice] = rows;
     expect(notice).toMatchObject({
       recipientUserId: artistUser,
-      category: "moderation",
+      category: "service",
       audience: "user",
       createdBy: "system:dmca",
       link: `/report/respond?id=${report.id}`,
@@ -122,7 +122,7 @@ describe("DMCA takedown notice (integration)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       recipientUserId: artistUser,
-      category: "moderation",
+      category: "service",
       title: "A notice was filed about your track",
       link: `/report/respond?id=${report.id}`,
     });

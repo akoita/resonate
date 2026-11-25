@@ -20,6 +20,7 @@ import "../styles/admin-notices.css";
 import "../styles/feature-tips.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
+import SignupEmailPrompt from "../components/auth/SignupEmailPrompt";
 import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";
 import { ToastProvider } from "../components/ui/Toast";
 import { AppStateGuard } from "../components/system/AppStateGuard";
@@ -158,6 +159,7 @@ export default function RootLayout({
           <ZeroDevProviderClient projectId={process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID}>
             <AuthProvider>
               <AppStateGuard />
+              <SignupEmailPrompt />
               <AppShell>{children}</AppShell>
             </AuthProvider>
           </ZeroDevProviderClient>

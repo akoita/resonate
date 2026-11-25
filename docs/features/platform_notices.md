@@ -98,7 +98,10 @@ notice to the author of the reported message.
 
 When `DmcaService.resolveReport` upholds a report, the track becomes
 `dmca_removed` and its stems are delisted. `NoticeService.notifyDmcaTakedown`
-then sends one targeted `moderation` notice from the `system:dmca` actor.
+then sends one targeted notice from the `system:dmca` actor. Since #2665 the
+creator's report and takedown notices use the required `service` category,
+so they reach a confirmed address even if the person turned `moderation`
+emails off.
 
 - **Recipient:** the release's `managementOwnerUserId`, else the artist's
   `userId`. This is the owner rule `management-access.ts` uses. If neither
@@ -393,6 +396,37 @@ It is a dismissible card, never a modal or a gate.
 - **Not done:** a prompt when an account-status decision banner is shown (the
   bell prompt covers unread account notices after 3 days), and a server-side
   dismissal field (which would need a schema change).
+
+## Service emails (#2665)
+
+Three service messages, sent as targeted notices in the `service` category.
+`service` is a required email category: it cannot be turned off, only the
+address can be removed. Each one is a notice, so it appears in the app too,
+and the email job sends it with the usual retry, backoff and exactly-once
+delivery (`(noticeId, userId)` is unique). Nothing is sent to an address that
+is not confirmed, apart from the confirmation itself.
+
+| Email | When | Dedupe key | Actor |
+| --- | --- | --- | --- |
+| Welcome to Resonate | `ContactEmailService.confirm` succeeds | `welcome` (once per account ever) | `system:service` |
+| Your release is live: <title> | `catalog.release_ready`, when the release is `ready` and its rights route is publicly listed | `release_live:<releaseId>` | `system:service` |
+| A notice concerns your track | a takedown report is filed, rejected or upheld (#2664) | `dmca_report_received:`, `dmca_report_rejected:`, `dmca_report:` + report id | `system:dmca` |
+
+The release notice goes to the artist account and to the account that manages
+the profile, when there is one. A release held back by its rights route sends
+nothing. Export and erasure already cover notices and delivery rows (#2167,
+#2169).
+
+**Web.** Right after a passkey sign-up creates a new account, a one-time
+dialog offers to add an address (`SignupEmailPrompt`; the flag lives in
+`sessionStorage`). Skipping it also dismisses the Home onboarding card. Two
+more prompt contexts reuse `EmailPromptCard`: `settings`, at the top of
+Settings, and `artist_upload`, on the upload page, which tells artists that
+notices about their releases are sent by email.
+
+Tests: `email_notices.integration.spec.ts` ("service emails"),
+`dmca_takedown_notice.integration.spec.ts`, `signupEmailPrompt.test.ts`,
+`emailPrompt.test.ts`.
 
 ## Remaining
 
