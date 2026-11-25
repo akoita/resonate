@@ -20,7 +20,7 @@ describe("admin audit helpers (#2173)", () => {
       expect(isAdminAuditAction(option.value)).toBe(true);
     }
     expect(ADMIN_AUDIT_ACTION_OPTIONS).toHaveLength(92);
-    expect(new Set(ADMIN_AUDIT_ACTION_OPTIONS.map((option) => option.value)).size).toBe(91);
+    expect(new Set(ADMIN_AUDIT_ACTION_OPTIONS.map((option) => option.value)).size).toBe(92);
     expect(adminAuditActionLabel("something.new")).toBe("something.new");
     expect(isAdminAuditAction("something.new")).toBe(false);
     expect(adminAuditOutcomeLabel("success")).toBe("Done");
