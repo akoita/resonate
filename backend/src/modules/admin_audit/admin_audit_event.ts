@@ -136,6 +136,7 @@ export const ADMIN_AUDIT_ACTIONS = [
   "support.requests_viewed",
   "support.request_status_changed",
   "composition.usage_exported",
+  "composition.support_viewed",
 ] as const;
 
 export type AdminAuditAction = (typeof ADMIN_AUDIT_ACTIONS)[number];

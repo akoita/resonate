@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { auditAdminBranch } from "../admin_audit/admin_branch_audit";
 import { hasReleaseManagementAccess } from "../management/management-access";
 import {
   CompositionData,
@@ -115,6 +116,7 @@ export class CompositionService {
         id: true,
         status: true,
         rightsRoute: true,
+        artist: { select: { userId: true } },
         tracks: {
           orderBy: { position: "asc" },
           select: { id: true, title: true, position: true, composition: true },
@@ -145,6 +147,14 @@ export class CompositionService {
           writers: track.composition ? publicWriters(readStoredWriters(track.composition.writers)) : [],
         })),
       };
+    }
+
+    if (!canEdit) {
+      // #2380: an operator reading someone else's composition details is recorded.
+      await auditAdminBranch(viewer, "composition.support_viewed", {
+        targetUserId: release.artist?.userId ?? null,
+        detail: { releaseId },
+      });
     }
 
     return {
