@@ -16,6 +16,12 @@ import { LocalStorageProvider } from "../modules/storage/local_storage_provider"
 import * as fs from "fs";
 import * as path from "path";
 
+// Upload limits read the database (#2659); this spec covers the separation
+// flow, and the limits have their own integration spec.
+jest.mock("../modules/trust/upload_limits", () => ({
+  assertWithinUploadLimits: jest.fn().mockResolvedValue(undefined),
+}));
+
 // Skip if SKIP_DEMUCS_INTEGRATION is set (CI environments)
 const SKIP_INTEGRATION = process.env.SKIP_DEMUCS_INTEGRATION === "true";
 const DEMUCS_WORKER_URL = process.env.DEMUCS_WORKER_URL || "http://localhost:8000";

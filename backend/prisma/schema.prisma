@@ -3176,6 +3176,11 @@ model CreatorTrust {
   accountAgeDays Int      @default(0)
   stakeAmountWei String   @default("10000000000000000") // 0.01 ETH in wei
   escrowDays     Int      @default(30)
+  // Upload limits for accounts that are not yet verified (#2659). An operator
+  // lifts them for one account; who and when stay recorded here and in the
+  // admin audit log.
+  uploadLimitsLiftedAt DateTime?
+  uploadLimitsLiftedBy String?
   updatedAt      DateTime @updatedAt
   artist         Artist   @relation(fields: [artistId], references: [id])
 }

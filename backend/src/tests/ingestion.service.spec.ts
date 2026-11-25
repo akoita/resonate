@@ -4,6 +4,12 @@ import { join } from "path";
 import { IngestionService } from "../modules/ingestion/ingestion.service";
 import { EventBus } from "../modules/shared/event_bus";
 
+// Upload limits read the database (#2659); these unit specs cover the upload
+// flow itself, and the limits have their own integration spec.
+jest.mock("../modules/trust/upload_limits", () => ({
+  assertWithinUploadLimits: jest.fn().mockResolvedValue(undefined),
+}));
+
 function makeService(artistProfile: { id: string } | null) {
   return new IngestionService(
     { publish: jest.fn(), subscribe: jest.fn() } as any,

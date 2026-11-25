@@ -23,6 +23,7 @@ import {
 } from "../catalog/ai-disclosure.policy";
 import { validateArtworkUpload } from "../shared/artwork-validation";
 import { readIngestionUploadBuffer } from "./ingestion-upload-buffer";
+import { assertWithinUploadLimits } from "../trust/upload_limits";
 
 type UploadStatus = "queued" | "processing" | "complete" | "failed";
 const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
@@ -308,6 +309,9 @@ export class IngestionService {
       throw new Error("Could not resolve artist for upload");
     }
     const resolvedArtistId: string = artistId;
+    // #2659: accounts that are not yet verified have release and track
+    // limits; refuse before anything is stored.
+    await assertWithinUploadLimits(resolvedArtistId, Math.max(1, input.files.length));
     if (artistDisplayName && !input.metadata?.primaryArtist?.trim?.()) {
       input.metadata = {
         ...input.metadata,

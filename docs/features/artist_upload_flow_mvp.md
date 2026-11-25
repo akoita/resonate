@@ -68,6 +68,10 @@ GPU is enabled by default in the `resonate-iac` stack. Requires NVIDIA GPU + Con
 
 See [`workers/demucs/README.md`](../../workers/demucs/README.md) for full setup and troubleshooting.
 
+## Deposit mode and upload limits (#2659)
+
+Publishing can run with no Content Protection deposit (`PUBLISH_DEPOSIT_MODE=none`); the release is still attested. Accounts that are not yet verified have daily and total upload limits, checked before any file is stored, which an admin can lift per account. Upload limits do not change a release's rights route. See [Publishing Without a Deposit, With Upload Limits](publish_deposit_and_upload_limits.md).
+
 ## Official stems (#1976)
 
 Stems separated by the ingestion worker are recorded as `separated` (with the

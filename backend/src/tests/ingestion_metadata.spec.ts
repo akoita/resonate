@@ -2,6 +2,12 @@ import { EventBus } from "../modules/shared/event_bus";
 import { IngestionService } from "../modules/ingestion/ingestion.service";
 import { hasReleaseManagementAccess } from "../modules/management/management-access";
 
+// Upload limits read the database (#2659); these unit specs cover the upload
+// flow itself, and the limits have their own integration spec.
+jest.mock("../modules/trust/upload_limits", () => ({
+  assertWithinUploadLimits: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock("../modules/management/management-access", () => ({
   hasReleaseManagementAccess: jest.fn(),
 }));

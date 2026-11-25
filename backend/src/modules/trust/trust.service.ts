@@ -4,6 +4,7 @@ import { prisma } from "../../db/prisma";
 import { createPublicClient, http, type Address } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
 import { getDefaultTrustTier, resolveTrustTiers, type TrustTierInfo } from "./trustTierConfig";
+import { isPublishDepositWaived } from "./publish_deposit";
 
 /**
  * Trust tier thresholds per issue #406:
@@ -23,6 +24,8 @@ type TrustRequirement = Awaited<ReturnType<typeof prisma.creatorTrust.upsert>> &
   maxListingPriceWei: string | null;
   maxListingPriceUsd: string | null;
   maxListingPriceUncapped: boolean;
+  /** True when this deployment publishes without a deposit (#2659). */
+  depositWaived: boolean;
 };
 
 type CreatorVerificationRecord = {
@@ -141,8 +144,16 @@ export class TrustService {
   async getStakeRequirement(artistId: string): Promise<TrustRequirement> {
     const tierInfo = await this.calculateTier(artistId);
     const policy = await this.getPolicyConfig(tierInfo.tier);
-    const effectiveStakeAmountWei = this.getEffectiveStakeAmountWei(policy);
-    const effectiveStakeAmountUsd = this.getEffectiveStakeAmountUsd(policy);
+    // The tier's nominal deposit still sets the listing price cap; with the
+    // deposit waived (#2659) nothing is deposited, but a new account's
+    // listings stay capped as before.
+    const nominalStakeAmountWei = this.getEffectiveStakeAmountWei(policy);
+    const nominalStakeAmountUsd = this.getEffectiveStakeAmountUsd(policy);
+    const depositWaived = isPublishDepositWaived({
+      PUBLISH_DEPOSIT_MODE: this.config.get<string>("PUBLISH_DEPOSIT_MODE"),
+    });
+    const effectiveStakeAmountWei = depositWaived ? 0n : nominalStakeAmountWei;
+    const effectiveStakeAmountUsd = depositWaived ? "0" : nominalStakeAmountUsd;
 
     // Upsert the trust record
     const trust = await prisma.creatorTrust.upsert({
@@ -160,8 +171,8 @@ export class TrustService {
       },
     });
 
-    const stakeAmountWei = effectiveStakeAmountWei;
-    const maxListingPriceUncapped = stakeAmountWei === 0n;
+    const capBaseWei = nominalStakeAmountWei;
+    const maxListingPriceUncapped = capBaseWei === 0n;
 
     return {
       ...trust,
@@ -174,11 +185,12 @@ export class TrustService {
       maxPriceMultiplier: Number(policy.maxPriceMultiplier),
       maxListingPriceWei: maxListingPriceUncapped
         ? null
-        : (stakeAmountWei * policy.maxPriceMultiplier).toString(),
+        : (capBaseWei * policy.maxPriceMultiplier).toString(),
       maxListingPriceUsd: maxListingPriceUncapped
         ? null
-        : this.multiplyDecimalString(effectiveStakeAmountUsd, policy.maxPriceMultiplier),
+        : this.multiplyDecimalString(nominalStakeAmountUsd, policy.maxPriceMultiplier),
       maxListingPriceUncapped,
+      depositWaived,
     };
   }
 

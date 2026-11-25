@@ -23,6 +23,7 @@ import {
 } from "../../../../lib/adminUsers";
 import AccountRestrictionControls from "./AccountRestrictionControls";
 import EntitlementGrantsControls from "./EntitlementGrantsControls";
+import UploadLimitsControls from "./UploadLimitsControls";
 import { DuplicateChip, RoleChips, StatusChip } from "../UsersView";
 
 export type UserDetailState =
@@ -166,6 +167,27 @@ function PlanSection({
         />
       ) : (
         <p className="admin-users-readonly">Only admins can see and grant Pro.</p>
+      )}
+    </Section>
+  );
+}
+
+function UploadLimitsSection({
+  detail,
+  isAdmin,
+  token,
+}: {
+  detail: AdminUserDetail;
+  isAdmin: boolean;
+  token: string | null;
+}) {
+  if (!detail.artistId) return null;
+  return (
+    <Section title="Upload limits" id="admin-user-upload-limits">
+      {isAdmin ? (
+        <UploadLimitsControls token={token} artistId={detail.artistId} who={personLabel(detail)} />
+      ) : (
+        <p className="admin-users-readonly">Only admins can lift or restore upload limits.</p>
       )}
     </Section>
   );
@@ -372,6 +394,7 @@ export default function UserDetailView({
       <Identity detail={detail} />
       <StatusSection detail={detail} isAdmin={isAdmin} token={token} onStatusChanged={onStatusChanged} />
       <PlanSection detail={detail} isAdmin={isAdmin} token={token} onRecordChanged={onRecordChanged} />
+      <UploadLimitsSection detail={detail} isAdmin={isAdmin} token={token} />
       <Activity detail={detail} />
       <AdminActions detail={detail} />
     </ReviewQueuePage>
