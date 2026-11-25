@@ -3468,7 +3468,88 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Upload", href: "/artist/upload", description: "Upload and publish a release." },
       { label: "Your catalog", href: "/artist/catalog", description: "Manage your releases and tracks." },
     ],
-    related: ["rights-protection", "marketplace-sell", "artist-analytics", "create-ai-music", "artist-agreement"],
+    related: ["rights-protection", "marketplace-sell", "artist-analytics", "create-ai-music", "artist-agreement", "composition-details"],
+  },
+  {
+    slug: "composition-details",
+    title: "Songwriters, publisher and work codes",
+    summary:
+      "Record who wrote each song, who publishes it, its work code and whether it is a cover or uses samples. For operators: the usage report.",
+    category: "artists",
+    audiences: ["artist", "operator"],
+    keywords: ["composition", "songwriter", "writer", "composer", "lyricist", "arranger", "publisher", "self-published", "iswc", "work code", "ipi", "society", "collecting society", "sacem", "prs", "ascap", "bmi", "cover", "sample", "split", "share", "usage report"],
+    sections: [
+      {
+        id: "why",
+        heading: "Why it matters",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A recording and the song it performs are two different things. The recording code (ISRC) identifies your recording. The song itself has writers, maybe a publisher, and a work code (ISWC). Collecting societies pay songwriters from usage reports, and those need these details. Everything here is optional, and nothing is charged or paid because of it.",
+          },
+        ],
+      },
+      {
+        id: "enter",
+        heading: "Adding the details",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "When you upload, open Composition details under a track's settings. Or, after publishing, open the release page and choose Add details next to a track in the Composition section.",
+              "Add each writer with their role: composer, lyricist or arranger. You can add their collecting society and IPI number if they have one.",
+              "Shares are optional. If you enter one, give every writer a share, and make them add up to 100%.",
+              "Name the publisher, or tick Self-published. Add the work code if the song has one.",
+              "If the recording is a cover, or contains samples, tick the box and say what it covers or samples.",
+              "Choose Save. On a release with several tracks, Copy to all tracks fills the other tracks with the same writers and publisher. Work codes are not copied, because each song has its own.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Codes are checked",
+            text: "A work code looks like T-123.456.789-0, and its last digit is a check digit, so a typo is caught. An IPI number has 9 to 11 digits.",
+          },
+        ],
+      },
+      {
+        id: "who-sees",
+        heading: "Who sees what",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Listeners see the writers' names and roles under Songwriting on the release page. Shares, societies, IPI numbers, the publisher and the work code are visible only to you, to people who manage the release with you, and to Resonate operators.",
+          },
+          {
+            kind: "paragraph",
+            text: "These details are part of your data download. If you delete your account, they are deleted too.",
+          },
+        ],
+      },
+      {
+        id: "usage-report",
+        heading: "Downloading the usage report (operators)",
+        audience: "operator",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open Usage Report in the sidebar (operators and admins only).",
+              "Choose the period and Download CSV. The file has one line per track played in that period, with its recording code, work code, writers, publisher and play counts.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Play counts include only listeners who allowed product analytics. Each download is recorded in the admin audit log.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Upload", href: "/artist/upload", description: "Add composition details while uploading." },
+      { label: "Usage Report", href: "/admin/usage-report", description: "Operators: download plays per track with composition details.", audience: "operator" },
+    ],
+    related: ["upload-music", "download-your-data"],
   },
   {
     slug: "artist-agreement",

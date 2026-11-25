@@ -135,6 +135,7 @@ export const ADMIN_AUDIT_ACTIONS = [
   /** #2667: the support queue (ids and status codes; never the message or an address). */
   "support.requests_viewed",
   "support.request_status_changed",
+  "composition.usage_exported",
 ] as const;
 
 export type AdminAuditAction = (typeof ADMIN_AUDIT_ACTIONS)[number];

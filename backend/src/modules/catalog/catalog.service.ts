@@ -1061,6 +1061,20 @@ export class CatalogService implements OnModuleInit {
                         : "artist",
                     aiDisclosureVersion: AI_DISCLOSURE_VERSION,
                     aiDeclaredAt: new Date(event.occurredAt),
+                    // #2669: composition details given at upload (already validated).
+                    composition: t.composition
+                      ? {
+                          create: {
+                            artistId: event.artistId,
+                            writers: t.composition.writers ?? [],
+                            publisher: t.composition.publisher ?? null,
+                            selfPublished: t.composition.selfPublished === true,
+                            iswc: t.composition.iswc ?? null,
+                            coverOrSamples: t.composition.coverOrSamples === true,
+                            coverNote: t.composition.coverNote ?? null,
+                          },
+                        }
+                      : undefined,
                     stems: {
                       create: t.stems?.map((s: any) => ({
                         id: s.id,

@@ -1,0 +1,219 @@
+/* #2669: composition details on the release page, the upload page and the
+   operator usage report. */
+
+.composition-section {
+  margin-top: 24px;
+  padding: 20px 24px;
+}
+
+.composition-section h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+}
+
+.composition-section__intro,
+.composition-section__empty,
+.composition-editor__hint,
+.composition-editor__empty {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.composition-section__credits,
+.composition-section__tracks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.composition-section__credits li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.composition-section__track {
+  font-weight: 600;
+}
+
+.composition-section__item {
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.composition-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.composition-section__actions,
+.composition-section__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composition-section__buttons {
+  margin-top: 12px;
+}
+
+.composition-section__summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+}
+
+.composition-section__summary dt {
+  color: var(--color-muted);
+}
+
+.composition-section__summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.composition-section__summary ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.composition-section__editor {
+  margin-top: 12px;
+}
+
+.composition-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.composition-editor__group {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.composition-editor__group legend {
+  padding: 0 5px;
+  font-weight: 700;
+}
+
+.composition-editor label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.composition-editor input[type="text"],
+.composition-editor select,
+.composition-editor textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+}
+
+.composition-editor input[aria-invalid="true"] {
+  border-color: #ff6b6b;
+}
+
+.composition-editor .composition-editor__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composition-editor__writers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.composition-editor__writer {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.7fr) minmax(0, 1.2fr) minmax(0, 1.2fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.composition-editor__writer .composition-editor__error {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .composition-editor__writer {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-border);
+  }
+}
+
+.composition-editor__add {
+  justify-self: start;
+}
+
+.composition-editor__error {
+  margin: 0;
+  color: #ff8a8a;
+  font-size: 0.85rem;
+}
+
+.usage-report {
+  display: grid;
+  gap: 16px;
+  max-width: 720px;
+}
+
+.usage-report__range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.usage-report__range label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.usage-report__range input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+}
+
+.upload-composition {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.upload-composition > summary {
+  cursor: pointer;
+  font-weight: 700;
+}

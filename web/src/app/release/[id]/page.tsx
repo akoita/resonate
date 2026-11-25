@@ -95,6 +95,7 @@ import {
   withAudioRevision,
 } from "../../../lib/audioReplacement";
 import "../../../styles/license-badges.css";
+import { ReleaseCompositionSection } from "../../../components/catalog/ReleaseCompositionSection";
 
 // Helper to get duration from track's first stem
 const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | null }> }): number => {
@@ -2892,6 +2893,9 @@ function ReleaseDetailsContent() {
           </table>
         </div>
       </section>
+
+      {/* #2669: songwriting credits for everyone; full composition details for the artist and operators. */}
+      <ReleaseCompositionSection releaseId={release.id} />
 
       {/* Collect moments — fan-facing Punchline module (#486). Renders only
           when a track has published drops; visible to every visitor. */}

@@ -149,6 +149,9 @@ const PERSON_KEY_OVERRIDES: Readonly<Record<string, readonly PersonKey[] | "casc
   CommunityDiscordSyncAttempt: "cascade",
   // ON DELETE CASCADE from ListenerTasteSignalControl, which this engine deletes.
   ListenerTasteNoteEmbedding: "cascade",
+  // Dangling `artistId` (#2669): copied from the release so the artist's typed
+  // composition details are found without a relation that would block deletes.
+  TrackComposition: [{ kind: "artistId", column: "artistId" }],
 };
 
 /**
