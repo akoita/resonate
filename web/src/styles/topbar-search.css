@@ -1,0 +1,230 @@
+/* Top-bar search (#2671). */
+.topbar-search {
+  position: relative;
+  flex: 0 1 360px;
+  min-width: 0;
+}
+
+.topbar-search-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.topbar-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  color: var(--color-muted);
+}
+
+.topbar-search-field:focus-within {
+  border-color: var(--color-accent);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.topbar-search .topbar-search-field input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.topbar-search-field input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.topbar-search-hint {
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: var(--color-muted);
+}
+
+.topbar-search-field:focus-within .topbar-search-hint {
+  display: none;
+}
+
+.topbar-search-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 300px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  background: #12121a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  z-index: 600;
+}
+
+.topbar-search-panel[hidden] {
+  display: none;
+}
+
+.topbar-search-results,
+.topbar-search-results ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.topbar-search-group {
+  padding: 8px 8px 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.topbar-search-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  min-height: 44px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.topbar-search-option.is-active {
+  background: rgba(var(--color-accent-rgb), 0.18);
+}
+
+.topbar-search-thumb {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.topbar-search-thumb--artists {
+  border-radius: 50%;
+}
+
+.topbar-search-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.topbar-search-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar-search-label,
+.topbar-search-detail {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-search-label {
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.topbar-search-detail {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+
+.topbar-search-empty {
+  margin: 0;
+  padding: 10px 8px;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+/* Phone: an icon that opens the field across the bar. */
+@media (max-width: 767px) {
+  .topbar-search {
+    flex: 0 0 auto;
+    position: static;
+  }
+
+  .topbar-search-toggle {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .topbar-search-field {
+    display: none;
+  }
+
+  /* Open: the field and its results take the width of the bar. */
+  .topbar-search.is-expanded {
+    position: absolute;
+    left: var(--space-4);
+    right: var(--space-4);
+    top: var(--space-3);
+    z-index: 601;
+  }
+
+  .topbar-search.is-expanded .topbar-search-toggle {
+    display: none;
+  }
+
+  .topbar-search.is-expanded .topbar-search-field {
+    display: flex;
+    height: 44px;
+    background: #12121a;
+  }
+
+  .topbar-search.is-expanded .topbar-search-hint {
+    display: none;
+  }
+
+  .topbar-search-panel {
+    min-width: 0;
+    max-height: calc(100dvh - 180px);
+  }
+}
+
+/* Keep the page title readable beside the field: the title area starts from
+ * its own width instead of zero, so the field and the title share the
+ * squeeze on narrower screens. */
+@media (min-width: 768px) {
+  .app-topbar .topbar-leading {
+    flex: 1 1 160px;
+  }
+}

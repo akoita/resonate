@@ -783,7 +783,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "charts empty", "empty charts", "my plays don't count", "my listens don't count", "listens not counted", "not enough listening", "minimum listeners", "why am I not trending", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge", "tuner", "energy", "stem lab", "mixer", "solo", "live events", "shows", "studio"],
+    keywords: ["search bar", "top bar search", "find an artist", "find a release", "find a song", "keyboard shortcut", "ctrl+k", "discover", "home", "browse", "catalog", "trending", "top artists", "charts", "charts empty", "empty charts", "my plays don't count", "my listens don't count", "listens not counted", "not enough listening", "minimum listeners", "why am I not trending", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge", "tuner", "energy", "stem lab", "mixer", "solo", "live events", "shows", "studio"],
     sections: [
       {
         id: "home",
@@ -811,6 +811,24 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 1200,
               source: STAGING,
             },
+          },
+        ],
+      },
+      {
+        id: "search",
+        heading: "Search from any page",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The search field at the top of every page finds artists, releases, tracks and public playlists by name. Type at least two letters and the results appear in groups under the field. Select one to open its page; a track opens the release it belongs to.",
+          },
+          {
+            kind: "paragraph",
+            text: "Press / or Ctrl+K (Cmd+K on a Mac) from anywhere to jump to the field. Use the up and down arrows to move through the results, Enter to open one, and Escape to close the list (press it again to clear the field). Screen readers announce how many results were found. On a phone, tap the magnifying glass in the top bar to open the field.",
+          },
+          {
+            kind: "paragraph",
+            text: "Search shows only what you can open and play: releases an artist has withdrawn, releases that are not finished yet, tracks taken down after a rights claim and private playlists never appear.",
           },
         ],
       },

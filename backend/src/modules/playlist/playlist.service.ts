@@ -556,13 +556,19 @@ export class PlaylistService {
      * Covers and counts for every candidate are resolved with a single batched
      * LibraryTrack query (no per-playlist round trips).
      */
-    async listPublicPlaylists(options?: { limit?: number }): Promise<PublicPlaylistSummary[]> {
+    async listPublicPlaylists(options?: { limit?: number; query?: string }): Promise<PublicPlaylistSummary[]> {
         const limit = clampLimit(options?.limit, 50);
+        // #2671: the top-bar search narrows the same feed by name, so its
+        // results follow the same playable-track rule.
+        const name = options?.query?.trim();
         // Over-fetch candidates because some will be dropped for having no
         // playable track; cap the work regardless of the requested limit.
         const candidateTake = Math.min(limit * 4, PUBLIC_PLAYLIST_DISCOVERY_MAX);
         const candidates = await prisma.playlist.findMany({
-            where: { visibility: "public" },
+            where: {
+                visibility: "public",
+                ...(name ? { name: { contains: name, mode: "insensitive" as const } } : {}),
+            },
             orderBy: { updatedAt: "desc" },
             take: candidateTake,
             include: { user: { select: { artist: { select: { displayName: true } } } } },
