@@ -20,7 +20,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
-import { hours } from "../shared/rate_limits";
+import { hours, trackByUser } from "../shared/rate_limits";
 import { ArtistService } from "./artist.service";
 import { ArtistEnrichmentService } from "./artist-enrichment.service";
 import { InvitationsService } from "../invitations/invitations.service";
@@ -30,8 +30,7 @@ const ARTIST_ENRICHMENT_THROTTLE = {
     default: {
         limit: 10,
         ttl: hours(1),
-        // The global throttler runs before the route JWT guard populates req.user.
-        getTracker: (req: Record<string, any>) => req.ip,
+        getTracker: trackByUser,
     },
 } as const;
 
@@ -144,7 +143,7 @@ export class ArtistController {
         default: {
             limit: 5,
             ttl: hours(1),
-            getTracker: (req: Record<string, any>) => req.user?.userId ?? req.ip,
+            getTracker: trackByUser,
         },
     })
     @UseGuards(AuthGuard("jwt"))

@@ -20,7 +20,7 @@ import {
 } from "./account_closure.service";
 import { AccountClosureStepUpService } from "./account_closure_step_up.service";
 import { PersonalDataExportService } from "./personal_data_export.service";
-import { hours } from "../shared/rate_limits";
+import { hours, trackByUser } from "../shared/rate_limits";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { SubscriptionLifecycleService } from "../billing/subscription_lifecycle.service";
@@ -47,13 +47,6 @@ function closureView(request: AccountClosureRequest | null) {
   };
 }
 
-/**
- * Per-person rate-limit tracking, shared by the closure routes.
- *
- * See `exportPersonalData` below for why `req.ip` is the wrong tracker on an
- * authenticated route in both directions.
- */
-const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
 // Data export and erasure are the person's rights over their own data, so a
 // suspended or closed account keeps every route here (#2147).
@@ -91,15 +84,8 @@ export class PrivacyController {
     default: {
       limit: 3,
       ttl: hours(1),
-      // Tracked per person, not per IP. `ThrottlerGuard.getTracker` returns
-      // `req.ip` by default, which is wrong in both directions for an
-      // authenticated route: a household or office behind one NAT shares a
-      // budget meant for one account, and somebody holding a stolen token
-      // rotates IPs to lift the limit entirely. The guard runs after
-      // `AuthGuard`, so `req.user` is populated; the IP fallback only applies
-      // on a path where the guard let an unauthenticated request through,
-      // which `requireUserId` then rejects anyway.
-      getTracker: (req: Record<string, any>) => req.user?.userId ?? req.ip,
+      // Tracked per person, not per IP: see `trackByUser`.
+      getTracker: trackByUser,
     },
   })
   @UseGuards(AuthGuard("jwt"))

@@ -53,3 +53,33 @@ export function hours(count: number): number {
  * inherited from a line that never ran.
  */
 export const GLOBAL_RATE_LIMIT = { limit: 1_200, ttl: minutes(1) } as const;
+
+/**
+ * Starting a listening or AI DJ session, per listener. A start resolves a
+ * seed, records a budget and plans the first picks, so it costs far more than
+ * a page load; six a minute is more than anyone restarting by hand needs.
+ * Each start route has its own window of this size.
+ */
+export const SESSION_START_LIMIT = { limit: 6, ttl: minutes(1) } as const;
+
+/**
+ * Tracker for routes that should count per signed-in person rather than per
+ * address: a household or office behind one NAT would otherwise share one
+ * person's budget, and somebody holding a stolen token could rotate addresses
+ * to lift the limit.
+ *
+ * `req.user` is set by `UserAwareThrottlerGuard`, which verifies the bearer
+ * token before any tracker runs. Without it the global guard would run before
+ * the route's `AuthGuard("jwt")`, and every "per user" limit would silently
+ * be per address. A request with no valid token falls back to its address;
+ * the route's own `AuthGuard` then rejects it anyway.
+ *
+ * The prefixes keep a user id and an address from ever sharing a bucket.
+ */
+export function trackByUser(req: Record<string, any>): string {
+  const userId = req.user?.userId;
+  if (typeof userId === "string" && userId.length > 0) {
+    return `user:${userId}`;
+  }
+  return `ip:${req.ip}`;
+}

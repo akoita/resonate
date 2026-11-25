@@ -1,7 +1,9 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { GLOBAL_RATE_LIMIT } from "./shared/rate_limits";
+import { createRateLimitStorage } from "./shared/rate_limit_storage";
+import { UserAwareThrottlerGuard } from "./shared/user_aware_throttler.guard";
 import { ConfigModule } from "@nestjs/config";
 import { BullModule } from "@nestjs/bullmq";
 import { SharedModule } from "./shared/shared.module";
@@ -77,8 +79,13 @@ import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
       },
     }),
     SharedModule,
-    ThrottlerModule.forRoot({
-      throttlers: [GLOBAL_RATE_LIMIT],
+    // Counts live in Redis when it is configured, so a limit holds across
+    // instances (RATE_LIMIT_STORE; see shared/rate_limit_storage.ts).
+    ThrottlerModule.forRootAsync({
+      useFactory: () => ({
+        throttlers: [GLOBAL_RATE_LIMIT],
+        storage: createRateLimitStorage(),
+      }),
     }),
     HealthModule,
     ProductSurfacesModule,
@@ -139,7 +146,9 @@ import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
     AdminStepUpModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Verifies a bearer token before picking a tracker, so per-user limits
+    // count per person rather than per address.
+    { provide: APP_GUARD, useClass: UserAwareThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     // After RolesGuard: enforces @RequireStepUp() on destructive admin routes (#2173).
     { provide: APP_GUARD, useClass: AdminStepUpGuard },

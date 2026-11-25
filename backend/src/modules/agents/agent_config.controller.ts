@@ -29,7 +29,7 @@ import {
 } from "./agent_session_request";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { EventBus } from "../shared/event_bus";
-import { minutes } from "../shared/rate_limits";
+import { minutes, SESSION_START_LIMIT, trackByUser } from "../shared/rate_limits";
 import { CRATE_REQUEST_MAX_TEXT_LENGTH } from "../crates/crate.types";
 import type { CrateRequestParser } from "../crates/crate_request_parser";
 import { AgentSessionArtistResolver } from "./agent_session_artist_resolver";
@@ -51,8 +51,6 @@ import {
     UpdateAgentConfigDto,
 } from "./agent_config.dto";
 
-/** Tracked per signed-in person where the guard has resolved them, else per IP. */
-const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
 /**
  * Body of `POST /agents/config/session/parse` (#2037): the listener's own words.
@@ -329,8 +327,7 @@ export class AgentConfigController {
             throw new BadRequestException({ reason: "text_required" });
         }
         this.requestParser ??= createAgentSessionRequestParser(new AgentSessionArtistResolver());
-        // The user id only keys the model-assisted parser's per-user budget; the
-        // throttle above sees the IP, because global guards run before the JWT one.
+        // The user id also keys the model-assisted parser's own per-user budget.
         const userId = typeof req?.user?.userId === "string" ? req.user.userId : undefined;
         return listeningRequestFromCrateParse(
             await this.requestParser.parse(text, userId ? { userId } : undefined),
@@ -340,6 +337,7 @@ export class AgentConfigController {
     @AllowWhileSuspended()
     @Post("session")
     @UseGuards(AuthGuard("jwt"))
+    @Throttle({ default: { limit: SESSION_START_LIMIT.limit, ttl: SESSION_START_LIMIT.ttl, getTracker: trackByUser } })
     async startSession(
         @Req() req: any,
         @Body() body?: StartAgentConfigSessionDto,

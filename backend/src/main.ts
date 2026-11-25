@@ -7,6 +7,7 @@ import { AppModule } from "./modules/app.module";
 import { RedisIoAdapter } from "./modules/shared/redis.adapter";
 import { getCorsAllowedOrigins } from "./config/cors";
 import { applyGlobalValidation } from "./config/validation";
+import { applyTrustProxy } from "./config/trust_proxy";
 import { requestObservabilityMiddleware } from "./modules/shared/request_observability.middleware";
 import { createAppLogger } from "./modules/shared/structured_nest_logger";
 import { assertAnalyticsActorIdSaltConfiguration } from "./modules/analytics/analytics_identity";
@@ -71,6 +72,9 @@ async function bootstrap() {
   });
   app.useLogger(createAppLogger());
   applyGlobalValidation(app);
+  // Real client addresses behind the load balancer, for per-address limits.
+  const proxyHops = applyTrustProxy(app.getHttpAdapter().getInstance());
+  console.log(`[Bootstrap] Trusted proxy hops: ${proxyHops ?? "none"}`);
 
   // Enable cross-instance WebSocket broadcasting via Redis pub/sub
   try {

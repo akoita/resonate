@@ -2,17 +2,16 @@ import { Body, Controller, Delete, Get, HttpCode, Post, Put, Req, UseGuards } fr
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
-import { hours } from "../shared/rate_limits";
+import { hours, trackByUser } from "../shared/rate_limits";
 import { ContactEmailService } from "./contact_email.service";
 import { ContactEmailPreferencesDto, SetContactEmailDto } from "./email.dto";
 
 /**
- * Tracked per person where the JWT has been resolved, else per IP (see PrivacyController).
- * In practice that is per IP: the global ThrottlerGuard runs before this route's
- * AuthGuard, so `req.user` is not set yet. These limits are a second layer; the
- * per-account limit is enforced in `ContactEmailService.reserveConfirmationSend`.
+ * Tracked per person (see `trackByUser`). These limits are a second layer; the
+ * durable per-account limit is enforced in
+ * `ContactEmailService.reserveConfirmationSend`.
  */
-const perUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
+const perUser = trackByUser;
 
 /**
  * The signed-in person's optional notice-email address (#2169). Every mutating
