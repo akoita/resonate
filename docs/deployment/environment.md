@@ -319,7 +319,7 @@ When adding a new environment variable:
 | `PAYMENT_ORACLE_MAX_STALENESS` | Contracts | Maximum accepted feed age in seconds for deployed oracle adapters. Defaults to `86400` |
 | `NEXT_PUBLIC_PAYMENT_ASSETS_JSON` | Frontend | Public mirror of local/deployed payment asset metadata for client-side display |
 | `NEXT_PUBLIC_PAYMENT_DEFAULT_ASSET` | Frontend | Public default payment asset id for client-side display |
-| `HUMAN_VERIFICATION_PROVIDER` | Backend | `mock`, `passport`, or `worldcoin`; defaults to `mock` locally |
+| `HUMAN_VERIFICATION_PROVIDER` | Backend | `mock`, `passport`, or `worldcoin`; defaults to `mock` locally. Production requires `passport` or `worldcoin` (see Production Start-up Guards). |
 | `HUMAN_VERIFICATION_REQUIRED_REPORTS` | Backend | Report count threshold that triggers proof-of-humanity gating |
 | `CURATOR_REPUTATION_DECAY_DAYS` | Backend | Days per inactivity decay window for curator effective score |
 | `CURATOR_REPUTATION_DECAY_POINTS` | Backend | Reputation points removed per decay window |
@@ -433,6 +433,46 @@ bounded by `INGESTION_MULTIPART_MAX_ACTIVE_WRITERS × 65536` bytes (256 KiB at
 the default of four writers); no later chunks are accepted or written. The
 bound covers bytes already handed to a writer when the rejection is observed,
 not the bytes received before rejection.
+
+## Production Start-up Guards
+
+A production-tier deployment (`RESONATE_ENVIRONMENT_ID` names a `prod` tier)
+refuses to start while it runs on a development default (#2660). The backend
+lists every problem, naming each variable, and exits before it serves a
+request. Staging, development and tests keep their defaults. `NODE_ENV` is not
+the signal: every image sets it to `production`.
+
+Run the same check before a rollout, against the configuration about to be
+deployed:
+
+```bash
+npm run config:check -- --env production   # from backend/, source tree
+npm run config:check:prod -- --env production   # from a built image
+```
+
+It exits `1` and lists the problems, or exits `0`.
+
+| Variable | Required in production |
+| --- | --- |
+| `JWT_SECRET` | Set. |
+| `HUMAN_VERIFICATION_PROVIDER` | `passport` or `worldcoin`. Unset means `mock`, which passes everyone. |
+| `ENCRYPTION_SECRET` | Set, and different from `JWT_SECRET`, while content encryption is on with the AES provider (the default). Unset, the content key is derived from `JWT_SECRET`. |
+| `MINT_AUTHORIZER_PRIVATE_KEY` | Set, and different from the deployer key `PRIVATE_KEY`. Unset, mint and attestation vouchers fall back to the deployer key. |
+| `KMS_PROVIDER`, `GCP_KMS_KEY_NAME` | `gcp-kms` with a key name. `local` (the default) wraps agent keys with a key held in the environment. |
+| `STORAGE_PROVIDER` | `gcs`. `local` (the default) keeps audio on the instance disk; `ipfs` and `filecoin` cannot delete audio after a takedown, a withdrawal or an erasure. |
+| `AUTH_DEV_LOGIN_ENABLED`, `ENABLE_DEV_WIPE`, `SIGNUP_FAUCET_ENABLED`, `SIGNUP_SEPOLIA_FAUCET_ENABLED`, `NEXT_PUBLIC_MOCK_AUTH`, `ALLOW_PLAINTEXT_AGENT_KEYS` | Unset or `false`. |
+
+The web build refuses `NEXT_PUBLIC_MOCK_AUTH=true` when `NEXT_PUBLIC_ENV` is
+`production` or `prod`, so a production web build must set `NEXT_PUBLIC_ENV`.
+The agent worker entry point is not guarded; it does not serve sign-in,
+storage or minting.
+
+**Rotating `ENCRYPTION_SECRET` is not supported yet.** The AES provider derives
+one key from the secret and stored content carries no key version, so changing
+the secret makes earlier encrypted stems unreadable. Until a key version marker
+and a re-encryption job exist, treat the secret as long-lived, keep it only in
+the secret manager, and rotate it only together with re-uploading the affected
+content.
 
 ## Product Surface Switches
 

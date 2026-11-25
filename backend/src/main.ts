@@ -17,6 +17,7 @@ import {
 } from "./config/runtime_mode";
 import { fastForwardStaleIndexerCursor } from "./modules/contracts/indexer_cursor_self_heal";
 import { workerHealthOnlyMiddleware } from "./modules/health/worker_health_only.middleware";
+import { assertProductionConfiguration } from "./config/production_guards";
 
 /**
  * Boot-time repair: fast-forwards a stale indexer cursor and normalises absolute
@@ -50,6 +51,8 @@ async function bootstrap() {
   console.log("🚀 RESONATE BACKEND BOOTING...");
   console.log("========================================");
 
+  // #2660: a production deployment refuses to start on development defaults.
+  assertProductionConfiguration();
   assertAnalyticsActorIdSaltConfiguration();
 
   // #1608: one image, one entrypoint; BACKEND_RUNTIME_MODE picks the role.
