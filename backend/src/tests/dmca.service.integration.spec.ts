@@ -77,6 +77,7 @@ describe("DmcaService (integration)", () => {
       claimantEmail: "artist@example.com",
       originalWorkUrl: "https://youtube.com/watch?v=xxx",
       reason: "This is my song uploaded without permission",
+      goodFaith: true,
     });
 
     expect(result.status).toBe("pending");
@@ -99,6 +100,7 @@ describe("DmcaService (integration)", () => {
         claimantEmail: "test@test.com",
         originalWorkUrl: "https://example.com",
         reason: "Test reason",
+        goodFaith: true,
       }),
     ).rejects.toThrow(NotFoundException);
   });
@@ -111,6 +113,7 @@ describe("DmcaService (integration)", () => {
         claimantEmail: "test@test.com",
         originalWorkUrl: "https://example.com",
         reason: "Test reason",
+        goodFaith: true,
       }),
     ).rejects.toThrow(BadRequestException);
   });
@@ -188,6 +191,7 @@ describe("DmcaService (integration)", () => {
       claimantEmail: "troll@example.com",
       originalWorkUrl: "https://example.com",
       reason: "False claim",
+      goodFaith: true,
     });
 
     // Reset track status for this test
@@ -229,6 +233,7 @@ describe("DmcaService (integration)", () => {
       claimantEmail: "claimant@example.com",
       originalWorkUrl: "https://example.com/original",
       reason: "Pending claim",
+      goodFaith: true,
     });
 
     const result = await service.fileCounter(pending.id, "Reviewed on behalf of the owner", reviewer);
@@ -254,6 +259,7 @@ describe("DmcaService (integration)", () => {
         claimantEmail: "claimant@example.com",
         originalWorkUrl: "https://example.com/original",
         reason: "Pending claim",
+        goodFaith: true,
       });
 
       const result = await service.fileCounter(

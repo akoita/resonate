@@ -3156,8 +3156,19 @@ model DmcaReport {
   claimantEmail   String
   originalWorkUrl String
   reason          String    @db.Text
+  // #2664: the web report form. Older rows predate these and leave them empty.
+  // Capacity: rights_holder, authorized_agent, artist_themselves, someone_else.
+  claimantCapacity String?
+  // Category: copyright (default, and every older row), impersonation, illegal_content, other.
+  category         String    @default("copyright")
+  // Where on Resonate the content is, as the reporter gave it (an in-app link).
+  contentLocation  String?
+  // When the reporter confirmed the statement of good faith.
+  goodFaithAt      DateTime?
   status          String    @default("pending") // pending, upheld, rejected, countered
   counterNotice   String?   @db.Text
+  // The reviewer's statement of reasons, shown to the uploader with the decision.
+  statementOfReasons String? @db.Text
   resolvedAt      DateTime?
   createdAt       DateTime  @default(now())
   track           Track     @relation(fields: [trackId], references: [id])

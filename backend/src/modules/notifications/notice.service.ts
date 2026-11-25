@@ -328,26 +328,79 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
         category: "moderation",
         title: notice.title,
         body: notice.body,
-        link: NOTICES_HELP_PATH,
+        link: notice.link,
       },
       DMCA_ACTOR,
       { dedupeKey: `dmca_report:${reportId}` },
     );
   }
+
+  /**
+   * #2664: tell the creator that a notice was filed about their upload, before
+   * any decision, with a link to answer it. One notice per report.
+   */
+  async notifyDmcaReceived(reportId: string) {
+    return this.sendDmcaNotice(reportId, await buildDmcaReceivedNotice(reportId), `dmca_report_received:${reportId}`);
+  }
+
+  /** #2664: tell the creator that a notice was reviewed and no action was taken. */
+  async notifyDmcaRejected(reportId: string) {
+    return this.sendDmcaNotice(reportId, await buildDmcaRejectedNotice(reportId), `dmca_report_rejected:${reportId}`);
+  }
+
+  private async sendDmcaNotice(
+    reportId: string,
+    notice: DmcaNoticeDraft | null,
+    dedupeKey: string,
+  ) {
+    if (!notice) return null;
+    if (!notice.ownerUserId) {
+      this.logger.warn(`Notice skipped for DMCA report ${reportId}: no owner account to notify`);
+      return null;
+    }
+    return this.sendTargeted(
+      {
+        userIds: [notice.ownerUserId],
+        category: "moderation",
+        title: notice.title,
+        body: notice.body,
+        link: notice.link,
+      },
+      DMCA_ACTOR,
+      { dedupeKey },
+    );
+  }
 }
 
-/**
- * #2146: tell the creator that an upheld takedown removed their upload. The
- * recipient is the release's management owner, else the artist's account —
- * the same owner rule `management-access.ts` uses. States the release and
- * track and the reason category (copyright complaint); never the
- * complainant's identity, contact details or written reason.
- */
-export async function buildDmcaTakedownNotice(reportId: string) {
+/** A creator notice about a takedown report; `ownerUserId` null when no account can be told. */
+export type DmcaNoticeDraft =
+  | { ownerUserId: null }
+  | { ownerUserId: string; title: string; body: string; link: string };
+
+/** In-app page where a creator reads notices about their uploads and answers them (#2664). */
+export const DMCA_RESPOND_PATH = "/report/respond";
+
+/** Plain words for a report category (#2664); older reports are copyright complaints. */
+export function dmcaCategoryLabel(category: string | null | undefined): string {
+  switch (category) {
+    case "impersonation":
+      return "impersonation";
+    case "illegal_content":
+      return "illegal content";
+    case "other":
+      return "another rights or safety concern";
+    default:
+      return "copyright complaint";
+  }
+}
+
+async function loadDmcaNoticeSubject(reportId: string) {
   const report = await prisma.dmcaReport.findUnique({
     where: { id: reportId },
     select: {
       status: true,
+      category: true,
+      statementOfReasons: true,
       track: {
         select: {
           title: true,
@@ -362,17 +415,74 @@ export async function buildDmcaTakedownNotice(reportId: string) {
       },
     },
   });
-  if (!report || report.status !== "upheld") return null;
+  if (!report) return null;
   const release = report.track.release;
-  const ownerUserId = release.managementOwnerUserId ?? release.artist?.userId ?? null;
-  if (!ownerUserId) return { ownerUserId: null } as const;
   return {
-    ownerUserId,
-    title: "Your track was removed after a copyright complaint",
+    report,
+    trackTitle: report.track.title,
+    releaseTitle: release.title,
+    ownerUserId: release.managementOwnerUserId ?? release.artist?.userId ?? null,
+  };
+}
+
+/**
+ * #2664: a notice was filed about the creator's track. Names the track, the
+ * release and the category; never the reporter's identity, contact or words.
+ */
+export async function buildDmcaReceivedNotice(reportId: string): Promise<DmcaNoticeDraft | null> {
+  const subject = await loadDmcaNoticeSubject(reportId);
+  if (!subject) return null;
+  if (!subject.ownerUserId) return { ownerUserId: null } as const;
+  return {
+    ownerUserId: subject.ownerUserId,
+    title: "A notice was filed about your track",
     body:
-      `Your track "${report.track.title}" on the release "${release.title}" was removed after a rights complaint ` +
-      "was reviewed and upheld. Reason: copyright complaint. Its stems are no longer available. " +
-      "A counter-notice cannot be filed from the app yet; the help page explains what this notice means.",
+      `Someone reported your track "${subject.trackTitle}" on the release "${subject.releaseTitle}". ` +
+      `Reason: ${dmcaCategoryLabel(subject.report.category)}. Nothing has been removed: an operator reviews the notice first, ` +
+      "and you will be told the decision and why. If you hold the rights, you can send a counter-notice now.",
+    link: `${DMCA_RESPOND_PATH}?id=${encodeURIComponent(reportId)}`,
+  } as const;
+}
+
+/** #2664: a reviewed notice led to no action. */
+export async function buildDmcaRejectedNotice(reportId: string): Promise<DmcaNoticeDraft | null> {
+  const subject = await loadDmcaNoticeSubject(reportId);
+  if (!subject || subject.report.status !== "rejected") return null;
+  if (!subject.ownerUserId) return { ownerUserId: null } as const;
+  const reasons = subject.report.statementOfReasons?.trim();
+  return {
+    ownerUserId: subject.ownerUserId,
+    title: "A notice about your track was reviewed: no action",
+    body:
+      `The notice about your track "${subject.trackTitle}" on the release "${subject.releaseTitle}" was reviewed ` +
+      "and not upheld. Your track stays available." +
+      (reasons ? ` Reviewer's reasons: ${reasons}` : ""),
+    link: `${DMCA_RESPOND_PATH}?id=${encodeURIComponent(reportId)}`,
+  } as const;
+}
+
+/**
+ * #2146: tell the creator that an upheld takedown removed their upload. The
+ * recipient is the release's management owner, else the artist's account —
+ * the same owner rule `management-access.ts` uses. States the release and
+ * track, the reason category and the reviewer's statement of reasons (#2664);
+ * never the complainant's identity, contact details or written reason.
+ */
+export async function buildDmcaTakedownNotice(reportId: string) {
+  const subject = await loadDmcaNoticeSubject(reportId);
+  if (!subject || subject.report.status !== "upheld") return null;
+  if (!subject.ownerUserId) return { ownerUserId: null } as const;
+  const category = dmcaCategoryLabel(subject.report.category);
+  const reasons = subject.report.statementOfReasons?.trim();
+  return {
+    ownerUserId: subject.ownerUserId,
+    title: `Your track was removed after a ${category === "copyright complaint" ? "copyright complaint" : "rights notice"}`,
+    body:
+      `Your track "${subject.trackTitle}" on the release "${subject.releaseTitle}" was removed after a rights complaint ` +
+      `was reviewed and upheld. Reason: ${category}. Its stems are no longer available.` +
+      (reasons ? ` Reviewer's reasons: ${reasons}` : "") +
+      " If you hold the rights, you can send a counter-notice from the report page.",
+    link: `${DMCA_RESPOND_PATH}?id=${encodeURIComponent(reportId)}`,
   } as const;
 }
 

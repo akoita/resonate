@@ -30,6 +30,7 @@ const mockDmcaService = {
   fileCounter: jest.fn(),
   resolveReport: jest.fn(),
   listReports: jest.fn(),
+  listForCreator: jest.fn(),
 };
 
 const reportBody = {
@@ -85,6 +86,51 @@ describe("DmcaController (http)", () => {
       expect(res.body.id).toBe("report-1");
       expect(res.body).not.toHaveProperty("claimantEmail");
       expect(mockDmcaService.fileReport).toHaveBeenCalledWith(reportBody);
+    });
+
+    it("accepts the full report form (#2664)", async () => {
+      const full = {
+        ...reportBody,
+        claimantCapacity: "authorized_agent",
+        contentLocation: "/release/release-1",
+        category: "impersonation",
+        goodFaith: true,
+        website: "",
+      };
+      await request(app.getHttpServer()).post("/api/dmca/report").send(full).expect(201);
+      expect(mockDmcaService.fileReport).toHaveBeenCalledWith(full);
+    });
+
+    it.each([
+      ["an email that is not an address", { claimantEmail: "not-an-email" }],
+      ["an unknown category", { category: "spam" }],
+      ["an unknown capacity", { claimantCapacity: "fan" }],
+      ["a reason over 5000 characters", { reason: "x".repeat(5001) }],
+      ["a good-faith flag that is not a boolean", { goodFaith: "yes" }],
+      ["a missing track", { trackId: undefined }],
+    ])("400 for %s", async (_label, change) => {
+      await request(app.getHttpServer())
+        .post("/api/dmca/report")
+        .send({ ...reportBody, ...change })
+        .expect(400);
+      expect(mockDmcaService.fileReport).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("GET /api/dmca/mine (signed-in creator)", () => {
+    it("401 without a JWT", async () => {
+      await request(app.getHttpServer()).get("/api/dmca/mine").expect(401);
+      expect(mockDmcaService.listForCreator).not.toHaveBeenCalled();
+    });
+
+    it("200 with the caller's own notices", async () => {
+      mockDmcaService.listForCreator.mockResolvedValueOnce([{ id: "report-1", status: "pending" }]);
+      const res = await request(app.getHttpServer())
+        .get("/api/dmca/mine")
+        .set("Authorization", `Bearer ${artist}`)
+        .expect(200);
+      expect(res.body).toEqual([{ id: "report-1", status: "pending" }]);
+      expect(mockDmcaService.listForCreator).toHaveBeenCalledWith("artist-1");
     });
   });
 
@@ -182,10 +228,12 @@ describe("DmcaController (http)", () => {
         .set(confirmed("admin-1", "admin"))
         .send({ ...body, resolvedBy: "someone-else" })
         .expect(200);
-      expect(mockDmcaService.resolveReport).toHaveBeenCalledWith("report-1", "upheld", {
-        userId: "admin-1",
-        role: "admin",
-      });
+      expect(mockDmcaService.resolveReport).toHaveBeenCalledWith(
+        "report-1",
+        "upheld",
+        { userId: "admin-1", role: "admin" },
+        undefined,
+      );
     });
 
     it("200 for an operator", async () => {
@@ -194,10 +242,12 @@ describe("DmcaController (http)", () => {
         .set(confirmed("operator-1", "operator"))
         .send(body)
         .expect(200);
-      expect(mockDmcaService.resolveReport).toHaveBeenCalledWith("report-1", "upheld", {
-        userId: "operator-1",
-        role: "operator",
-      });
+      expect(mockDmcaService.resolveReport).toHaveBeenCalledWith(
+        "report-1",
+        "upheld",
+        { userId: "operator-1", role: "operator" },
+        undefined,
+      );
     });
   
     it("needs a fresh step-up proof: a takedown is destructive (#2362)", async () => {
@@ -221,15 +271,40 @@ describe("DmcaController (http)", () => {
       });
     });
 
-    it("drops an outcome that is not a known code instead of recording it", async () => {
+    it("400 for an outcome that is not upheld or rejected, recording nothing (#2664)", async () => {
       await request(app.getHttpServer())
         .patch("/api/dmca/report-1/resolve")
         .set(confirmed("admin-1", "admin"))
         .send({ outcome: "some free text typed by mistake" })
+        .expect(400);
+      expect(mockDmcaService.resolveReport).not.toHaveBeenCalled();
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it("passes the statement of reasons to the service but never records its text (#2664)", async () => {
+      await request(app.getHttpServer())
+        .patch("/api/dmca/report-1/resolve")
+        .set(confirmed("admin-1", "admin"))
+        .send({ outcome: "upheld", statementOfReasons: "Matches the registered recording." })
         .expect(200);
-      expect(mockAudit).toHaveBeenCalledWith(
-        expect.objectContaining({ action: "dmca.report_resolved", detail: { reportId: "report-1" } }),
+      expect(mockDmcaService.resolveReport).toHaveBeenCalledWith(
+        "report-1",
+        "upheld",
+        { userId: "admin-1", role: "admin" },
+        "Matches the registered recording.",
       );
+      expect(mockAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: { reportId: "report-1", outcome: "upheld" } }),
+      );
+    });
+
+    it("400 for a statement of reasons over 2000 characters", async () => {
+      await request(app.getHttpServer())
+        .patch("/api/dmca/report-1/resolve")
+        .set(confirmed("admin-1", "admin"))
+        .send({ outcome: "upheld", statementOfReasons: "x".repeat(2001) })
+        .expect(400);
+      expect(mockDmcaService.resolveReport).not.toHaveBeenCalled();
     });
 
     it("records nothing when the service refuses", async () => {
@@ -237,7 +312,7 @@ describe("DmcaController (http)", () => {
       await request(app.getHttpServer())
         .patch("/api/dmca/report-1/resolve")
         .set(confirmed("admin-1", "admin"))
-        .send({ outcome: "x" })
+        .send({ outcome: "upheld" })
         .expect(400);
       expect(mockAudit).not.toHaveBeenCalled();
     });

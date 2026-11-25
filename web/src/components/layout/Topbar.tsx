@@ -32,6 +32,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/admin/credit-requests", "Credit Requests"],
   ["/admin/notices", "Platform Notices"],
   ["/admin/management-recovery", "Management Transfer Recovery"],
+  ["/admin/takedowns", "Takedown Notices"],
   ["/artist/catalog", "Catalog"],
   ["/artist/listings", "Listings"],
   ["/artist/upload", "Upload"],
@@ -44,6 +45,8 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/privacy", "Privacy Policy"],
   ["/refunds", "Refund Policy"],
   ["/imprint", "Imprint & Contact"],
+  ["/report/respond", "Notices About Your Tracks"],
+  ["/report", "Report Content"],
 ];
 
 function getRouteTitle(pathname: string | null) {

@@ -14,6 +14,7 @@ import { Throttle } from "@nestjs/throttler";
 import { Roles } from "../auth/roles.decorator";
 import { hours } from "../shared/rate_limits";
 import { DmcaService, type DmcaActor } from "./dmca.service";
+import { FileDmcaCounterDto, FileDmcaReportDto, ResolveDmcaReportDto } from "./dmca.dto";
 import { AdminAudit, auditBody, auditCode, auditRef } from "../admin_audit/admin_audit.interceptor";
 import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 
@@ -25,22 +26,24 @@ export class DmcaController {
    * File a DMCA takedown report.
    * POST /api/dmca/report
    *
-   * Public (claimants may not have an account), rate limited per IP.
-   * Returns only the new report's reference.
+   * Public (claimants may not have an account), rate limited per IP. The web
+   * report form posts here (#2664). Returns only the new report's reference.
    */
   @Post("report")
   @Throttle({ default: { limit: 10, ttl: hours(1) } })
-  async fileReport(
-    @Body()
-    body: {
-      trackId: string;
-      claimantName: string;
-      claimantEmail: string;
-      originalWorkUrl: string;
-      reason: string;
-    },
-  ) {
+  async fileReport(@Body() body: FileDmcaReportDto) {
     return this.dmcaService.fileReport(body);
+  }
+
+  /**
+   * Notices filed against the caller's own releases, for the counter-notice
+   * page (#2664). Never includes the reporter's identity or contact details.
+   * GET /api/dmca/mine
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("mine")
+  async listMine(@Req() req: { user: DmcaActor }) {
+    return this.dmcaService.listForCreator(req.user.userId);
   }
 
   /**
@@ -53,7 +56,7 @@ export class DmcaController {
   @Post("counter")
   async fileCounter(
     @Req() req: { user: DmcaActor },
-    @Body() body: { reportId: string; counterNotice: string },
+    @Body() body: FileDmcaCounterDto,
   ) {
     return this.dmcaService.fileCounter(
       body?.reportId,
@@ -78,9 +81,9 @@ export class DmcaController {
   async resolveReport(
     @Req() req: { user: DmcaActor },
     @Param("id") id: string,
-    @Body() body: { outcome: "upheld" | "rejected" },
+    @Body() body: ResolveDmcaReportDto,
   ) {
-    return this.dmcaService.resolveReport(id, body?.outcome, req.user);
+    return this.dmcaService.resolveReport(id, body?.outcome, req.user, body?.statementOfReasons);
   }
 
   /**
