@@ -8,7 +8,7 @@ import NotificationPreferences from "../../components/notifications/Notification
 import AgentDjSettingsPanel from "../../components/settings/AgentDjSettingsPanel";
 import AccountClosurePanel from "../../components/settings/AccountClosurePanel";
 import AnalyticsConsentSettingsPanel from "../../components/settings/AnalyticsConsentSettingsPanel";
-import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSettingsPanel";
+import ArtistParticipationSettingsPanel from "../../components/settings/ArtistParticipationSettingsPanel";
 import FoundingArtistInvitationsPanel from "../../components/settings/FoundingArtistInvitationsPanel";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
 import DataExportPanel from "../../components/settings/DataExportPanel";
@@ -579,7 +579,7 @@ export default function SettingsPage() {
 
                         {activeSection === "artist" ? (
                             <>
-                                <ArtistRemixSettingsPanel token={token} addToast={addToast} />
+                                <ArtistParticipationSettingsPanel token={token} />
                                 <FoundingArtistInvitationsPanel token={token} />
                             </>
                         ) : null}

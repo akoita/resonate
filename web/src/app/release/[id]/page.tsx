@@ -744,7 +744,9 @@ function ReleaseDetailsContent() {
     !!release?.tracks?.length &&
     !!token;
   const attestationInProgress = attestationPending || attestationFlowPending;
-  const mintingBlockedReason = marketplaceRestrictedByRights
+  const mintingBlockedReason = release?.artist?.stemListing === "disabled"
+    ? "You chose not to offer your stems as collectibles. You can change this in Settings, Artist."
+    : marketplaceRestrictedByRights
     ? `Marketplace minting is disabled while this release is routed as ${rightsRouteLabel}.`
     : needsAttestationForMinting && !canCompleteAttestation
       ? "Marketplace access is approved. The creator wallet must protect this release on-chain before minting and listing stems."
@@ -3174,7 +3176,9 @@ function ReleaseDetailsContent() {
                                     disabledLabel={
                                       attestationInProgress
                                         ? "Protecting..."
-                                        : marketplaceRestrictedByRights
+                                        : release?.artist?.stemListing === "disabled"
+                                          ? "Not offered"
+                                          : marketplaceRestrictedByRights
                                           ? "Marketplace Restricted"
                                           : "Creator Wallet Required"
                                     }

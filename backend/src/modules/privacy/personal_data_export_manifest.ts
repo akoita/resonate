@@ -608,6 +608,18 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "Added by #2662. The invitation this account signed up or became a founding artist with, and when.",
   },
   {
+    model: "ParticipationAcceptance",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "Added by #2666. Each artist participation agreement version this account accepted, the hash of the text shown and when.",
+  },
+  {
+    model: "ArtistConsentChange",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "Added by #2666. Every artist consent choice this account set or changed (remixing, AI approval, AI use, stem listing), from where and when.",
+  },
+  {
     model: "WaitlistEntry",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],
@@ -1043,6 +1055,9 @@ export const SENSITIVE_FIELD_NAME_PATTERNS: readonly RegExp[] = [
  * that review.
  */
 export const REVIEWED_SAFE_FIELDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  Artist: {
+    aiRemixApproval: "The artist's choice whether AI remixes of their work need their approval (#2666): a setting, not a credential.",
+  },
   ContactEmail: {
     confirmTokenExpiresAt: "When the confirmation link expires (#2169): a date, not a credential; the token hash itself is redacted.",
   },

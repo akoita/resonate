@@ -947,6 +947,21 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "and `userId` cascades to the rotated id.",
   },
   {
+    model: "ParticipationAcceptance",
+    disposition: "retain",
+    reason:
+      "The record that the artist accepted a given agreement version (#2666): it is the basis for the catalogue "
+      + "staying on the platform. It holds a version, a text hash and a date, no free text, and `userId` cascades "
+      + "to the rotated id.",
+  },
+  {
+    model: "ArtistConsentChange",
+    disposition: "retain",
+    reason:
+      "The dated history of the artist's consent choices (#2666), which shows what each later use of their work "
+      + "was allowed under. It holds setting names and values only, and `userId` cascades to the rotated id.",
+  },
+  {
     model: "WaitlistEntry",
     disposition: "delete",
     reason:

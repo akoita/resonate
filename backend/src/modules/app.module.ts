@@ -17,6 +17,7 @@ import { CurationModule } from "./curation/curation.module";
 import { HealthModule } from "./health/health.module";
 import { ProductSurfacesModule } from "./product_surfaces/product_surfaces.module";
 import { InvitationsModule } from "./invitations/invitations.module";
+import { ParticipationModule } from "./participation/participation.module";
 import { IdentityModule } from "./identity/identity.module";
 import { IngestionModule } from "./ingestion/ingestion.module";
 import { MaintenanceModule } from "./maintenance/maintenance.module";
@@ -79,6 +80,7 @@ import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
     HealthModule,
     ProductSurfacesModule,
     InvitationsModule,
+    ParticipationModule,
     AuthModule,
     IdentityModule,
     AgentsModule,

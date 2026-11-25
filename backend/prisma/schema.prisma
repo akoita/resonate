@@ -107,6 +107,8 @@ model User {
   contactEmail                ContactEmail?
   invitationsCreated          Invitation[]                  @relation("InvitationCreatedBy")
   invitationRedemptions       InvitationRedemption[]
+  participationAcceptances    ParticipationAcceptance[]
+  artistConsentChanges        ArtistConsentChange[]
   waitlistEntries             WaitlistEntry[]
   supportRequests             SupportRequest[]
   emailDeliveries             EmailDelivery[]
@@ -1094,6 +1096,19 @@ model Artist {
   socialLinks               Json?
   website                   String?
   remixConsent              String                        @default("allowed")
+  /// #2666 consent choices, recorded at artist onboarding and changed in
+  /// Settings; every change is kept in ArtistConsentChange. Defaults keep the
+  /// behaviour of profiles created before the participation agreement.
+  /// AI-assisted remixes of this artist's work by others: "required" keeps
+  /// them as private drafts until the artist approves; "not_required".
+  aiRemixApproval           String                        @default("not_required")
+  /// Whether this artist's work may be used as source material for AI
+  /// features (Remix Studio): "allowed" | "disabled".
+  aiSourceUse               String                        @default("allowed")
+  /// Whether the artist offers their stems for sale: "allowed" | "disabled".
+  stemListing               String                        @default("allowed")
+  participationAcceptances  ParticipationAcceptance[]
+  consentChanges            ArtistConsentChange[]
   /// #2258. Reference identifiers from artist enrichment (MusicBrainz, then
   /// Wikidata through its relationships): public metadata about a public
   /// artist, not personal data. Written when enrichment resolves the artist;
@@ -4147,4 +4162,43 @@ model SupportRequest {
   @@index([status, createdAt])
   @@index([userId])
   @@index([email, createdAt])
+}
+
+/// #2666: an artist's acceptance of one version of the participation
+/// agreement. The text hash proves which words were shown; a new version asks
+/// again before the next upload.
+model ParticipationAcceptance {
+  id         String   @id @default(uuid())
+  artistId   String
+  /// The account that accepted (the artist account or its manager).
+  userId     String
+  version    String   @db.VarChar(64)
+  textHash   String   @db.Char(64)
+  acceptedAt DateTime @default(now())
+  artist     Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([artistId, version])
+  @@index([userId])
+}
+
+/// #2666: every change of an artist consent choice (remix, AI approval, AI
+/// source use, stem listing), with who made it, from where and when.
+/// Withdrawing consent applies to new uses from `changedAt`.
+model ArtistConsentChange {
+  id            String   @id @default(uuid())
+  artistId      String
+  userId        String
+  /// remixConsent | aiRemixApproval | aiSourceUse | stemListing
+  setting       String   @db.VarChar(32)
+  previousValue String?  @db.VarChar(32)
+  value         String   @db.VarChar(32)
+  /// onboarding | settings
+  source        String   @db.VarChar(16)
+  changedAt     DateTime @default(now())
+  artist        Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([artistId, changedAt])
+  @@index([userId])
 }

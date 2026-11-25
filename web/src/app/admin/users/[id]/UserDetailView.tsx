@@ -24,6 +24,7 @@ import {
 import AccountRestrictionControls from "./AccountRestrictionControls";
 import EntitlementGrantsControls from "./EntitlementGrantsControls";
 import UploadLimitsControls from "./UploadLimitsControls";
+import ParticipationRecordSection from "./ParticipationRecordSection";
 import { DuplicateChip, RoleChips, StatusChip } from "../UsersView";
 
 export type UserDetailState =
@@ -395,6 +396,11 @@ export default function UserDetailView({
       <StatusSection detail={detail} isAdmin={isAdmin} token={token} onStatusChanged={onStatusChanged} />
       <PlanSection detail={detail} isAdmin={isAdmin} token={token} onRecordChanged={onRecordChanged} />
       <UploadLimitsSection detail={detail} isAdmin={isAdmin} token={token} />
+      {detail.artistId ? (
+        <Section title="Participation agreement" id="admin-user-participation">
+          <ParticipationRecordSection token={token} artistId={detail.artistId} />
+        </Section>
+      ) : null}
       <Activity detail={detail} />
       <AdminActions detail={detail} />
     </ReviewQueuePage>
