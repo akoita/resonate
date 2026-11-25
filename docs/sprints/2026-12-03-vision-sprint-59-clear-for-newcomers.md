@@ -1,13 +1,45 @@
 # Vision Sprint 59: Clear for newcomers
 
-**Status:** 🟡 Approved by the owner on 2026-11-25. Second of three sprints to
-the invitation-only preview. Follows
+**Status:** ✅ Closed on 2026-11-25 (all six items and the stretch item
+merged). Second of three sprints to the invitation-only preview. Follows
 [Sprint 58](2026-11-25-vision-sprint-58-safe-to-show.md), closed on
 2026-11-25.
 **Milestone:** [57](https://github.com/akoita/resonate/milestone/57), due
 2026-12-09.
 **Goal:** A person who has never used a wallet can sign up, listen, publish
 and ask for help, and only invited people can get in.
+
+## Outcome
+
+- **#2662** (PR #2678): registration can be open or by invitation. In
+  invitation mode a new account needs a valid code, founding artists are
+  capped, and people without a code can join a waiting list.
+- **#2663** (PR #2679): "Sign in" wording outside the wallet's own screens,
+  a shorter listener sidebar with AI generation last, and surfaces that are
+  switched off are hidden.
+- **#2664** (PR #2680): a report and takedown form that needs no account and
+  no stake. A notice reaches the admin queue and the uploader is told.
+- **#2666** (PR #2681): the participation agreement and the artist's consent
+  choices are recorded per artist and per agreement version, and an artist
+  cannot publish before accepting the current version. The agreement text is
+  a marked placeholder until the operator publishes it, and production
+  refuses the placeholder. The approval step for AI remixes ("ask me first")
+  is follow-up #2682; until then that choice keeps remixes as drafts.
+- **#2665** (PR #2683): an email address at sign-up, and a `service` notice
+  category that is always emailed: a welcome when the address is confirmed,
+  a note when a release goes live, and takedown notices.
+- **#2667** (PR #2684): a support form at `/support` (signed in or out, with a
+  receipt email and a daily limit), an operator queue at `/admin/support`,
+  status templates and an "End now" action for platform notices, and a
+  service status line on sign-in screens.
+- **#2668** (PR #2685, stretch): a Shows campaign can collect "I would come"
+  interest instead of pledges, with a city and a "tell me when it opens"
+  choice. The artist sees counts by city, small cities folded together, and
+  moving to pledges notifies the people who asked. Interest counts in the
+  artist analytics are follow-up #2686.
+
+Deployment halves (registration mode and cap, agreement text, email
+provider, shared rate limits) stay tracked in `resonate-iac`.
 
 ## The road to the preview
 
