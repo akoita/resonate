@@ -57,6 +57,7 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "indexer.reset", label: "Reset the chain indexer" },
   { value: "indexer.tx_reindexed", label: "Re-indexed a transaction" },
   { value: "maintenance.stem_features_backfill_run", label: "Ran the stem features backfill" },
+  { value: "maintenance.stream_renditions_backfill_run", label: "Ran the streaming renditions backfill" },
   { value: "maintenance.track_embeddings_backfill_run", label: "Ran the track embeddings backfill" },
   { value: "maintenance.retention_cleanup_run", label: "Ran the retention cleanup" },
   { value: "maintenance.erasures_run", label: "Ran the due account erasures" },

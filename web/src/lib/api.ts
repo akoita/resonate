@@ -8569,6 +8569,7 @@ export type AdminAuditAction =
   | "indexer.reset"
   | "indexer.tx_reindexed"
   | "maintenance.stem_features_backfill_run"
+  | "maintenance.stream_renditions_backfill_run"
   | "maintenance.track_embeddings_backfill_run"
   | "maintenance.retention_cleanup_run"
   | "maintenance.erasures_run"
