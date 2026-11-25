@@ -13,7 +13,9 @@ export const ALLOW_WHILE_SUSPENDED_KEY = "allowWhileSuspended";
  * that carry it. Add it only where blocking the route would trap a person's
  * money or their rights over their own data (sign-in, refund claims, data
  * export and erasure, reading notices), or where it is plain listening: playback
- * and DJ-session routes (#2167). Listening harms no one, but a play from a
- * restricted account is never counted (see `AccountStandingService.isRestricted`).
+ * routes and stopping a DJ session (#2167). Listening harms no one, but a play
+ * from a restricted account is never counted (see
+ * `AccountStandingService.isRestricted`). Starting an AI DJ session or asking it
+ * for picks is not plain listening: it can spend model tokens, so it stays blocked.
  */
 export const AllowWhileSuspended = () => SetMetadata(ALLOW_WHILE_SUSPENDED_KEY, true);

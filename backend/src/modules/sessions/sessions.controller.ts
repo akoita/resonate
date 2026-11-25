@@ -22,7 +22,8 @@ export class SessionsController {
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
-  @AllowWhileSuspended()
+  // Not allowed while suspended: an AI DJ session can spend model tokens.
+  // Plain playback below stays open to a suspended account (#2167).
   // Starting a session resolves a seed, sets a budget and plans picks, so it
   // is paced per listener (the AI DJ start in AgentConfigController has the same limit).
   @Throttle({ default: { limit: SESSION_START_LIMIT.limit, ttl: SESSION_START_LIMIT.ttl, getTracker: trackByUser } })
@@ -56,7 +57,7 @@ export class SessionsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
-  @AllowWhileSuspended()
+  // Not allowed while suspended: each pick can spend model tokens.
   // Skip, "Not this" and "More like this" on the AI DJ card each ask for picks (#2243).
   @Throttle({ default: { limit: 30, ttl: minutes(1), getTracker: trackByUser } })
   @Post("agent/next")

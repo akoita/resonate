@@ -25,6 +25,9 @@ jest.mock("../db/prisma", () => ({
   prisma: {
     session: {
       create: jest.fn(),
+      // One open session per listener (endOpenSessions): none open here.
+      findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     // #1448: preferences are durable now; this unit spec only needs the
     // upsert to resolve so the preferences_updated event fires.

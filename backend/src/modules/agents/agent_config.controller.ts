@@ -4,6 +4,7 @@ import { Throttle } from "@nestjs/throttler";
 import type { Prisma } from "@prisma/client";
 import { IsString, MaxLength } from "class-validator";
 import { prisma } from "../../db/prisma";
+import { endOpenSessions } from "../sessions/open_sessions";
 import { normalizeUserId } from "../identity/user_id";
 import { AgentOrchestratorService } from "./agent_orchestrator.service";
 import { AgentRuntimeService } from "./agent_runtime.service";
@@ -334,7 +335,8 @@ export class AgentConfigController {
         );
     }
 
-    @AllowWhileSuspended()
+    // Not allowed while suspended: an AI DJ session can spend model tokens.
+    // Stopping one stays allowed.
     @Post("session")
     @UseGuards(AuthGuard("jwt"))
     @Throttle({ default: { limit: SESSION_START_LIMIT.limit, ttl: SESSION_START_LIMIT.ttl, getTracker: trackByUser } })
@@ -396,6 +398,9 @@ export class AgentConfigController {
             // Published as its kind only: the id may name a private playlist.
             ...(seed ? { seedKind: seed.kind } : {}),
         };
+
+        // One open session per listener: a new start ends the previous one.
+        await this.endSessions(req.user.userId, "replaced");
 
         // Create a persistent Session record
         const session = await prisma.session.create({
@@ -686,39 +691,54 @@ export class AgentConfigController {
             data: { isActive: false },
         });
 
-        // Close the most recent open session
-        const openSession = await prisma.session.findFirst({
-            where: { userId: req.user.userId, endedAt: null },
-            orderBy: { startedAt: "desc" },
-        });
-
-        if (openSession) {
-            await prisma.session.update({
-                where: { id: openSession.id },
-                data: { endedAt: new Date() },
-            });
-            this.runtimeService.clearMyMixSession(req.user.userId, openSession.id);
-            await this.learningService.annotateSessionOutcome({
-                userId: req.user.userId,
-                sessionId: openSession.id,
-                outcome: {
-                    type: "ended",
-                    sessionDurationMs: Date.now() - openSession.startedAt.getTime(),
-                    status: "stopped",
-                },
-            });
-        }
-
-        this.eventBus.publish({
-            eventName: "session.ended",
-            eventVersion: 1,
-            occurredAt: new Date().toISOString(),
-            sessionId: openSession?.id ?? "unknown",
-            spentTotalUsd: openSession?.spentUsd ?? 0,
-            reason: "user_stopped",
-        });
+        await this.endSessions(req.user.userId, "user_stopped");
 
         return { status: "stopped" };
+    }
+
+    /**
+     * Ends the listener's open sessions (see `endOpenSessions`), forgets their
+     * My Mix state, records how each ended, and announces it. With nothing
+     * open, a stop still announces once, as it always has, so a client
+     * waiting for the end is released.
+     */
+    private async endSessions(userId: string, reason: "user_stopped" | "replaced") {
+        const ended = await endOpenSessions(userId);
+        for (const session of ended) {
+            this.runtimeService.clearMyMixSession?.(userId, session.id);
+            // Recording how a session ended must never block the next start.
+            await Promise.resolve(
+                this.learningService.annotateSessionOutcome?.({
+                    userId,
+                    sessionId: session.id,
+                    outcome: {
+                        type: "ended",
+                        sessionDurationMs: Date.now() - session.startedAt.getTime(),
+                        status: "stopped",
+                    },
+                }),
+            ).catch((error) => {
+                this.logger.warn(`Session outcome not recorded: ${error instanceof Error ? error.message : String(error)}`);
+            });
+            this.eventBus.publish({
+                eventName: "session.ended",
+                eventVersion: 1,
+                occurredAt: new Date().toISOString(),
+                sessionId: session.id,
+                spentTotalUsd: session.spentUsd,
+                reason,
+            });
+        }
+        if (ended.length === 0 && reason === "user_stopped") {
+            this.eventBus.publish({
+                eventName: "session.ended",
+                eventVersion: 1,
+                occurredAt: new Date().toISOString(),
+                sessionId: "unknown",
+                spentTotalUsd: 0,
+                reason,
+            });
+        }
     }
 
     private async recordMyMixDemand(userId: string, sessionId: string) {

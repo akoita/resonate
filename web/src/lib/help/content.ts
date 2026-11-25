@@ -366,7 +366,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Signing in and reading your own data and notices.",
               "Claiming any refund you are owed. A suspension never traps your money.",
-              "Listening to music. Your plays still play, but while your account is restricted they do not count: they add nothing to play counts, rankings or recommendations.",
+              "Listening to music. Your plays still play, but while your account is restricted they do not count: they add nothing to play counts, rankings or recommendations. Starting an AI DJ session and asking it for new picks are paused until the restriction ends; you can still stop a session that is running.",
               "Downloading your data and asking for your account to be deleted.",
             ],
           },
@@ -1145,6 +1145,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "The player shows when its queue is your AI DJ set: a strip above the queue with a Steer link back here, and a mark on each pick with the reason it was chosen. See Playing music & the Now Playing console, under When your queue is an AI DJ set.",
+          },
+          {
+            kind: "paragraph",
+            text: "You have one AI DJ session at a time. Starting a new one, on this device or another, ends the one that was running, and it shows as ended in Session History. You are never blocked from starting, even if an earlier session was left open by a closed tab.",
           },
           {
             kind: "paragraph",

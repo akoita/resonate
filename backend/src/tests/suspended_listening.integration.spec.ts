@@ -226,13 +226,16 @@ describe("listening while suspended (integration)", () => {
     expect(await playbackFacts()).toEqual([]);
   });
 
-  it("lets a suspended account start, continue and stop a listening session", async () => {
-    await request(server()).post("/sessions/start").set(as(SUSPENDED)).send({ budgetCapUsd: 0 }).expect(201);
-    await request(server()).post("/sessions/agent/next").set(as(SUSPENDED)).send({ sessionId: "s1" }).expect(201);
+  it("lets a suspended account play and stop a session, but not start the AI DJ or ask it for picks", async () => {
+    // AI DJ starts and picks can spend model tokens (owner decision), so they are refused.
+    const start = await request(server()).post("/sessions/start").set(as(SUSPENDED)).send({ budgetCapUsd: 0 }).expect(403);
+    expect(start.body.code).toBe("account_suspended");
+    await request(server()).post("/sessions/agent/next").set(as(SUSPENDED)).send({ sessionId: "s1" }).expect(403);
+    // Plain listening and stopping still work.
     await request(server()).post("/sessions/playback/play").set(as(SUSPENDED)).send({ trackIds: [TRACK] }).expect(201);
     await request(server()).post("/sessions/stop").set(as(SUSPENDED)).send({ sessionId: "s1" }).expect(201);
-    expect(sessionsService.startSession).toHaveBeenCalledTimes(1);
-    expect(sessionsService.agentNext).toHaveBeenCalledTimes(1);
+    expect(sessionsService.startSession).not.toHaveBeenCalled();
+    expect(sessionsService.agentNext).not.toHaveBeenCalled();
     expect(playbackIntents.requestPlay).toHaveBeenCalledTimes(1);
   });
 
