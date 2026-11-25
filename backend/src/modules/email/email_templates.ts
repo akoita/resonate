@@ -273,3 +273,63 @@ export function renderConfirmationEmail(
   });
   return { to, subject: "Confirm your email for Resonate notices", text, html };
 }
+
+const WHY_RECEIVED_REPORT =
+  "You are receiving this because this address was entered on the Resonate report form. We use it only to handle this notice.";
+
+/**
+ * Receipt for a notice filed on the public report form (#2664). Carries the
+ * reference and what happens next; never the notice's own text, so a stranger
+ * typing someone else's address cannot make Resonate send them chosen words.
+ */
+export function renderReportReceiptEmail(
+  to: string,
+  reference: string,
+  settings: Pick<EmailLinkSettings, "frontendUrl" | "footerText">,
+): EmailMessage {
+  const privacyUrl = `${settings.frontendUrl}/privacy`;
+  const reportUrl = `${settings.frontendUrl}/report`;
+  const heading = "We received your notice";
+  const intro =
+    "Thank you. An operator will review your notice. If the content is removed, the person who uploaded it is told why, and they may send a counter-notice.";
+  const refLine = `Your reference: ${reference}`;
+  const keep = "Keep this reference if you write to us about this notice.";
+  const ignore = "If you did not file a notice on Resonate, ignore this email.";
+  const operatorLine = (settings.footerText ?? "").trim();
+
+  const text = [
+    "Resonate",
+    "",
+    heading,
+    "",
+    intro,
+    "",
+    refLine,
+    keep,
+    "",
+    ignore,
+    "",
+    "--",
+    WHY_RECEIVED_REPORT,
+    `Report form: ${reportUrl}`,
+    `Privacy policy: ${privacyUrl}`,
+    ...(operatorLine ? ["", operatorLine] : []),
+  ].join("\n");
+
+  const html = layoutHtml({
+    title: heading,
+    heading,
+    contentHtml:
+      paragraphsHtml(intro) +
+      paragraphsHtml(`${refLine}\n${keep}`) +
+      paragraphsHtml(ignore, `margin:0 0 20px;font-size:14px;line-height:1.55;color:${MUTED_COLOR}`),
+    footerHtml:
+      footerParagraph(escapeHtml(WHY_RECEIVED_REPORT)) +
+      footerLinksHtml([
+        ["Report form", reportUrl],
+        ["Privacy policy", privacyUrl],
+      ]) +
+      operatorFooterHtml(settings.footerText),
+  });
+  return { to, subject: "[Resonate] We received your notice", text, html };
+}

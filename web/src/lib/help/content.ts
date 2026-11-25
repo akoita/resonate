@@ -270,7 +270,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "If a copyright complaint against one of your tracks is upheld, the track and its stems are removed and the person who manages the release gets one Moderation notice. It names the track and release and says the reason was a copyright complaint. It never shows who complained or what they wrote. You cannot file a counter-notice in the app yet.",
+            text: "When someone reports one of your tracks, the person who manages the release gets a Moderation notice saying a report was received, before anything is decided. If the report is upheld, the track and its stems are removed and a second notice gives the reason and the operator's reasons; if it is not, a notice says no action was taken. Notices never show who reported or what they wrote. You can answer with a counter-notice from Notices about your tracks.",
           },
           {
             kind: "callout",
@@ -4409,23 +4409,82 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "disputes",
     title: "Report content & disputes",
     summary:
-      "Report content you believe is stolen or misattributed, submit evidence, follow the case, and — as a curator — help resolve disputes.",
+      "Report content that uses your work without permission, impersonates someone or is unlawful, answer a notice about your own track, and follow ownership disputes.",
     category: "trust",
-    audiences: ["curator", "listener", "artist"],
+    audiences: ["listener", "artist", "curator", "operator"],
     status: "partial",
-    keywords: ["dispute", "report", "stolen", "misattributed", "evidence", "appeal", "curator", "juror", "moderation", "reputation", "leaderboard"],
+    keywords: ["dispute", "report", "report content", "takedown", "notice", "counter-notice", "copyright", "impersonation", "illegal content", "stolen", "misattributed", "evidence", "appeal", "curator", "juror", "moderation", "reputation", "leaderboard", "statement of reasons"],
     sections: [
       {
         id: "report",
         heading: "Reporting content",
         blocks: [
           {
+            kind: "paragraph",
+            text: "Anyone can report content, with or without an account, and no stake is needed. Use Report this release on a release page, Report this stem on a stem page, or Report content at the bottom of any page.",
+          },
+          {
             kind: "steps",
             items: [
-              "From a release or stem, open the report/marketplace-rights action.",
-              "Describe the problem and submit your supporting evidence.",
-              "Track the case from the Disputes area as it's reviewed.",
+              "Paste or keep the link to the release, then choose the track the notice is about.",
+              "Choose the reason: copyright, impersonation, illegal content, or something else.",
+              "Name the work concerned, explain what is wrong, and say who you are and how you are connected to the work.",
+              "Give an email we can reach you at. If you are signed in with a confirmed notice address, it is filled in for you.",
+              "Confirm the good-faith statement and choose Send notice.",
             ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/report-content.png`,
+              alt: "The Report content page: a link to the content, a track picker, reason choices (copyright, impersonation, illegal content, something else), the work concerned and an explanation, then name, connection to the work, email, and a good-faith statement above a Send notice button.",
+              caption: "The report form needs no account and no stake.",
+              width: 1440,
+              height: 1500,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "paragraph",
+            text: "You then see a reference. Keep it, and quote it if you write to us. When email is set up, we also email you the reference. An operator reviews every notice; nothing is removed before that review.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Too many notices at once",
+            text: "To prevent abuse, one connection can send a limited number of notices per hour. If you see a message saying so, wait and try again, or write to us from the contact page.",
+          },
+        ],
+      },
+      {
+        id: "answer-a-notice",
+        heading: "If someone reports your track",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The person who manages the release gets a Moderation notice when a report is filed. It names the track, the release and the reason, and says that nothing has been removed yet. It never shows who reported it, their contact details, or what they wrote.",
+          },
+          {
+            kind: "paragraph",
+            text: "Once an operator decides, you get a second notice: either the track and its stems were removed, or no action was taken. Both include the operator's reasons in plain words.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Open the notice, or go to Notices about your tracks from the report page.",
+              "Read the reason and, once decided, the operator's reasons.",
+              "If you hold the rights, write a counter-notice explaining why the content should stay, such as the licence or agreement you hold, and send it. An operator reviews it.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "ownership-disputes",
+        heading: "Ownership disputes",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Report stolen content on a release page opens the separate ownership dispute process, which needs an account and a stake. It is for authenticity claims judged by curators. Track those cases from the Disputes area.",
           },
           {
             kind: "figure",
@@ -4446,7 +4505,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Both the reporter and the creator can submit evidence. Cases can be appealed, and decisions and any follow-up actions are recorded so the process stays transparent.",
+            text: "In an ownership dispute, both the reporter and the creator can submit evidence. Cases can be appealed, and decisions and any follow-up actions are recorded so the process stays transparent.",
           },
         ],
       },
@@ -4457,8 +4516,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "list",
             items: [
-              "Curators build reputation by reviewing cases well, reflected on the leaderboard.",
-              "Operators can escalate to a jury and finalize outcomes.",
+              "Operators review notices from the report form in Takedown Notices, in the admin part of the sidebar. Each notice shows every detail the reporter gave.",
+              "Write a statement of reasons, then choose Uphold and remove or Do not uphold. The uploader sees your reasons, never the reporter's identity or words. Upholding asks for your passkey.",
+              "Opening the queue and every decision are recorded in the audit log.",
+              "Curators build reputation by reviewing ownership disputes well, reflected on the leaderboard.",
+              "Operators can escalate an ownership dispute to a jury and finalize outcomes.",
               "Advisory AI hints can summarize a case, but enforcement is always a human decision.",
             ],
           },
@@ -4466,9 +4528,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "Disputes", href: "/disputes", description: "Report content and follow cases." },
+      { label: "Report content", href: "/report", description: "Send a notice about content on Resonate." },
+      { label: "Notices about your tracks", href: "/report/respond", description: "See reports about your tracks and answer them." },
+      { label: "Disputes", href: "/disputes", description: "Follow ownership disputes." },
     ],
-    related: ["rights-protection", "upload-music"],
+    related: ["rights-protection", "platform-notices", "upload-music"],
   },
 
   // ────────────────────── Account, wallet & privacy ───────────────────────

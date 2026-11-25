@@ -7,6 +7,7 @@ const LINKS = [
   ["/privacy", "Privacy"],
   ["/refunds", "Refunds"],
   ["/imprint", "Imprint & contact"],
+  ["/report", "Report content"],
 ] as const;
 
 export function LegalPage({ markdown }: { markdown: string }) {

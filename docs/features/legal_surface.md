@@ -31,6 +31,10 @@ payment-asset configuration or unresolved placeholder fails the build.
 ## User surfaces
 
 - `/terms`, `/privacy`, `/refunds` and `/imprint` are public static pages.
+- `/report` is the public notice channel for takedown requests that the Terms
+  name (section 10, #2664). It is linked from the global footer and the legal
+  pages' navigation. See
+  [Rights Verification Workflow](rights_verification_workflow.md#report-form-and-counter-notices-2664).
 - The global footer links all four pages for signed-in and signed-out visitors.
 - The sign-up surface links Terms, Privacy and Refunds before account creation.
 - Privacy states the analytics envelope, consent gate, retention periods,

@@ -41,6 +41,7 @@ import { EMAIL_TRANSPORT, createEmailTransport, verifyEmailTransportInBackground
     EmailDeliveryService,
     EmailSnsService,
   ],
-  exports: [ContactEmailService, EmailDeliveryService, EmailConfig],
+  // EMAIL_TRANSPORT (#2664): the takedown form's receipt email.
+  exports: [ContactEmailService, EmailDeliveryService, EmailConfig, EMAIL_TRANSPORT],
 })
 export class EmailModule {}

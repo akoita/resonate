@@ -103,14 +103,17 @@ then sends one targeted `moderation` notice from the `system:dmca` actor.
 - **Recipient:** the release's `managementOwnerUserId`, else the artist's
   `userId`. This is the owner rule `management-access.ts` uses. If neither
   exists, the notice is logged and skipped.
-- **Copy:** names the track and release and gives the reason category,
-  "copyright complaint". It never includes the complainant's name, email or
-  written reason.
-- **Where to respond:** a counter-notice cannot be filed from the app yet, and
-  the notice says so and links to the User Guide article.
+- **Copy:** names the track and release, gives the reason category and the
+  reviewer's statement of reasons (#2664). It never includes the complainant's
+  name, email or written reason.
+- **Where to respond:** the notice links to `/report/respond`, where the
+  creator can send a counter-notice (#2664).
 - **Idempotent:** keyed `dmca_report:<reportId>`, so resolving or replaying the
   report again sends nothing new.
-- **Rejected reports** send nothing.
+- **Filed and rejected reports (#2664):** filing sends a "notice was filed"
+  notice (`dmca_report_received:<reportId>`) and a rejection sends a "no
+  action" notice with the reasons (`dmca_report_rejected:<reportId>`), to the
+  same recipient.
 - **Failure handling:** a notice failure is logged and never fails the
   takedown.
 

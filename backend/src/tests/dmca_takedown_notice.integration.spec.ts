@@ -1,6 +1,8 @@
 /**
  * #2146: an upheld takedown sends the creator exactly one `moderation` notice;
- * a re-resolve or replay sends nothing new; a rejected report sends nothing.
+ * a re-resolve or replay sends nothing new. #2664: filing tells the creator,
+ * a rejection tells them no action was taken, and the decision carries the
+ * reviewer's statement of reasons.
  * Real Postgres, real DmcaService + NoticeService.
  */
 import { prisma } from "../db/prisma";
@@ -30,6 +32,7 @@ async function fileReport(trackId: string) {
     claimantEmail: "complainant@example.com",
     originalWorkUrl: "https://example.com/original",
     reason: "complainant's private explanation",
+    goodFaith: true,
   });
 }
 
@@ -87,7 +90,7 @@ describe("DMCA takedown notice (integration)", () => {
       category: "moderation",
       audience: "user",
       createdBy: "system:dmca",
-      link: "/help/platform-notices",
+      link: `/report/respond?id=${report.id}`,
       title: "Your track was removed after a copyright complaint",
     });
     expect(notice.body).toContain('"Own Track"');
@@ -113,10 +116,55 @@ describe("DMCA takedown notice (integration)", () => {
     expect(rows.map((row) => row.recipientUserId)).toEqual([managerUser]);
   });
 
-  it("sends nothing when a report is rejected", async () => {
+  it("tells the creator when a notice is filed, without the reporter's details (#2664)", async () => {
+    const report = await fileReport(ownTrack);
+    const rows = await prisma.notice.findMany({ where: { dedupeKey: `dmca_report_received:${report.id}` } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      recipientUserId: artistUser,
+      category: "moderation",
+      title: "A notice was filed about your track",
+      link: `/report/respond?id=${report.id}`,
+    });
+    expect(rows[0].body).toContain('"Own Track"');
+    expect(rows[0].body).toContain("Nothing has been removed");
+    expect(rows[0].body).not.toContain("Complainant Person");
+    expect(rows[0].body).not.toContain("complainant@example.com");
+    expect(rows[0].body).not.toContain("private explanation");
+  });
+
+  it("includes the reviewer's statement of reasons in the takedown notice (#2664)", async () => {
+    const report = await fileReport(managedTrack);
+    await dmca.resolveReport(report.id, "upheld", REVIEWER, "The uploaded audio matches the reporter's registered recording.");
+    const [notice] = await prisma.notice.findMany({ where: { dedupeKey: `dmca_report:${report.id}` } });
+    expect(notice.body).toContain("Reviewer's reasons: The uploaded audio matches the reporter's registered recording.");
+    expect(notice.body).toContain("counter-notice");
+  });
+
+  it("sends no takedown notice when a report is rejected, and tells the creator no action was taken", async () => {
     const report = await fileReport(rejectedTrack);
-    await dmca.resolveReport(report.id, "rejected", REVIEWER);
+    await dmca.resolveReport(report.id, "rejected", REVIEWER, "The reporter did not show they hold the rights.");
     expect(await prisma.notice.count({ where: { dedupeKey: `dmca_report:${report.id}` } })).toBe(0);
     await expect(notices.notifyDmcaTakedown(report.id)).resolves.toBeNull();
+    const rejected = await prisma.notice.findMany({ where: { dedupeKey: `dmca_report_rejected:${report.id}` } });
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].title).toBe("A notice about your track was reviewed: no action");
+    expect(rejected[0].body).toContain("The reporter did not show they hold the rights.");
+  });
+
+  it("lists notices on the creator's own releases without the reporter's details (#2664)", async () => {
+    const listed = await dmca.listForCreator(artistUser);
+    const tracks = new Set(listed.map((row) => row.trackId));
+    expect(tracks.has(ownTrack)).toBe(true);
+    // The managed release belongs to its management owner, not the artist account.
+    expect(tracks.has(managedTrack)).toBe(false);
+    for (const row of listed) {
+      expect(row).not.toHaveProperty("claimantName");
+      expect(row).not.toHaveProperty("claimantEmail");
+      expect(row).not.toHaveProperty("reason");
+    }
+    const managed = await dmca.listForCreator(managerUser);
+    expect(managed.every((row) => row.trackId === managedTrack)).toBe(true);
+    expect(managed.length).toBeGreaterThan(0);
   });
 });
