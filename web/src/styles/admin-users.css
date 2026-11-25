@@ -214,3 +214,6 @@
   .admin-users-pager { flex-direction: column; align-items: stretch; }
   .admin-users-pager__buttons { justify-content: space-between; }
 }
+
+/* #2659 upload limits on an artist record */
+.admin-users-upload-limits { display: grid; gap: 10px; justify-items: start; }

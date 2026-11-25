@@ -24,6 +24,7 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "dmca.reports_viewed", label: "Opened the takedown reports" },
   { value: "dmca.report_resolved", label: "Resolved a takedown report" },
   { value: "trust.artist_verified", label: "Verified an artist" },
+  { value: "trust.upload_limits_changed", label: "Lifted or restored upload limits" },
   { value: "curation.reports_viewed", label: "Opened the curator reports" },
   { value: "catalog_credit.identity_reviewed", label: "Reviewed a credit's identity" },
   { value: "artist_claims.viewed", label: "Opened the artist claims" },

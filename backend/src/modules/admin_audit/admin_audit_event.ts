@@ -38,6 +38,7 @@ export const ADMIN_AUDIT_ACTIONS = [
   "dmca.reports_viewed",
   "dmca.report_resolved",
   "trust.artist_verified",
+  "trust.upload_limits_changed",
   "curation.reports_viewed",
   "catalog_credit.identity_reviewed",
   "artist_claims.viewed",

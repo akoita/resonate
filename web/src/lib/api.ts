@@ -2205,6 +2205,10 @@ export type TrustTier = {
   maxListingPriceWei: string | null;
   maxListingPriceUsd?: string | null;
   maxListingPriceUncapped: boolean;
+  /** True when publishing takes no deposit at all on this deployment (#2659). */
+  depositWaived?: boolean;
+  /** An operator lifted the upload limits for this artist (#2659). */
+  uploadLimitsLifted?: boolean;
   totalUploads: number;
   cleanHistory: number;
   disputesLost: number;
@@ -2563,6 +2567,33 @@ export type RightsRouteReassessmentRecord = {
     } | null;
   } | null;
 };
+
+export type UploadLimitKey = "releasesPerDay" | "tracksPerDay" | "releasesTotal" | "tracksTotal";
+
+/** Upload limits for accounts that are not yet verified (#2659). */
+export type UploadAllowance = {
+  artistId: string | null;
+  /** False for verified artists and accounts whose limits were lifted. */
+  limited: boolean;
+  liftedAt?: string | null;
+  /** Null where a limit is turned off. */
+  limits: Record<UploadLimitKey, number | null>;
+  used?: Record<UploadLimitKey, number>;
+  remaining?: Record<UploadLimitKey, number | null>;
+};
+
+export async function getMyUploadLimits(token: string) {
+  return apiRequest<UploadAllowance>("/api/trust/me/upload-limits", {}, token);
+}
+
+/** Operator: lift or restore one artist's upload limits (#2659). */
+export async function setArtistUploadLimitsLifted(artistId: string, lifted: boolean, token: string) {
+  return apiRequest<{ artistId: string; liftedAt: string | null }>(
+    `/api/trust/${encodeURIComponent(artistId)}/upload-limits`,
+    { method: "POST", body: JSON.stringify({ lifted }) },
+    token,
+  );
+}
 
 export async function getTrustTier(artistId: string, token: string) {
   return apiRequest<TrustTier>(`/api/trust/${artistId}`, { silentErrorCodes: [404] }, token);
@@ -8536,6 +8567,7 @@ export type AdminAuditAction =
   | "dmca.reports_viewed"
   | "dmca.report_resolved"
   | "trust.artist_verified"
+  | "trust.upload_limits_changed"
   | "curation.reports_viewed"
   | "catalog_credit.identity_reviewed"
   | "artist_claims.viewed"
@@ -9299,6 +9331,8 @@ export type AdminUserRow = {
   lastActiveDay: string | null;
   roles: AdminUserRole[];
   artistName: string | null;
+  /** The artist profile id when the person has one (#2659). */
+  artistId?: string | null;
   accountStatus: AccountStatusValue;
   counts: { purchases: number; pledges: number; releases: number };
   /** Another account's id equals this one apart from letter case (a likely duplicate). */

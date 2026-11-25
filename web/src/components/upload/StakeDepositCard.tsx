@@ -59,6 +59,8 @@ export default function StakeDepositCard({
   const stakeLabel = stakeAssetLabel ?? stakeEth;
   const maxListingPrice = maxListingPriceLabel ?? formatMaxListingPrice(trustTier);
   const isWaived = trustTier.stakeAmountWei === "0";
+  // #2659: publishing takes no deposit on this deployment, for every tier.
+  const noDeposit = Boolean(trustTier.depositWaived);
   const stakeLabelPrefix = stakeAssetKind === "stablecoin" ? "Total Stablecoin Stake Required" : "Total Native ETH Stake Required";
 
   return (
@@ -66,7 +68,11 @@ export default function StakeDepositCard({
       <div style={headerStyle}>
         <span style={iconStyle}>🛡️</span>
         <span style={{ fontWeight: 600, fontSize: "14px" }}>Content Protection</span>
-        {isWaived && <span style={{ marginLeft: "auto", color: "#10b981", fontSize: "12px" }}>✓ Waived</span>}
+        {isWaived && (
+          <span style={{ marginLeft: "auto", color: "#10b981", fontSize: "12px" }}>
+            {noDeposit ? "✓ No deposit" : "✓ Waived"}
+          </span>
+        )}
       </div>
 
       <div style={rowStyle}>
@@ -75,13 +81,13 @@ export default function StakeDepositCard({
       </div>
 
       <div style={rowStyle}>
-        <span style={{ opacity: 0.6, fontSize: "12px" }}>{stakeLabelPrefix}</span>
+        <span style={{ opacity: 0.6, fontSize: "12px" }}>{noDeposit ? "Deposit" : stakeLabelPrefix}</span>
         <span style={{
           fontWeight: 600,
           fontSize: "13px",
           color: isWaived ? "#10b981" : "#f59e0b"
         }}>
-          {stakeLabel}
+          {noDeposit ? "None" : stakeLabel}
         </span>
       </div>
 
@@ -109,7 +115,9 @@ export default function StakeDepositCard({
         lineHeight: "1.5",
         opacity: 0.5,
       }}>
-        {isWaived ? (
+        {noDeposit ? (
+          <>Publishing takes no deposit. Your release is still attested on-chain, revenue is held in escrow for {trustTier.escrowDays} days, and your max listing price per unit is <strong>{maxListingPrice}</strong>. New accounts have upload limits until they are verified. Attesting does not independently verify ownership rights.</>
+        ) : isWaived ? (
           <>Your economic trust tier waives the stake requirement. Revenue is held in escrow for {trustTier.escrowDays} days, and listings remain uncapped unless a stake is later configured. This tier does not independently verify ownership rights.</>
         ) : (
           <>A refundable stake of <strong style={{ color: "#f59e0b" }}>{stakeLabel}</strong> will be deposited

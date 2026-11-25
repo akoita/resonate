@@ -3270,7 +3270,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs", "ai-assisted", "ai-generated", "ai disclosure", "human-made", "contribution", "suggested tags", "genre tags", "descriptor", "edit tags", "correct tags", "genre families", "styles"],
+    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs", "ai-assisted", "ai-generated", "ai disclosure", "human-made", "contribution", "suggested tags", "genre tags", "descriptor", "edit tags", "correct tags", "genre families", "styles", "deposit", "no deposit", "upload limit", "upload limits", "limit reached"],
     sections: [
       {
         id: "upload",
@@ -3379,6 +3379,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Publishing uses a release-specific route. You may self-attest provenance for an upload, but self-attestation is not independent rights verification. Depending on account trust and release signals, Resonate may publish with limited monitoring, request evidence, or route the release for review. Marketplace access and payout eligibility remain gated by the release's rights state; account verification alone does not clear release rights.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Deposits and upload limits",
+            text: "When publishing takes no Content Protection deposit, the Content Protection card on the Upload page says \"No deposit\", and your release is still attested. Then accounts that are not yet verified can publish a limited number of releases and tracks each day and in total. The Upload page shows what you have left, and holds Publish if an upload would go over a limit. Verified artists have no limits, and if you have a large catalog to bring, ask us to lift them for your account.",
           },
           {
             kind: "paragraph",

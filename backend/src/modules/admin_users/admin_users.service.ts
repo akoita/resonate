@@ -34,6 +34,8 @@ export type AdminUserRow = {
   lastActiveDay: string | null;
   roles: AdminUserRole[];
   artistName: string | null;
+  /** The artist profile id, for artist controls on the record (#2659). */
+  artistId: string | null;
   accountStatus: AdminUserStatus;
   counts: { purchases: number; pledges: number; releases: number };
   /** #2180: another user's id equals this one under lowercase (a case-variant duplicate). */
@@ -527,6 +529,7 @@ export class AdminUsersService {
       lastActiveDay: user.lastActiveAt?.toISOString().slice(0, 10) ?? null,
       roles,
       artistName: user.artist?.displayName ?? null,
+      artistId: user.artist?.id ?? null,
       accountStatus: effectiveStatus(user.accountStatus, user.accountStatusUntil, now),
       counts: counts ?? { purchases: 0, pledges: 0, releases: 0 },
       possibleDuplicate: duplicates.has(user.id.toLowerCase()),
