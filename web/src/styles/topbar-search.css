@@ -228,3 +228,13 @@
     flex: 1 1 160px;
   }
 }
+
+/* Smallest phones: the search button needs about 56px of the bar. Drop the
+ * signed-in chip's decorative avatar and its hover-only copy icon (there is
+ * no hover on touch) so the sign-out button stays inside the screen. */
+@media (max-width: 420px) {
+  .app-topbar .wallet-connected-info .wallet-avatar,
+  .app-topbar .wallet-address .wallet-copy-icon {
+    display: none;
+  }
+}
