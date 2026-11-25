@@ -13,18 +13,22 @@ export const NOTICE_CATEGORIES = [
   "account",
   "refund",
   "purchase",
+  "service",
 ] as const;
 export type NoticeCategory = (typeof NOTICE_CATEGORIES)[number];
 
 /**
  * Categories that are always emailed to a confirmed contact address (#2169):
  * `terms` is the legal notice of a terms change, `account` carries the
- * statement of reasons for an action on the person's account, and `purchase`
+ * statement of reasons for an action on the person's account, `purchase`
  * is the durable-medium confirmation of an immediate-delivery consent (#1776,
- * Directive 2011/83/EU art. 8(7)). Every other
- * category can be turned off for email. (In-app delivery is unaffected.)
+ * Directive 2011/83/EU art. 8(7)), and `service` (#2665) carries the service
+ * messages about the person's own account and content: the welcome after the
+ * address is confirmed, a release going live, and a report or takedown notice
+ * about their upload. Every other category can be turned off for email.
+ * (In-app delivery is unaffected.)
  */
-export const EMAIL_REQUIRED_NOTICE_CATEGORIES = ["terms", "account", "purchase"] as const satisfies readonly NoticeCategory[];
+export const EMAIL_REQUIRED_NOTICE_CATEGORIES = ["terms", "account", "purchase", "service"] as const satisfies readonly NoticeCategory[];
 
 export function isEmailRequiredCategory(category: string): boolean {
   return (EMAIL_REQUIRED_NOTICE_CATEGORIES as readonly string[]).includes(category);

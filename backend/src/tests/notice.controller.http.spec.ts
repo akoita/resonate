@@ -114,6 +114,11 @@ describe("NoticeController (http)", () => {
       expect(mockNoticeService.sendTargeted).not.toHaveBeenCalled();
     });
 
+    it("refuses a targeted service notice from an operator (#2665)", async () => {
+      await request(server()).post("/notices/targeted").set(bearer("op-1", "operator")).send({ ...TARGETED, category: "service" }).expect(400);
+      expect(mockNoticeService.sendTargeted).not.toHaveBeenCalled();
+    });
+
     it.each(["operator", "admin"])("accept the %s role", async (role) => {
       await request(server()).post("/notices/broadcast").set(confirmed("op-1", role)).send(BROADCAST).expect(201);
       expect(mockNoticeService.sendBroadcast).toHaveBeenCalledWith(
@@ -130,6 +135,7 @@ describe("NoticeController (http)", () => {
 
     it.each([
       ["an unknown category", { ...BROADCAST, category: "marketing" }],
+      ["the service category, which only Resonate itself sends (#2665)", { ...BROADCAST, category: "service" }],
       ["a malformed audience", { ...BROADCAST, audience: "everyone" }],
       ["an unknown role audience", { ...BROADCAST, audience: "role:superuser" }],
       ["an empty title", { ...BROADCAST, title: "  " }],

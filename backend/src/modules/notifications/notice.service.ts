@@ -9,7 +9,8 @@ import {
 import { Prisma } from "@prisma/client";
 import { Subscription } from "rxjs";
 import { prisma } from "../../db/prisma";
-import { CommunityModerationActionTakenEvent } from "../../events/event_types";
+import { CatalogReleaseReadyEvent, CommunityModerationActionTakenEvent } from "../../events/event_types";
+import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
 import { writeAdminAuditEvent } from "../admin_audit/admin_audit_event";
 import { AuditService } from "../audit/audit.service";
 import { EventBus } from "../shared/event_bus";
@@ -45,6 +46,7 @@ const LIST_LIMIT = 50;
 export const NOTICES_HELP_PATH = "/help/platform-notices";
 const MODERATION_ACTOR: NoticeActor = { userId: "system:community-moderation" };
 const DMCA_ACTOR: NoticeActor = { userId: "system:dmca" };
+const SERVICE_ACTOR: NoticeActor = { userId: "system:service" };
 
 type NoticeRow = Prisma.NoticeGetPayload<{ include: { reads: { select: { readAt: true } } } }>;
 
@@ -80,6 +82,17 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
           await this.notifyCommunityModerationAction({ reportId: event.reportId, action: event.action });
         },
       ),
+      // #2665: "Your release is live" once a release finishes processing.
+      this.eventBus.subscribe("catalog.release_ready", async (event: CatalogReleaseReadyEvent) => {
+        if (!event?.releaseId) return;
+        try {
+          await this.notifyReleaseLive(event.releaseId);
+        } catch (error) {
+          this.logger.warn(
+            `Release live notice failed for release ${event.releaseId} (error=${error instanceof Error ? error.name : "unknown"})`,
+          );
+        }
+      }),
     );
   }
 
@@ -368,7 +381,8 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
     return this.sendTargeted(
       {
         userIds: [notice.ownerUserId],
-        category: "moderation",
+        // #2665: a notice about the person's own upload is a service message.
+        category: "service",
         title: notice.title,
         body: notice.body,
         link: notice.link,
@@ -391,6 +405,69 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
     return this.sendDmcaNotice(reportId, await buildDmcaRejectedNotice(reportId), `dmca_report_rejected:${reportId}`);
   }
 
+  /**
+   * #2665: welcome the person once their contact address is confirmed. One
+   * per account ever, so removing and re-adding an address sends nothing new.
+   */
+  async notifyWelcome(userId: string) {
+    return this.sendTargeted(
+      {
+        userIds: [userId],
+        category: "service",
+        title: "Welcome to Resonate",
+        body:
+          "Your email address is confirmed. We will use it only for messages about your account and your music: "
+          + "a release going live, a notice about something you uploaded, and changes to the terms. Never for marketing. "
+          + "You can change which notices you receive by email, or remove the address, in Settings.",
+        link: "/settings",
+      },
+      SERVICE_ACTOR,
+      { dedupeKey: "welcome" },
+    );
+  }
+
+  /**
+   * #2665: tell the artist (and the account that manages the profile) that a
+   * release finished processing and is publicly listed. One notice per
+   * release, so a reprocessed release sends nothing new. A release whose
+   * rights route keeps it off the public catalog sends nothing.
+   */
+  async notifyReleaseLive(releaseId: string) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        type: true,
+        rightsRoute: true,
+        artist: { select: { userId: true, managementOwnerUserId: true } },
+      },
+    });
+    if (!release || release.status !== "ready") return null;
+    if (!release.rightsRoute || !PUBLIC_RELEASE_ROUTES.includes(release.rightsRoute)) return null;
+    const userIds = Array.from(
+      new Set([release.artist?.userId, release.artist?.managementOwnerUserId].filter((id): id is string => !!id)),
+    );
+    if (userIds.length === 0) return null;
+    const existing = await prisma.user.findMany({ where: { id: { in: userIds }, erasedAt: null }, select: { id: true } });
+    if (existing.length === 0) return null;
+    const title = release.title.length > 80 ? `${release.title.slice(0, 79)}…` : release.title;
+    return this.sendTargeted(
+      {
+        userIds: existing.map((u) => u.id),
+        category: "service",
+        title: `Your release is live: ${title}`,
+        body:
+          `"${title}" finished processing and is now listed on Resonate. Listeners can find and play it, `
+          + "and you can share its page. Its stems are ready for the options you chose.",
+        link: `/release/${release.id}`,
+      },
+      SERVICE_ACTOR,
+      { dedupeKey: `release_live:${release.id}` },
+    );
+  }
+
   private async sendDmcaNotice(
     reportId: string,
     notice: DmcaNoticeDraft | null,
@@ -404,7 +481,8 @@ export class NoticeService implements OnModuleInit, OnModuleDestroy {
     return this.sendTargeted(
       {
         userIds: [notice.ownerUserId],
-        category: "moderation",
+        // #2665: a notice about the person's own upload is a service message.
+        category: "service",
         title: notice.title,
         body: notice.body,
         link: notice.link,
