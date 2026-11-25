@@ -374,8 +374,8 @@ describe("Account closure door (HTTP)", () => {
       const handler = PrivacyController.prototype.requestAccountClosure;
       const getTracker = Reflect.getMetadata(`${THROTTLER_TRACKER}default`, handler);
       expect(typeof getTracker).toBe("function");
-      expect(getTracker({ user: { userId: "person-a" }, ip: "203.0.113.9" })).toBe("person-a");
-      expect(getTracker({ ip: "203.0.113.9" })).toBe("203.0.113.9");
+      expect(getTracker({ user: { userId: "person-a" }, ip: "203.0.113.9" })).toBe("user:person-a");
+      expect(getTracker({ ip: "203.0.113.9" })).toBe("ip:203.0.113.9");
       // Milliseconds — see shared/rate_limits.ts and #1790.
       expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, handler)).toBe(3_600_000);
     });
