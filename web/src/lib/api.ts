@@ -9707,3 +9707,105 @@ export async function inviteWaitlistEntry(token: string, id: string) {
 export async function deleteWaitlistEntry(token: string, id: string) {
   return apiRequest<{ deleted: true }>(`/admin/waitlist/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
 }
+
+// ============ Takedown notices (#2664) ============
+
+export type TakedownCategory = "copyright" | "impersonation" | "illegal_content" | "other";
+export type TakedownCapacity = "rights_holder" | "authorized_agent" | "artist_themselves" | "someone_else";
+export type TakedownStatus = "pending" | "upheld" | "rejected" | "countered";
+
+export interface TakedownNoticeInput {
+  trackId: string;
+  claimantName: string;
+  claimantCapacity: TakedownCapacity;
+  claimantEmail: string;
+  originalWorkUrl: string;
+  contentLocation?: string;
+  category: TakedownCategory;
+  reason: string;
+  goodFaith: boolean;
+  /** Honeypot: always empty from a person. */
+  website?: string;
+}
+
+export interface TakedownNoticeReceipt {
+  id: string;
+  trackId: string;
+  status: TakedownStatus;
+  createdAt: string;
+  receiptSent?: boolean;
+}
+
+/** A notice about one of the signed-in creator's tracks: never the reporter's identity. */
+export interface CreatorTakedownNotice {
+  id: string;
+  trackId: string;
+  trackTitle: string;
+  releaseId: string;
+  releaseTitle: string;
+  category: TakedownCategory;
+  status: TakedownStatus;
+  statementOfReasons: string | null;
+  counterNotice: string | null;
+  canCounter: boolean;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+/** The operator's view: every field of the notice. */
+export interface AdminTakedownNotice {
+  id: string;
+  trackId: string;
+  claimantName: string;
+  claimantCapacity: TakedownCapacity | null;
+  claimantEmail: string;
+  originalWorkUrl: string;
+  contentLocation: string | null;
+  category: TakedownCategory;
+  reason: string;
+  goodFaithAt: string | null;
+  status: TakedownStatus;
+  counterNotice: string | null;
+  statementOfReasons: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  track: { id: string; title: string; releaseId: string } | null;
+}
+
+export function fileTakedownNotice(input: TakedownNoticeInput) {
+  return apiRequest<TakedownNoticeReceipt>("/api/dmca/report", {
+    method: "POST",
+    body: JSON.stringify(input),
+    silentErrorCodes: [400, 404, 429],
+  });
+}
+
+export function getMyTakedownNotices(token: string) {
+  return apiRequest<CreatorTakedownNotice[]>("/api/dmca/mine", {}, token);
+}
+
+export function fileTakedownCounterNotice(token: string, reportId: string, counterNotice: string) {
+  return apiRequest<{ id: string; status: TakedownStatus }>(
+    "/api/dmca/counter",
+    { method: "POST", body: JSON.stringify({ reportId, counterNotice }) },
+    token,
+  );
+}
+
+export function listAdminTakedownNotices(token: string, status?: TakedownStatus) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiRequest<AdminTakedownNotice[]>(`/api/dmca${query}`, {}, token);
+}
+
+export function resolveTakedownNotice(
+  token: string,
+  reportId: string,
+  input: { outcome: "upheld" | "rejected"; statementOfReasons?: string },
+  stepUpProof?: string,
+) {
+  return apiRequest<{ outcome: "upheld" | "rejected"; trackId: string }>(
+    `/api/dmca/${encodeURIComponent(reportId)}/resolve`,
+    { method: "PATCH", body: JSON.stringify(input), headers: stepUpHeaders(stepUpProof) },
+    token,
+  );
+}

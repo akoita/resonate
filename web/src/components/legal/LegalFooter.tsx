@@ -9,6 +9,7 @@ export function LegalFooter() {
         <Link href="/privacy">Privacy</Link>
         <Link href="/refunds">Refunds</Link>
         <Link href="/imprint">Contact</Link>
+        <Link href="/report">Report content</Link>
       </nav>
     </footer>
   );

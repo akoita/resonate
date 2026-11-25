@@ -1,6 +1,8 @@
+import { randomUUID } from "crypto";
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -12,6 +14,11 @@ import { UploadRightsRoutingService } from "../rights/upload-rights-routing.serv
 import { NoticeService } from "../notifications/notice.service";
 import { EventBus } from "../shared/event_bus";
 import { reconcileAndAnnounceRemixSourceHolds } from "../catalog/remix-source-hold";
+import { EmailConfig } from "../email/email_config";
+import { renderReportReceiptEmail } from "../email/email_templates";
+import { EMAIL_TRANSPORT, emailErrorCode, type EmailTransport } from "../email/email_transport";
+import { writeStructuredLog } from "../shared/structured_logging";
+import { DMCA_CATEGORIES, DMCA_CLAIMANT_CAPACITIES, type DmcaCategory, type DmcaClaimantCapacity } from "./dmca.dto";
 
 /** Authenticated caller, as set on `req.user` by the JWT strategy. */
 export interface DmcaActor {
@@ -36,6 +43,40 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+/** Receipt emails one address may get per day, so the form cannot be used to flood a stranger's inbox (#2664). */
+export const DMCA_RECEIPTS_PER_ADDRESS_PER_DAY = 3;
+const RECEIPT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export interface FileDmcaReportInput {
+  trackId: string;
+  claimantName: string;
+  claimantEmail: string;
+  originalWorkUrl: string;
+  reason: string;
+  claimantCapacity?: DmcaClaimantCapacity;
+  contentLocation?: string;
+  category?: DmcaCategory;
+  goodFaith?: boolean;
+  /** Honeypot: hidden from people on the web form. */
+  website?: string;
+}
+
+/** What a creator sees about a notice filed against one of their tracks: never the reporter's identity. */
+export interface CreatorDmcaReport {
+  id: string;
+  trackId: string;
+  trackTitle: string;
+  releaseId: string;
+  releaseTitle: string;
+  category: string;
+  status: string;
+  statementOfReasons: string | null;
+  counterNotice: string | null;
+  canCounter: boolean;
+  createdAt: Date;
+  resolvedAt: Date | null;
+}
+
 @Injectable()
 export class DmcaService {
   private readonly logger = new Logger(DmcaService.name);
@@ -46,22 +87,39 @@ export class DmcaService {
     private readonly noticeService?: NoticeService,
     @Optional()
     private readonly eventBus?: EventBus,
+    @Optional() @Inject(EMAIL_TRANSPORT) private readonly transport?: EmailTransport | null,
+    @Optional() private readonly emailConfig?: EmailConfig,
   ) {}
 
   /**
-   * File a DMCA takedown report against a track.
+   * File a takedown notice against a track (public: no account needed).
+   *
+   * A filled honeypot field means a bot: nothing is stored, and the answer
+   * looks the same so the bot learns nothing. A stored notice tells the
+   * uploader (#2664) and, when email is configured, sends the reporter a
+   * receipt with the reference.
    */
-  async fileReport(input: {
-    trackId: string;
-    claimantName: string;
-    claimantEmail: string;
-    originalWorkUrl: string;
-    reason: string;
-  }) {
+  async fileReport(input: FileDmcaReportInput) {
+    if (isNonEmptyString(input?.website)) {
+      this.logger.warn("DMCA report dropped: honeypot field was filled");
+      return { id: randomUUID(), trackId: String(input.trackId ?? ""), status: "pending", createdAt: new Date(), receiptSent: false };
+    }
     for (const field of REPORT_FIELDS) {
       if (!isNonEmptyString(input?.[field])) {
         throw new BadRequestException(`${field} is required`);
       }
+    }
+    if (input.goodFaith !== true) {
+      throw new BadRequestException("goodFaith must be confirmed");
+    }
+    if (input.category !== undefined && !(DMCA_CATEGORIES as readonly string[]).includes(input.category)) {
+      throw new BadRequestException("category is not recognised");
+    }
+    if (
+      input.claimantCapacity !== undefined &&
+      !(DMCA_CLAIMANT_CAPACITIES as readonly string[]).includes(input.claimantCapacity)
+    ) {
+      throw new BadRequestException("claimantCapacity is not recognised");
     }
 
     const track = await prisma.track.findUnique({
@@ -72,12 +130,17 @@ export class DmcaService {
       throw new NotFoundException(`Track ${input.trackId} not found`);
     }
 
+    const claimantEmail = input.claimantEmail.trim();
     const report = await prisma.dmcaReport.create({
       data: {
         trackId: input.trackId,
-        claimantName: input.claimantName,
-        claimantEmail: input.claimantEmail,
-        originalWorkUrl: input.originalWorkUrl,
+        claimantName: input.claimantName.trim(),
+        claimantEmail,
+        claimantCapacity: input.claimantCapacity ?? null,
+        originalWorkUrl: input.originalWorkUrl.trim(),
+        contentLocation: isNonEmptyString(input.contentLocation) ? input.contentLocation.trim() : null,
+        category: input.category ?? "copyright",
+        goodFaithAt: new Date(),
         reason: input.reason,
       },
     });
@@ -86,13 +149,44 @@ export class DmcaService {
       `DMCA report ${report.id} filed against track ${input.trackId}`,
     );
 
+    await this.notifyCreator(report.id, "received");
+    const receiptSent = await this.sendReceipt(report.id, claimantEmail, report.createdAt);
+
     // The filing route is public: return only this report's own reference.
     return {
       id: report.id,
       trackId: report.trackId,
       status: report.status,
       createdAt: report.createdAt,
+      receiptSent,
     };
+  }
+
+  /**
+   * Email the reporter a receipt. Never fails the filing, and skipped when
+   * email is off or this address already had its share of receipts today.
+   */
+  private async sendReceipt(reportId: string, address: string, now: Date): Promise<boolean> {
+    if (!this.transport || !this.emailConfig?.frontendUrl) return false;
+    const recent = await prisma.dmcaReport.count({
+      where: {
+        claimantEmail: { equals: address, mode: "insensitive" },
+        createdAt: { gt: new Date(now.getTime() - RECEIPT_WINDOW_MS) },
+      },
+    });
+    if (recent > DMCA_RECEIPTS_PER_ADDRESS_PER_DAY) return false;
+    try {
+      await this.transport.send(renderReportReceiptEmail(address, reportId, this.emailConfig));
+      return true;
+    } catch (error) {
+      writeStructuredLog({
+        level: "warn",
+        event: "dmca.receipt_send_failed",
+        message: "Could not send a takedown notice receipt",
+        errorCode: emailErrorCode(error),
+      });
+      return false;
+    }
   }
 
   /**
@@ -168,6 +262,7 @@ export class DmcaService {
     reportId: string,
     outcome: "upheld" | "rejected",
     resolver: DmcaActor,
+    statementOfReasons?: string,
   ) {
     if (outcome !== "upheld" && outcome !== "rejected") {
       throw new BadRequestException('outcome must be "upheld" or "rejected"');
@@ -188,6 +283,7 @@ export class DmcaService {
       data: {
         status: outcome,
         resolvedAt: new Date(),
+        statementOfReasons: isNonEmptyString(statementOfReasons) ? statementOfReasons.trim() : null,
       },
     });
 
@@ -214,27 +310,79 @@ export class DmcaService {
         `DMCA report ${reportId} upheld by user ${resolver.userId}: ` +
           `track ${report.trackId} removed + ${report.track.stems.length} stems delisted`,
       );
-      await this.notifyCreatorOfTakedown(reportId);
+      await this.notifyCreator(reportId, "upheld");
     } else {
       this.logger.log(
         `DMCA report ${reportId} rejected by user ${resolver.userId} for track ${report.trackId}`,
       );
+      await this.notifyCreator(reportId, "rejected");
     }
 
     return { outcome, trackId: report.trackId };
   }
 
   /**
-   * #2146: one in-app `moderation` notice to the creator, keyed on the report.
-   * A notice failure never undoes or fails the takedown itself.
+   * #2146, #2664: one in-app `moderation` notice to the creator per report and
+   * stage, keyed on the report. A notice failure never undoes or fails the
+   * filing or the decision.
    */
-  private async notifyCreatorOfTakedown(reportId: string) {
+  private async notifyCreator(reportId: string, stage: "received" | "upheld" | "rejected") {
     if (!this.noticeService) return;
     try {
-      await this.noticeService.notifyDmcaTakedown(reportId);
+      if (stage === "received") await this.noticeService.notifyDmcaReceived(reportId);
+      else if (stage === "rejected") await this.noticeService.notifyDmcaRejected(reportId);
+      else await this.noticeService.notifyDmcaTakedown(reportId);
     } catch (error) {
-      this.logger.error(`Takedown notice for DMCA report ${reportId} failed: ${(error as Error).message}`);
+      this.logger.error(`DMCA ${stage} notice for report ${reportId} failed: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Notices filed against tracks on releases the caller owns (the release's
+   * management owner, else the artist account), newest first (#2664). Shows
+   * the category, status and the reviewer's reasons; never the reporter's
+   * identity, contact or words.
+   */
+  async listForCreator(userId: string): Promise<CreatorDmcaReport[]> {
+    const rows = await prisma.dmcaReport.findMany({
+      where: {
+        track: {
+          release: {
+            OR: [
+              { managementOwnerUserId: userId },
+              { managementOwnerUserId: null, artist: { userId } },
+            ],
+          },
+        },
+      },
+      select: {
+        id: true,
+        trackId: true,
+        category: true,
+        status: true,
+        statementOfReasons: true,
+        counterNotice: true,
+        createdAt: true,
+        resolvedAt: true,
+        track: { select: { title: true, releaseId: true, release: { select: { title: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      trackId: row.trackId,
+      trackTitle: row.track.title,
+      releaseId: row.track.releaseId,
+      releaseTitle: row.track.release.title,
+      category: row.category,
+      status: row.status,
+      statementOfReasons: row.statementOfReasons,
+      counterNotice: row.counterNotice,
+      canCounter: !COUNTER_CLOSED_STATUSES.has(row.status),
+      createdAt: row.createdAt,
+      resolvedAt: row.resolvedAt,
+    }));
   }
 
   /**
