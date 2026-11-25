@@ -333,3 +333,58 @@ export function renderReportReceiptEmail(
   });
   return { to, subject: "[Resonate] We received your notice", text, html };
 }
+
+const WHY_RECEIVED_SUPPORT =
+  "You are receiving this because this address was used to contact Resonate support. We use it only to answer this request.";
+
+/** Receipt for a support request (#2667). The reference only, never the message itself. */
+export function renderSupportReceiptEmail(
+  to: string,
+  reference: string,
+  settings: Pick<EmailLinkSettings, "frontendUrl" | "footerText">,
+): EmailMessage {
+  const privacyUrl = `${settings.frontendUrl}/privacy`;
+  const supportUrl = `${settings.frontendUrl}/support`;
+  const heading = "We received your message";
+  const intro = "Thank you for writing to us. Someone from the Resonate team will read your message and answer by email.";
+  const refLine = `Your reference: ${reference}`;
+  const keep = "Keep this reference if you write to us again about the same thing.";
+  const ignore = "If you did not contact Resonate, ignore this email.";
+  const operatorLine = (settings.footerText ?? "").trim();
+
+  const text = [
+    "Resonate",
+    "",
+    heading,
+    "",
+    intro,
+    "",
+    refLine,
+    keep,
+    "",
+    ignore,
+    "",
+    "--",
+    WHY_RECEIVED_SUPPORT,
+    `Support: ${supportUrl}`,
+    `Privacy policy: ${privacyUrl}`,
+    ...(operatorLine ? ["", operatorLine] : []),
+  ].join("\n");
+
+  const html = layoutHtml({
+    title: heading,
+    heading,
+    contentHtml:
+      paragraphsHtml(intro) +
+      paragraphsHtml(`${refLine}\n${keep}`) +
+      paragraphsHtml(ignore, `margin:0 0 20px;font-size:14px;line-height:1.55;color:${MUTED_COLOR}`),
+    footerHtml:
+      footerParagraph(escapeHtml(WHY_RECEIVED_SUPPORT)) +
+      footerLinksHtml([
+        ["Support", supportUrl],
+        ["Privacy policy", privacyUrl],
+      ]) +
+      operatorFooterHtml(settings.footerText),
+  });
+  return { to, subject: "[Resonate] We received your message", text, html };
+}

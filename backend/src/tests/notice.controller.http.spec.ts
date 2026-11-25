@@ -3,7 +3,14 @@ import { INestApplication } from "@nestjs/common";
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { NoticeController } from "../modules/notifications/notice.controller";
 import { NoticeService } from "../modules/notifications/notice.service";
+import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
 import { authToken, createControllerTestApp, stepUpProof } from "./e2e-helpers";
+
+jest.mock("../modules/admin_audit/admin_audit_event", () => ({
+  ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
+  writeAdminAuditEvent: jest.fn().mockResolvedValue(undefined),
+}));
+const mockAudit = writeAdminAuditEvent as jest.Mock;
 
 const mockNoticeService = {
   listForUser: jest.fn().mockResolvedValue({ notices: [], unreadCount: 0 }),
@@ -11,6 +18,8 @@ const mockNoticeService = {
   listSentBroadcasts: jest.fn().mockResolvedValue({ notices: [] }),
   sendBroadcast: jest.fn().mockResolvedValue({ id: "n-1" }),
   sendTargeted: jest.fn().mockResolvedValue({ recipientCount: 1, created: 1 }),
+  currentStatus: jest.fn().mockResolvedValue({ status: null }),
+  endBroadcast: jest.fn().mockResolvedValue({ id: "n-1", expiresAt: "2026-11-26T00:00:00.000Z" }),
 };
 
 const BROADCAST = { audience: "all", category: "policy", title: "Policy update", body: "We changed the policy." };
@@ -179,6 +188,28 @@ describe("NoticeController (http)", () => {
       expect(mockNoticeService.sendBroadcast).toHaveBeenCalledWith(
         expect.objectContaining({ audience: "all", link: null }),
         { userId: "op-1", role: "operator" },
+      );
+    });
+  });
+
+  describe("service status (#2667)", () => {
+    it("is public: no session needed", async () => {
+      mockNoticeService.currentStatus.mockResolvedValueOnce({ status: { id: "n-9", title: "Slow uploads" } });
+      const res = await request(server()).get("/notices/status").expect(200);
+      expect(res.body).toEqual({ status: { id: "n-9", title: "Slow uploads" } });
+    });
+
+    it("ending a broadcast needs an operator or admin", async () => {
+      await request(server()).post("/notices/n-1/end").expect(401);
+      await request(server()).post("/notices/n-1/end").set(bearer("listener-1", "listener")).expect(403);
+      expect(mockNoticeService.endBroadcast).not.toHaveBeenCalled();
+    });
+
+    it("an operator ends a broadcast in one step, and it is recorded", async () => {
+      await request(server()).post("/notices/n-1/end").set(bearer("op-1", "operator")).expect(200);
+      expect(mockNoticeService.endBroadcast).toHaveBeenCalledWith("n-1");
+      expect(mockAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ actorUserId: "op-1", action: "notice.broadcast_ended", detail: { noticeId: "n-1" } }),
       );
     });
   });

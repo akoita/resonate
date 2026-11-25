@@ -19,6 +19,8 @@ export const ADMIN_AUDIT_ACTIONS = [
   /** #2173: a platform notice an operator sent (broadcast, or targeted at named people). */
   "notice.broadcast_sent",
   "notice.targeted_sent",
+  /** #2667: an operator ended a broadcast early (the status banner clears). */
+  "notice.broadcast_ended",
   /** #2173: a fresh passkey/wallet confirmation was accepted or refused. */
   "admin.step_up_verified",
   "admin.step_up_refused",
@@ -129,6 +131,9 @@ export const ADMIN_AUDIT_ACTIONS = [
   "remix_watermark.detect_started",
   "remix_watermark.detect_viewed",
   "remix_watermark.evidence_attached",
+  /** #2667: the support queue (ids and status codes; never the message or an address). */
+  "support.requests_viewed",
+  "support.request_status_changed",
 ] as const;
 
 export type AdminAuditAction = (typeof ADMIN_AUDIT_ACTIONS)[number];
