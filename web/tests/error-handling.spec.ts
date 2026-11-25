@@ -18,7 +18,7 @@ test.describe("Error Handling & Form Validation", () => {
         await authenticatedPage.goto("/artist/upload");
 
         // Should NOT show auth gate
-        await expect(authenticatedPage.getByText("Connect your wallet to upload releases.")).not.toBeVisible();
+        await expect(authenticatedPage.getByText("Sign in to upload releases.")).not.toBeVisible();
 
         // Should show upload form
         await expect(authenticatedPage.getByText("Upload your track")).toBeVisible();

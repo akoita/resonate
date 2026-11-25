@@ -72,7 +72,7 @@ export function useSessionKey() {
       if (!token) throw new Error("Not authenticated");
       // Use the override if provided (avoids React stale closure after login())
       const account = accountOverride ?? kernelAccount;
-      if (!account) throw new Error("No Kernel account — connect your wallet first");
+      if (!account) throw new Error("No Kernel account — sign in first");
       if (!config.agentAddress) throw new Error("No agent address — enable failed");
       setIsGranting(true);
       setError(null);

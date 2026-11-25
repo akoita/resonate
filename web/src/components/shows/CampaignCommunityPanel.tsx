@@ -240,7 +240,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
           <strong>Connect to join the demand signal</strong>
           <p>Fans can join the city group first. Confirmed campaign support unlocks the private backer room without exposing pledge or wallet details publicly.</p>
           <button type="button" onClick={() => void connect()}>
-            Connect wallet
+            Sign in
           </button>
         </div>
       ) : (

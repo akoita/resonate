@@ -58,7 +58,7 @@ export function StemMintForm({
   if (status !== "authenticated") {
     return (
       <div className="bg-zinc-900 rounded-lg p-6 border border-zinc-800">
-        <p className="text-zinc-400 text-center">Connect your wallet to mint this stem as an NFT</p>
+        <p className="text-zinc-400 text-center">Sign in to mint this stem as an NFT</p>
       </div>
     );
   }

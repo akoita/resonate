@@ -63,7 +63,7 @@ export function useGeneration(token: string | null, artistId: string | null) {
       options?: { negativePrompt?: string; seed?: number; durationSeconds?: 30 | 60 | 120 | 180 },
     ) => {
       if (!token || !artistId) {
-        setError("Please connect your wallet and set up an artist profile first.");
+        setError("Please sign in and set up an artist profile first.");
         setState("failed");
         return;
       }

@@ -215,7 +215,7 @@ export default function ArtistCatalogPage() {
   }, [refreshCatalog, state.status, token]);
 
   return (
-    <AuthGate title="Connect your wallet to view artist catalog.">
+    <AuthGate title="Sign in to view artist catalog.">
       <main className="analytics-container" style={{ padding: "4px 0" }}>
         <header className="analytics-header-section">
           <div className="analytics-title-row">

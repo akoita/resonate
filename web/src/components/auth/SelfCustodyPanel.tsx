@@ -21,7 +21,7 @@ export default function SelfCustodyPanel() {
 
   const run = async (action: () => Promise<void>) => {
     if (!address || !token) {
-      setStatus("Connect wallet to continue.");
+      setStatus("Sign in to continue.");
       return;
     }
     try {

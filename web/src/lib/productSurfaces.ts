@@ -13,6 +13,12 @@ export const PRODUCT_SURFACE_NAMES = [
   "wallet",
   "agentPayments",
   "aiGeneration",
+  // #2663: navigation switches for surfaces that are not ready to show.
+  "disputes",
+  "community",
+  "sceneScout",
+  "sonicRadar",
+  "desktopApp",
 ] as const;
 
 export type ProductSurface = (typeof PRODUCT_SURFACE_NAMES)[number];

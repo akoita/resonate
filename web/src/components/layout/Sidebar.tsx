@@ -43,16 +43,6 @@ const PRIMARY_ITEMS = [
     )
   },
   {
-    name: "Create",
-    href: "/create",
-    surface: "aiGeneration" as ProductSurface,
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 3v18" /><path d="M18.5 8.5L6 17" /><path d="M6 8.5l12.5 8.5" />
-      </svg>
-    )
-  },
-  {
     name: "Shows",
     href: "/shows",
     badge: "NEW" as const,
@@ -81,47 +71,12 @@ const PRIMARY_ITEMS = [
       </svg>
     )
   },
-  {
-    name: "Sonic Radar",
-    href: "/sonic-radar",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="2" />
-        <path d="M16.24 7.76a6 6 0 0 1 0 8.49" />
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-        <path d="M7.76 16.24a6 6 0 0 1 0-8.49" />
-        <path d="M4.93 19.07a10 10 0 0 1 0-14.14" />
-      </svg>
-    )
-  },
-  {
-    name: "Community",
-    href: "/community",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    )
-  },
 
-  {
-    name: "Playlists",
-    href: "/library?tab=playlists",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 18V5l12-2v13"></path>
-        <circle cx="6" cy="18" r="3"></circle>
-        <circle cx="18" cy="16" r="3"></circle>
-      </svg>
-    )
-  }
 ];
 
 
-const SECONDARY_ITEMS = [
+/** #2663: shown to accounts with an artist profile. AI generation comes last. */
+const ARTIST_ITEMS = [
   {
     name: "Upload",
     href: "/artist/upload",
@@ -162,29 +117,9 @@ const SECONDARY_ITEMS = [
     )
   },
   {
-    name: "AI Quality",
-    href: "/analytics/agent-quality",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 19V5" />
-        <path d="M4 19h16" />
-        <path d="m7 15 3-3 3 2 5-6" />
-      </svg>
-    )
-  },
-  {
-    name: "Wallet",
-    href: "/wallet",
-    surface: "wallet" as ProductSurface,
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
-      </svg>
-    )
-  },
-  {
     name: "Disputes",
     href: "/disputes",
+    surface: "disputes" as ProductSurface,
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 3l8 4v6c0 5-3.5 7.5-8 8-4.5-.5-8-3-8-8V7l8-4Z" />
@@ -193,6 +128,20 @@ const SECONDARY_ITEMS = [
       </svg>
     )
   },
+  {
+    name: "Create with AI",
+    href: "/create",
+    surface: "aiGeneration" as ProductSurface,
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3v18" /><path d="M18.5 8.5L6 17" /><path d="M6 8.5l12.5 8.5" />
+      </svg>
+    )
+  },
+];
+
+/** #2663: account destinations every listener sees, after the listening ones. */
+const ACCOUNT_ITEMS = [
   {
     name: "Settings",
     href: "/settings",
@@ -216,6 +165,26 @@ const SECONDARY_ITEMS = [
   },
 ];
 
+
+type NavItem = { name: string; href: string; surface?: ProductSurface; icon: React.ReactNode; badge?: "NEW" };
+
+/**
+ * The destinations the sidebar offers (#2663): the listening ones and the
+ * account ones for everybody, the artist group only to accounts with an
+ * artist profile, and nothing whose surface is switched off. A listener sees
+ * eight. Operator links are added separately.
+ */
+export function sidebarDestinations(
+  input: { isArtist: boolean; surfaces: Partial<Record<ProductSurface, boolean>> },
+): { primary: NavItem[]; artist: NavItem[]; account: NavItem[] } {
+  const offered = (item: NavItem) => !item.surface || input.surfaces[item.surface] === true;
+  return {
+    primary: PRIMARY_ITEMS.filter(offered),
+    artist: input.isArtist ? ARTIST_ITEMS.filter(offered) : [],
+    account: ACCOUNT_ITEMS.filter(offered),
+  };
+}
+
 /**
  * Crates & Stems owns every /crates route (the Browse stems tab and each saved
  * crate), so it stays highlighted on /crates/<id>; other items match exactly.
@@ -237,7 +206,6 @@ export default function Sidebar() {
   // Product surface switches (#2658): hide entry points the deployment has
   // switched off.
   const { surfaces } = useProductSurfaces();
-  const isItemOffered = (item: { surface?: ProductSurface }) => !item.surface || surfaces[item.surface];
   const accountHref = surfaces.wallet ? "/wallet" : "/settings";
 
   // Auto-close drawer on route change only. `closeSidebar` is a Zustand
@@ -266,6 +234,8 @@ export default function Sidebar() {
   }, [status, token]);
 
   const showAdminLink = mounted && role === "admin";
+  const isArtist = mounted && status === "authenticated" && artistProfile !== null;
+  const destinations = sidebarDestinations({ isArtist, surfaces });
   const showManagementRecoveryLink = mounted && (role === "admin" || role === "operator");
   const accountAddress = smartAccountAddress ?? address;
   const showUserChip = mounted && status === "authenticated" && !!accountAddress;
@@ -287,6 +257,22 @@ export default function Sidebar() {
   // connection state. Keeps the status line short enough to avoid
   // clipping at narrow drawer widths (#549).
   const userStatusLabel = smartAccountAddress ? "Smart Account" : "Wallet";
+
+  const renderLink = (item: NavItem) => {
+    const isActive = pathname === item.href;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        prefetch={false}
+        className={`sidebar-link ${isActive ? 'active' : ''}`}
+        aria-current={isActive ? "page" : undefined}
+      >
+        <span className="link-icon">{item.icon}</span>
+        <span className="link-text">{item.name}</span>
+      </Link>
+    );
+  };
 
   return (
     <>
@@ -318,9 +304,9 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav primary" aria-label="Primary">
-        {PRIMARY_ITEMS.filter(isItemOffered).map((item) => {
+        {destinations.primary.map((item) => {
           const isActive = isPrimaryItemActive(pathname, item.href);
-          const badge = "badge" in item ? item.badge : undefined;
+          const badge = item.badge;
           return (
             <Link
               key={item.href}
@@ -344,21 +330,14 @@ export default function Sidebar() {
 
       <nav className="sidebar-nav secondary" aria-label="Artist and account">
         <div className="nav-divider" />
-        {SECONDARY_ITEMS.filter(isItemOffered).map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              prefetch={false}
-              className={`sidebar-link ${isActive ? 'active' : ''}`}
-              aria-current={isActive ? "page" : undefined}
-            >
-              <span className="link-icon">{item.icon}</span>
-              <span className="link-text">{item.name}</span>
-            </Link>
-          );
-        })}
+        {destinations.artist.length > 0 ? (
+          <>
+            <div className="sidebar-group-label">For artists</div>
+            {destinations.artist.map((item) => renderLink(item))}
+            <div className="nav-divider" />
+          </>
+        ) : null}
+        {destinations.account.map((item) => renderLink(item))}
         {showAdminLink ? (
           <>
             <Link
@@ -418,6 +397,21 @@ export default function Sidebar() {
                 </svg>
               </span>
               <span className="link-text">DJ Session Events</span>
+            </Link>
+            <Link
+              href="/analytics/agent-quality"
+              prefetch={false}
+              className={`sidebar-link ${pathname === "/analytics/agent-quality" ? 'active' : ''}`}
+              aria-current={pathname === "/analytics/agent-quality" ? "page" : undefined}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19V5" />
+                  <path d="M4 19h16" />
+                  <path d="m7 15 3-3 3 2 5-6" />
+                </svg>
+              </span>
+              <span className="link-text">AI DJ Quality</span>
             </Link>
             <Link
               href="/admin/audit"

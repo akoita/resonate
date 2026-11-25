@@ -1240,7 +1240,7 @@ function LibraryPageContent() {
     };
 
     return (
-        <AuthGate title="Connect your wallet to view your library.">
+        <AuthGate title="Sign in to view your library.">
             <main className="library-page-main library-v3">
                 <Card className="library-page-card">
                     <div className="library-header">

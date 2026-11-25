@@ -104,7 +104,7 @@ export default function SonicRadarPage() {
     const headline = journal?.headline;
 
     return (
-        <AuthGate title="Connect your wallet to see your discovery journal.">
+        <AuthGate title="Sign in to see your discovery journal.">
             <main className="sonic-radar-page">
                 {/* Hero Section */}
                 <section className="sonic-radar-hero">

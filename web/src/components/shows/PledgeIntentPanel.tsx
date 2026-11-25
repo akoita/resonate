@@ -113,7 +113,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     if (phase === "checking") return "Checking allowance...";
     if (phase === "signing") return "Awaiting wallet signature...";
     if (phase === "confirming") return "Confirming pledge...";
-    if (status !== "authenticated") return "Connect wallet to pledge";
+    if (status !== "authenticated") return "Sign in to pledge";
     return "Pledge with wallet";
   }, [loading, phase, status]);
 

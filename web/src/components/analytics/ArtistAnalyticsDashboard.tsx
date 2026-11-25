@@ -1,5 +1,6 @@
 "use client";
 
+import { useProductSurfaces } from "../../hooks/useProductSurfaces";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type {
@@ -249,12 +250,14 @@ const SCENE_SCOUT_SIGNALS: Array<{
 
 /** One compact panel for Scene Scout signals that cannot produce action cards yet. */
 function SceneScoutStatus({ data }: { data: ArtistAnalyticsDashboardData }) {
+  // #2663: Scene Scout cards follow their navigation switch.
+  const { surfaces } = useProductSurfaces();
   const pending = SCENE_SCOUT_SIGNALS.flatMap((signal) => {
     const state: SceneScoutSignal = data[signal.key];
     if (!state || state.status === "ready") return [];
     return [{ ...signal, message: state.reason ?? (state.status === "thin_data" ? signal.thinData : signal.unavailable) }];
   });
-  if (pending.length === 0) return null;
+  if (pending.length === 0 || !surfaces.sceneScout) return null;
   return (
     <section className="artist-action-cockpit scene-scout-status" aria-labelledby="scene-scout-status-heading">
       <div className="artist-action-cockpit__header">

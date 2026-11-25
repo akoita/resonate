@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
+import { AUTH_COPY } from "../../lib/authCopy";
 
 const subscribe = () => () => { };
 
@@ -54,8 +55,8 @@ export default function ConnectButton() {
           type="button"
           className="wallet-disconnect"
           onClick={disconnect}
-          aria-label="Disconnect wallet"
-          title="Disconnect wallet"
+          aria-label={AUTH_COPY.signOut}
+          title={AUTH_COPY.signOut}
         >
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -111,7 +112,7 @@ export default function ConnectButton() {
               <polyline points="10 17 15 12 10 7" />
               <line x1="15" y1="12" x2="3" y2="12" />
             </svg>
-            {status === "loading" ? "..." : "Log In"}
+            {status === "loading" ? "..." : AUTH_COPY.signIn}
           </span>
         </button>
 
@@ -128,13 +129,13 @@ export default function ConnectButton() {
               <line x1="20" y1="8" x2="20" y2="14" />
               <line x1="23" y1="11" x2="17" y2="11" />
             </svg>
-            {status === "loading" ? "..." : "Sign Up"}
+            {status === "loading" ? "..." : AUTH_COPY.createAccount}
           </span>
         </button>
       </div>
 
       <p className="wallet-legal-links">
-        <span>By signing up, you agree to the</span>
+        <span>By creating an account, you agree to the</span>
         <Link href="/terms">Terms</Link>
         <span>and acknowledge the</span>
         <Link href="/privacy">Privacy Policy</Link>

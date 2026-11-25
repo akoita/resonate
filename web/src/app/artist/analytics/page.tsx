@@ -87,7 +87,7 @@ export default function ArtistAnalyticsPage() {
   }, [days, token]);
 
   return (
-    <AuthGate title="Connect your wallet to view artist analytics.">
+    <AuthGate title="Sign in to view artist analytics.">
       {state.status === "loading" ? (
         <ArtistAnalyticsDashboard status="loading" days={days} onDaysChange={setDays} />
       ) : null}
