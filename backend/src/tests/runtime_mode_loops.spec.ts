@@ -13,6 +13,7 @@ import { StemResultSubscriber } from "../modules/ingestion/stem-result.subscribe
 import { X402RefundWatchdogService } from "../modules/punchline/x402-refund-watchdog.service";
 import { AgentReputationSchedulerService } from "../modules/agents/agent_reputation_scheduler.service";
 import { DiscoveryPopularityService } from "../modules/catalog/discovery-popularity.service";
+import { StreamRenditionService } from "../modules/catalog/stream_rendition.service";
 import { EventBus } from "../modules/shared/event_bus";
 import { resolvePubSubRuntimeConfig } from "../modules/ingestion/pubsub-runtime";
 import {
@@ -139,6 +140,16 @@ describe("background loops follow BACKEND_RUNTIME_MODE (#1608)", () => {
       boot: async () => {
         const service = new StemWatchdogService(new EventBus());
         const sweep = jest.spyOn(service, "runWatchdogSweep").mockResolvedValue(undefined as any);
+        service.onModuleInit();
+        return { started: () => sweep.mock.calls.length, stop: () => service.onModuleDestroy() };
+      },
+    },
+    {
+      name: "stream rendition sweep",
+      loopId: "streamRenditionSweep",
+      boot: async () => {
+        const service = new StreamRenditionService({} as any, {} as any);
+        const sweep = jest.spyOn(service, "runSweep").mockResolvedValue({ processed: 0, failed: 0, remaining: 0 });
         service.onModuleInit();
         return { started: () => sweep.mock.calls.length, stop: () => service.onModuleDestroy() };
       },

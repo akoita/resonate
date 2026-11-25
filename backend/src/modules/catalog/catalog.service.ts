@@ -134,6 +134,26 @@ export type RemixReleaseSource = {
 type AudioRange = { start: number; end: number; total: number };
 type AudioPayload = { data: Buffer; mimeType?: string | null; range?: AudioRange };
 type AudioRequestOptions = { includeRestricted?: boolean; range?: string };
+
+const STREAMABLE_STEM_SELECT = {
+  id: true,
+  type: true,
+  source: true,
+  isEncrypted: true,
+  storageProvider: true,
+  streamUri: true,
+  streamMimeType: true,
+} as const;
+
+export type StreamableStemRecord = {
+  id: string;
+  type: string;
+  source: "separated" | "official" | null;
+  isEncrypted: boolean;
+  storageProvider: string;
+  streamUri: string | null;
+  streamMimeType: string | null;
+};
 type ReleaseArtistCreditInput = {
   artistId?: string | null;
   displayName?: string | null;
@@ -3611,6 +3631,19 @@ export class CatalogService implements OnModuleInit {
     return this.getTrackStream(trackId, { includeRestricted: true, range: options?.range });
   }
 
+  /** The owner's track rendition (#2661), when one exists and they manage the release. */
+  async resolveOwnerTrackRendition(
+    releaseId: string,
+    trackId: string,
+    userId: string,
+  ): Promise<StreamableStemRecord | null> {
+    const track = await prisma.track.findUnique({ where: { id: trackId }, select: { releaseId: true } });
+    if (!track || track.releaseId !== releaseId) return null;
+    if (!(await hasReleaseManagementAccess(userId, releaseId, "catalog_read"))) return null;
+    const stem = await this.resolveTrackStreamStem(trackId, { includeRestricted: true });
+    return stem?.streamUri ? stem : null;
+  }
+
   async getTrackStream(trackId: string, options?: AudioRequestOptions) {
     // Find the track's stems, preferring unencrypted playable audio
     const track = await prisma.track.findUnique({
@@ -3664,6 +3697,65 @@ export class CatalogService implements OnModuleInit {
     return this.getStemBlob(preferredStem.id, options);
   }
 
+  /**
+   * The stem whose streaming rendition plays for a track (#2661), with the
+   * same withdrawal and rights gating as the original stream path. The
+   * preference order is unchanged: original, master, first unencrypted.
+   */
+  async resolveTrackStreamStem(
+    trackId: string,
+    options?: { includeRestricted?: boolean },
+  ): Promise<StreamableStemRecord | null> {
+    const track = await prisma.track.findUnique({
+      where: { id: trackId },
+      select: {
+        rightsRoute: true,
+        release: { select: { rightsRoute: true, status: true } },
+        stems: {
+          where: { isCurrent: true },
+          select: STREAMABLE_STEM_SELECT,
+          orderBy: { type: "asc" },
+        },
+      },
+    });
+    if (!track || track.stems.length === 0) return null;
+    if (!options?.includeRestricted && track.release.status === RELEASE_STATUS_WITHDRAWN) return null;
+    const effectiveRoute = this.getMostRestrictiveRoute(track.rightsRoute, track.release.rightsRoute);
+    if (!options?.includeRestricted && !this.isStreamingAllowed(effectiveRoute)) return null;
+    return (
+      track.stems.find((stem) => stem.type === "original") ||
+      track.stems.find((stem) => stem.type === "master") ||
+      track.stems.find((stem) => !stem.isEncrypted) ||
+      track.stems[0]
+    );
+  }
+
+  /**
+   * A stem the public blob and preview routes may play (#2661): current, not
+   * withdrawn, streaming allowed. Callers serve its rendition only.
+   */
+  async resolvePublicStreamStem(stemId: string): Promise<StreamableStemRecord | null> {
+    const stem = await prisma.stem.findUnique({
+      where: { id: stemId },
+      select: {
+        ...STREAMABLE_STEM_SELECT,
+        isCurrent: true,
+        track: {
+          select: {
+            rightsRoute: true,
+            release: { select: { rightsRoute: true, status: true } },
+          },
+        },
+      },
+    });
+    if (!stem || !stem.isCurrent) return null;
+    if (stem.track.release.status === RELEASE_STATUS_WITHDRAWN) return null;
+    const effectiveRoute = this.getMostRestrictiveRoute(stem.track.rightsRoute, stem.track.release.rightsRoute);
+    if (!this.isStreamingAllowed(effectiveRoute)) return null;
+    const { isCurrent: _current, track: _track, ...streamable } = stem;
+    return streamable;
+  }
+
   async getStemBlob(stemId: string, options?: AudioRequestOptions): Promise<AudioPayload | null> {
     // Try finding by exact ID first
     let stem = await prisma.stem.findUnique({
@@ -3675,6 +3767,7 @@ export class CatalogService implements OnModuleInit {
         mimeType: true,
         uri: true,
         storageProvider: true,
+        isEncrypted: true,
         source: true,
         track: {
           select: {
@@ -3693,7 +3786,12 @@ export class CatalogService implements OnModuleInit {
     // Fallback: if stemId looks like a filename (e.g. from a mockup URI), try searching by URI
     if (!stem) {
       stem = await prisma.stem.findFirst({
-        where: { uri: { contains: stemId } },
+        // The filename lookup exists for local development URIs only
+        // (`/catalog/stems/<file>/blob`); it must never match a cloud object.
+        where: {
+          uri: { contains: stemId },
+          ...(options?.includeRestricted ? {} : { storageProvider: "local" }),
+        },
         select: {
           id: true,
           isCurrent: true,
@@ -3701,6 +3799,7 @@ export class CatalogService implements OnModuleInit {
           mimeType: true,
           uri: true,
           storageProvider: true,
+          isEncrypted: true,
           source: true,
           track: {
             select: {
@@ -3718,6 +3817,11 @@ export class CatalogService implements OnModuleInit {
     }
 
     if (!stem) return null;
+
+    // #2661: the public route never returns an archive file from cloud storage.
+    // Listeners receive the streaming rendition instead (StreamRenditionService);
+    // only encrypted rows (ciphertext) and local development rows pass here.
+    if (!options?.includeRestricted && stem.storageProvider !== "local" && !stem.isEncrypted) return null;
 
     // #1976: an official stem is a lossless file buyers pay for. This route is
     // unauthenticated, so it never serves one; buyers download through
@@ -3824,6 +3928,22 @@ export class CatalogService implements OnModuleInit {
     }
 
     return null;
+  }
+
+  /**
+   * The archive audio of a stem, decrypted when needed, for internal work only
+   * (the streaming rendition transcode, #2661). Never send it to a listener.
+   */
+  async loadStemArchiveAudio(stemId: string): Promise<{ data: Buffer; mimeType: string } | null> {
+    const stem = await prisma.stem.findUnique({
+      where: { id: stemId },
+      select: { uri: true, encryptionMetadata: true, data: true, mimeType: true },
+    });
+    if (!stem) return null;
+    if (stem.encryptionMetadata) return this.loadStemPreviewAudio(stem);
+    const blob = await this.getStemBlob(stemId, { includeRestricted: true });
+    if (!blob) return null;
+    return { data: Buffer.from(blob.data), mimeType: blob.mimeType || "audio/mpeg" };
   }
 
   async getStemPreview(stemId: string, _options?: { range?: string }) {

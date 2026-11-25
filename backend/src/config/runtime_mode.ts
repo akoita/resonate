@@ -75,6 +75,10 @@ export const BACKGROUND_LOOPS = {
     description: "Listing, lifecycle and orphan-listing reconcilers and the pending sale-split retry (#2172) at boot",
   },
   stemWatchdog: { kind: "reconciler", description: "Stuck stem-processing sweep" },
+  streamRenditionSweep: {
+    kind: "reconciler",
+    description: "Streaming rendition sweep: new uploads and the backfill (#2661)",
+  },
   x402RefundWatchdog: { kind: "reconciler", description: "Stale x402 refund_due sweep" },
   agentReputationScheduler: { kind: "reconciler", description: "ERC-8004 reputation attestation sweep" },
   discoveryPopularityRefresh: { kind: "refresher", description: "Local discovery popularity refresh timer" },
