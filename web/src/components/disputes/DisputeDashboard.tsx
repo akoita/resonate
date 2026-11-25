@@ -630,7 +630,7 @@ export default function DisputeDashboard() {
           }}>
             <IconScale />
           </div>
-          <p style={{ opacity: 0.4, fontSize: "14px" }}>Connect your wallet to view disputes</p>
+          <p style={{ opacity: 0.4, fontSize: "14px" }}>Sign in to view disputes</p>
         </div>
       </div>
     );

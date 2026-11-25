@@ -178,7 +178,7 @@ export function formatPasskeyAuthError(error: unknown): string {
     normalized.includes("notallowederror") ||
     normalized.includes("timed out or was not allowed")
   ) {
-    return "Passkey access was blocked or timed out. If you already created a Resonate passkey, use Log In; otherwise try Sign Up again and approve the browser or system passkey prompt.";
+    return "Passkey access was blocked or timed out. If you already created a Resonate passkey, use Sign in; otherwise try Create account again and approve the browser or system passkey prompt.";
   }
 
   return message;
@@ -245,7 +245,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const handleInvalidated = () => {
       clearEmbeddedAccount();
       clearAuthState("error");
-      setError("Your session expired. Please reconnect.");
+      setError("Your session expired. Please sign in again.");
     };
 
     window.addEventListener(AUTH_INVALIDATED_EVENT, handleInvalidated);

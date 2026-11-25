@@ -124,7 +124,7 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
 
     const run = async (action: () => Promise<void>) => {
         if (!address || !token) {
-            setStatus("Connect wallet to continue.");
+            setStatus("Sign in to continue.");
             return;
         }
         try {

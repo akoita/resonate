@@ -30,7 +30,7 @@ describe("AuthProvider passkey errors", () => {
     );
 
     expect(message).toContain("Passkey access was blocked or timed out.");
-    expect(message).toContain("use Log In");
+    expect(message).toContain("use Sign in");
   });
 
   it("keeps unrelated auth errors intact", () => {

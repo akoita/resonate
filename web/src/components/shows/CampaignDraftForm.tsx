@@ -603,9 +603,9 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
   if (status !== "authenticated") {
     return (
       <section className="shows-create__panel">
-        <h2>Connect wallet</h2>
+        <h2>Sign in</h2>
         <p>Campaign drafting requires an artist, admin, or operator account.</p>
-        <button type="button" onClick={connect}>Connect wallet</button>
+        <button type="button" onClick={connect}>Sign in</button>
       </section>
     );
   }

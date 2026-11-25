@@ -137,6 +137,6 @@ describe("CrateExportView", () => {
   });
 
   it("asks to connect a wallet when there is none to download with", () => {
-    expect(render({ canDownload: false })).toContain("Connect your wallet to download.");
+    expect(render({ canDownload: false })).toContain("Sign in to download.");
   });
 });

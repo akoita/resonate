@@ -19,7 +19,7 @@ export default function CommunityPage() {
   const { addToast } = useToast();
 
   return (
-    <AuthGate title="Connect your wallet to join your communities.">
+    <AuthGate title="Sign in to join your communities.">
       <main className="community-workspace">
         <header className="community-hero">
           <span className="settings-kicker">Communities</span>

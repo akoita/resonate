@@ -4,7 +4,8 @@ import { resolveAnalyticsEnvironment } from "../modules/analytics/analytics_even
 /**
  * Product surface switches (#2658).
  *
- * One named switch per surface where money moves or where generative AI runs.
+ * One named switch per surface where money moves or where generative AI runs,
+ * plus navigation switches (#2663) for surfaces that are not ready to show.
  * A deployment turns a surface off without a code change, and the backend
  * refuses the matching routes, so hiding a button is never the only
  * protection. The web app reads the resolved values from
@@ -42,6 +43,29 @@ export const PRODUCT_SURFACES = {
   aiGeneration: {
     env: "AI_GENERATION_ENABLED",
     label: "AI generation",
+  },
+  // #2663: navigation switches. These hide entry points to surfaces that are
+  // not ready for newcomers; their routes stay reachable by direct link, so
+  // the backend does not refuse them. Same defaults as the switches above.
+  disputes: {
+    env: "DISPUTES_ENABLED",
+    label: "Disputes",
+  },
+  community: {
+    env: "COMMUNITY_ENABLED",
+    label: "Community rooms and cohorts",
+  },
+  sceneScout: {
+    env: "SCENE_SCOUT_ENABLED",
+    label: "Scene Scout cards",
+  },
+  sonicRadar: {
+    env: "SONIC_RADAR_ENABLED",
+    label: "Sonic Radar",
+  },
+  desktopApp: {
+    env: "DESKTOP_APP_ENABLED",
+    label: "Desktop app link",
   },
 } as const;
 

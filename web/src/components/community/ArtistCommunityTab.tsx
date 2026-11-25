@@ -104,8 +104,8 @@ export function roomAccessCopy(room: CommunityArtistRoom, authenticated: boolean
       label: "Connect to join",
       disabled: true,
       reason: room.roomType === "artist_holder"
-        ? "Connect your wallet to privately check your holder proof."
-        : "Connect your wallet to join the conversation.",
+        ? "Sign in to privately check your holder proof."
+        : "Sign in to join the conversation.",
     };
   }
 

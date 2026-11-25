@@ -20,7 +20,7 @@ test.describe("Sonic Radar Page", () => {
         await page.goto("/sonic-radar");
         const authTitle = page.locator(".auth-title");
         if (await authTitle.isVisible({ timeout: 5000 }).catch(() => false)) {
-            await expect(authTitle).toContainText("wallet");
+            await expect(authTitle).toContainText("Sign in");
         }
     });
 

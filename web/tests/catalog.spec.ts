@@ -52,10 +52,12 @@ test.describe("Catalog & Home Page", () => {
         ).toBeVisible();
     });
 
-    test("HOME-06: Sidebar Upload link navigates correctly", async ({ page }) => {
+    test("HOME-06: Sidebar keeps artist links out of a visitor's navigation (#2663)", async ({ page }) => {
         await page.goto("/");
-        await page.locator(".sidebar-link").getByText("Upload").click();
-        await expect(page).toHaveURL(/\/artist\/upload/);
+        await page.locator(".sidebar-link").getByText("Library").click();
+        await expect(page).toHaveURL(/\/library/);
+        // Upload lives in the "For artists" group, shown only with an artist profile.
+        await expect(page.locator(".sidebar-link").getByText("Upload", { exact: true })).toHaveCount(0);
     });
 
     test("HOME-07: Stem Lab section exists", async ({ page }) => {
