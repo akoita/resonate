@@ -102,7 +102,15 @@ type AuthVerifyResponse =
         amountEth: string;
       };
     }
-  | { status: "invalid_signature" | "invalid_nonce" };
+  | { status: "invalid_signature" | "invalid_nonce" | "error" | AuthInviteStatus; message?: string };
+
+/** #2662: why sign-up needs, or refused, an invitation code. */
+export type AuthInviteStatus =
+  | "invite_required"
+  | "invite_invalid"
+  | "invite_expired"
+  | "invite_used"
+  | "invite_artist_cap_reached";
 
 export class ApiRequestError extends Error {
   constructor(message: string, readonly status: number, readonly details: unknown) {
@@ -307,6 +315,8 @@ export async function verifySignature(input: {
   pubKeyX?: string;
   /** P-256 public key Y coordinate (hex) for off-chain verification */
   pubKeyY?: string;
+  /** #2662: the invitation code a new account signs up with, in invitation mode. */
+  inviteCode?: string;
 }) {
   return apiRequest<AuthVerifyResponse>(
     "/auth/verify",
@@ -8568,6 +8578,12 @@ export type AdminAuditAction =
   | "dmca.report_resolved"
   | "trust.artist_verified"
   | "trust.upload_limits_changed"
+  | "invitations.viewed"
+  | "invitation.created"
+  | "invitation.revoked"
+  | "waitlist.viewed"
+  | "waitlist.entry_invited"
+  | "waitlist.entry_deleted"
   | "curation.reports_viewed"
   | "catalog_credit.identity_reviewed"
   | "artist_claims.viewed"
@@ -9567,4 +9583,127 @@ export function linkPurchaseConsent(
 
 export function listPurchaseConsents(token: string) {
   return apiRequest<{ items: PurchaseConsentRecord[] }>("/purchase-consents", {}, token);
+}
+
+
+// ---------------------------------------------------------------------------
+// Invitation-only registration and the waiting list (#2662)
+// ---------------------------------------------------------------------------
+
+export type RegistrationStatus = {
+  mode: "open" | "invite";
+  artistCapReached: boolean;
+  waitlist: boolean;
+};
+
+export type InvitationRole = "listener" | "artist";
+
+export type InvitationCheck =
+  | { status: "valid"; role: InvitationRole }
+  | { status: "invalid" | "expired" | "used" | "artist_cap_reached" };
+
+export type InvitationSummary = {
+  id: string;
+  codeHint: string;
+  role: InvitationRole;
+  maxUses: number;
+  useCount: number;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdByUserId: string;
+  issuedBy: "operator" | "artist";
+  waitlistEntryId: string | null;
+  createdAt: string;
+  state: "active" | "used" | "expired" | "revoked";
+};
+
+/** A new invitation: the only time the code itself is returned. */
+export type CreatedInvitation = InvitationSummary & { code: string };
+
+export type WaitlistEntry = {
+  id: string;
+  email: string;
+  kind: InvitationRole;
+  consentVersion: string;
+  consentedAt: string;
+  createdAt: string;
+  invitedAt: string | null;
+  invitationId: string | null;
+  joined: boolean;
+};
+
+export async function getRegistrationStatus() {
+  return apiRequest<RegistrationStatus>("/auth/registration");
+}
+
+export async function checkInvitationCode(code: string) {
+  return apiRequest<InvitationCheck>("/auth/invitations/check", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+export async function joinWaitlist(input: { email: string; kind: InvitationRole; consent: boolean }, token?: string | null) {
+  return apiRequest<{ status: "joined" }>("/waitlist", { method: "POST", body: JSON.stringify(input) }, token);
+}
+
+export async function redeemInvitation(token: string, code: string) {
+  return apiRequest<
+    | { status: "redeemed"; role: InvitationRole }
+    | { status: "already_member" }
+    | { status: "invalid" | "expired" | "used" | "artist_cap_reached" }
+  >("/invitations/redeem", { method: "POST", body: JSON.stringify({ code }) }, token);
+}
+
+export async function getMyInvitations(token: string) {
+  return apiRequest<{
+    foundingArtist: boolean;
+    eligible: boolean;
+    allowance: number;
+    remaining: number;
+    invitations: InvitationSummary[];
+  }>(
+    "/invitations/mine",
+    {},
+    token,
+  );
+}
+
+export async function createMyInvitation(token: string) {
+  return apiRequest<CreatedInvitation>("/invitations/mine", { method: "POST" }, token);
+}
+
+export async function listAdminInvitations(token: string) {
+  return apiRequest<{
+    mode: "open" | "invite";
+    foundingArtists: { used: number; cap: number | null };
+    invitations: InvitationSummary[];
+  }>("/admin/invitations", {}, token);
+}
+
+export async function createAdminInvitation(
+  token: string,
+  input: { role: InvitationRole; maxUses?: number; expiresInDays?: number },
+) {
+  return apiRequest<CreatedInvitation>("/admin/invitations", { method: "POST", body: JSON.stringify(input) }, token);
+}
+
+export async function revokeAdminInvitation(token: string, id: string) {
+  return apiRequest<InvitationSummary>(`/admin/invitations/${encodeURIComponent(id)}/revoke`, { method: "POST" }, token);
+}
+
+export async function listWaitlist(token: string) {
+  return apiRequest<WaitlistEntry[]>("/admin/waitlist", {}, token);
+}
+
+export async function inviteWaitlistEntry(token: string, id: string) {
+  return apiRequest<CreatedInvitation & { email: string }>(
+    `/admin/waitlist/${encodeURIComponent(id)}/invite`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function deleteWaitlistEntry(token: string, id: string) {
+  return apiRequest<{ deleted: true }>(`/admin/waitlist/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
 }

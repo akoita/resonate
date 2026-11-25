@@ -359,3 +359,80 @@ describe('AuthController', () => {
     });
   });
 });
+
+// #2662: invitation-only registration at the sign-in door.
+describe('verify() in invitation mode', () => {
+  const invitations = {
+    mode: jest.fn(),
+    reserve: jest.fn(),
+    complete: jest.fn(),
+    release: jest.fn(),
+  };
+  const accountExists = jest.fn();
+
+  function makeGatedController() {
+    (mockAuthService as any).accountExists = accountExists;
+    return new AuthController(
+      mockAuthService as any,
+      mockNonceService as any,
+      mockPublicClient as any,
+      mockEventBus as any,
+      mockAccountClosure as any,
+      mockSignupFaucet as any,
+      undefined,
+      invitations as any,
+    );
+  }
+
+  beforeEach(() => {
+    mockPublicClient.getChainId.mockResolvedValue(1);
+    mockPublicClient.getCode.mockResolvedValue('0x');
+    invitations.mode.mockReturnValue('invite');
+    invitations.reserve.mockResolvedValue({ invitationId: 'inv-1', role: 'listener' });
+    invitations.complete.mockResolvedValue(undefined);
+    invitations.release.mockResolvedValue(undefined);
+    accountExists.mockResolvedValue(false);
+  });
+
+  it('refuses a new passkey with no code and creates no account', async () => {
+    const result = await makeGatedController().verify(body());
+    expect(result).toEqual({ status: 'invite_required' });
+    expect(mockAuthService.upsertWalletIdentity).not.toHaveBeenCalled();
+    expect(mockAuthService.issueTokenForAddress).not.toHaveBeenCalled();
+  });
+
+  it('refuses a new passkey whose code cannot be used', async () => {
+    const { InvitationRefusedError } = jest.requireActual('../modules/invitations/invitations.service');
+    invitations.reserve.mockRejectedValue(new InvitationRefusedError('expired'));
+    const result = await makeGatedController().verify(body({ inviteCode: 'ABCD-EFGH-JKMN' }));
+    expect(result).toEqual({ status: 'invite_expired' });
+    expect(mockAuthService.upsertWalletIdentity).not.toHaveBeenCalled();
+  });
+
+  it('creates the account with a valid code and ties the code to it', async () => {
+    const result = await makeGatedController().verify(body({ inviteCode: 'ABCD-EFGH-JKMN' }));
+    expect(result).toEqual({ accessToken: 'tok-addr' });
+    expect(invitations.reserve).toHaveBeenCalledWith('ABCD-EFGH-JKMN');
+    expect(invitations.complete).toHaveBeenCalledWith({ invitationId: 'inv-1', role: 'listener' }, '0xsmartaccount');
+  });
+
+  it('gives the use back when the account cannot be created', async () => {
+    mockAuthService.upsertWalletIdentity.mockRejectedValueOnce(new Error('db down'));
+    await expect(makeGatedController().verify(body({ inviteCode: 'ABCD-EFGH-JKMN' }))).rejects.toThrow('db down');
+    expect(invitations.release).toHaveBeenCalledWith({ invitationId: 'inv-1', role: 'listener' });
+  });
+
+  it('lets an existing account sign in without a code', async () => {
+    accountExists.mockResolvedValue(true);
+    const result = await makeGatedController().verify(body());
+    expect(result).toEqual({ accessToken: 'tok-addr' });
+    expect(invitations.reserve).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for a code in open mode', async () => {
+    invitations.mode.mockReturnValue('open');
+    const result = await makeGatedController().verify(body());
+    expect(result).toEqual({ accessToken: 'tok-addr' });
+    expect(accountExists).not.toHaveBeenCalled();
+  });
+});

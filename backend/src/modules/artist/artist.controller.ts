@@ -23,6 +23,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import { hours } from "../shared/rate_limits";
 import { ArtistService } from "./artist.service";
 import { ArtistEnrichmentService } from "./artist-enrichment.service";
+import { InvitationsService } from "../invitations/invitations.service";
 import { AdminAudit, auditBody, auditCode, auditRef } from "../admin_audit/admin_audit.interceptor";
 
 const ARTIST_ENRICHMENT_THROTTLE = {
@@ -41,6 +42,7 @@ export class ArtistController {
     constructor(
         private readonly artistService: ArtistService,
         @Optional() private readonly artistEnrichmentService?: ArtistEnrichmentService,
+        @Optional() private readonly invitations?: InvitationsService,
     ) { }
 
     @UseGuards(AuthGuard("jwt"))
@@ -209,10 +211,12 @@ export class ArtistController {
 
     @UseGuards(AuthGuard("jwt"))
     @Post()
-    create(
+    async create(
         @Request() req: any,
         @Body() body: CreateArtistProfileDto,
     ) {
+        // #2662: in invitation mode only a founding artist may set up a profile.
+        await this.invitations?.assertMayBecomeArtist(req.user.userId, req.user.role);
         return this.artistService.createProfile(req.user.userId, body);
     }
 }

@@ -28,6 +28,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/admin/users", "Users"],
   ["/admin/agent-sessions", "AI DJ Session Events"],
   ["/admin/audit", "Admin Audit Log"],
+  ["/admin/invitations", "Invitations"],
   ["/admin/artist-claims", "Artist Claims"],
   ["/admin/credit-requests", "Credit Requests"],
   ["/admin/notices", "Platform Notices"],

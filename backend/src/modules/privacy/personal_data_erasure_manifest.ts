@@ -926,6 +926,27 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "notices; it has no retention basis once the account is erased.",
   },
   {
+    model: "Invitation",
+    disposition: "retain",
+    reason:
+      "The record of who was invited and by whom (#2662), which the founding-artist cap and the admin audit rely on; "
+      + "it holds a code hash and counts, no free text, and `createdByUserId` cascades to the rotated id.",
+  },
+  {
+    model: "InvitationRedemption",
+    disposition: "retain",
+    reason:
+      "Which invitation an account used (#2662); it is what the founding-artist cap counts. It holds no free text, "
+      + "and `userId` cascades to the rotated id.",
+  },
+  {
+    model: "WaitlistEntry",
+    disposition: "delete",
+    reason:
+      "The email address and choice a person left on the waiting list (#2662), given on consent to be told about an "
+      + "invitation; it has no retention basis once the account is erased.",
+  },
+  {
     model: "EmailDelivery",
     disposition: "delete",
     reason:
