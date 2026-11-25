@@ -5,10 +5,8 @@ import { LibraryService } from "./library.service";
 import { Throttle } from "@nestjs/throttler";
 import { DeleteLibraryTracksDto, SaveLibraryTrackDto, SaveLibraryTracksDto } from "./library.dto";
 import { AlbumLookupService } from "./album_lookup.service";
-import { minutes } from "../shared/rate_limits";
+import { minutes, trackByUser } from "../shared/rate_limits";
 
-/** Per account, not per IP: the lookup is for one person's own albums. */
-const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
 @Controller("library")
 @UseGuards(AuthGuard("jwt"))

@@ -14,7 +14,7 @@ import {
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
-import { minutes } from "../shared/rate_limits";
+import { minutes, trackByUser } from "../shared/rate_limits";
 import { AddCrateItemDto, CreateCrateRequestDto, UpdateCrateDto } from "./crate.dto";
 import type {
   CreateCrateResponse,
@@ -31,8 +31,6 @@ import type { CrateQuoteDto } from "./crate_quote.dto";
 import { CratesService } from "./crates.service";
 import { RequireSurface } from "../product_surfaces/product_surface.guard";
 
-/** Tracked per signed-in person where the guard has resolved them, else per IP. */
-const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
 /**
  * Crate Digger HTTP surface (#1962, docs/rfc/taste-engine.md §5.1-5.2).

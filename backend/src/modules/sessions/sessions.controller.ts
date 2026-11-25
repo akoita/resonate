@@ -11,10 +11,8 @@ import {
 } from "./playback_intents.service";
 import { AgentNextDto, PlayTrackDto, StartSessionDto, StopSessionDto } from "./sessions.dto";
 import { SessionsService } from "./sessions.service";
-import { minutes } from "../shared/rate_limits";
+import { minutes, SESSION_START_LIMIT, trackByUser } from "../shared/rate_limits";
 
-/** Tracked per signed-in person where the guard has resolved them, else per IP. */
-const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
 @Controller("sessions")
 export class SessionsController {
@@ -25,6 +23,9 @@ export class SessionsController {
 
   @UseGuards(AuthGuard("jwt"))
   @AllowWhileSuspended()
+  // Starting a session resolves a seed, sets a budget and plans picks, so it
+  // is paced per listener (the AI DJ start in AgentConfigController has the same limit).
+  @Throttle({ default: { limit: SESSION_START_LIMIT.limit, ttl: SESSION_START_LIMIT.ttl, getTracker: trackByUser } })
   @Post("start")
   start(
     @Body() body: StartSessionDto,

@@ -189,11 +189,9 @@ export class ContactEmailService {
    * the person merely typed, so without this one account could make us mail
    * strangers.
    *
-   * This is in the service, not just `@Throttle`, because the global
-   * `ThrottlerGuard` runs before the route's `AuthGuard("jwt")` (Nest runs
-   * global guards first), so `req.user` is unset when it picks a tracker and the
-   * per-user `getTracker` falls back to the IP. The `@Throttle` limits on the
-   * controller are therefore a per-IP second layer, not a per-account limit.
+   * This is in the service, not just `@Throttle`, because a throttle window
+   * is short-lived and resets with its store, while these counts live on the
+   * account. The `@Throttle` limits on the controller are a second layer.
    *
    * Throws 429 `{ code: "email_rate_limited", retryAfterSeconds }`.
    */

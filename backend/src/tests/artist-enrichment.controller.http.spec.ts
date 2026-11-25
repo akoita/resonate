@@ -122,7 +122,7 @@ describe("Artist enrichment routes (HTTP)", () => {
         expect(mockArtistService.recordEnrichmentMatch).not.toHaveBeenCalled();
     });
 
-    it("tracks both enrichment route limits by client IP before JWT guards", () => {
+    it("tracks both enrichment route limits per signed-in person", () => {
         for (const handler of [
             ArtistController.prototype.getEnrichmentCandidates,
             ArtistController.prototype.getEnrichmentSuggestions,
@@ -130,8 +130,8 @@ describe("Artist enrichment routes (HTTP)", () => {
             expect(Reflect.getMetadata(`${THROTTLER_LIMIT}default`, handler)).toBe(10);
             expect(Reflect.getMetadata(`${THROTTLER_TTL}default`, handler)).toBe(hours(1));
             const getTracker = Reflect.getMetadata(`${THROTTLER_TRACKER}default`, handler) as (req: Record<string, any>) => string;
-            expect(getTracker({ user: { userId: "owner-1" }, ip: "127.0.0.1" })).toBe("127.0.0.1");
-            expect(getTracker({ ip: "127.0.0.1" })).toBe("127.0.0.1");
+            expect(getTracker({ user: { userId: "owner-1" }, ip: "127.0.0.1" })).toBe("user:owner-1");
+            expect(getTracker({ ip: "127.0.0.1" })).toBe("ip:127.0.0.1");
         }
     });
 });

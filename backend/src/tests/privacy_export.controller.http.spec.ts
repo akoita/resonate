@@ -141,8 +141,8 @@ describe("Privacy personal data export (HTTP)", () => {
     const handler = PrivacyController.prototype.exportPersonalData;
     const getTracker = Reflect.getMetadata(`${THROTTLER_TRACKER}default`, handler);
     expect(typeof getTracker).toBe("function");
-    expect(getTracker({ user: { userId: "person-a" }, ip: "203.0.113.9" })).toBe("person-a");
-    expect(getTracker({ ip: "203.0.113.9" })).toBe("203.0.113.9");
+    expect(getTracker({ user: { userId: "person-a" }, ip: "203.0.113.9" })).toBe("user:person-a");
+    expect(getTracker({ ip: "203.0.113.9" })).toBe("ip:203.0.113.9");
 
     // Milliseconds, not seconds — see the handler. Asserted so the window
     // cannot be "corrected" back to 3600 (three per 3.6 seconds) when #1790

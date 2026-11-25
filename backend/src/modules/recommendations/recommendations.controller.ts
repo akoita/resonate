@@ -1,14 +1,13 @@
 import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
-import { minutes } from "../shared/rate_limits";
+import { minutes, trackByUser } from "../shared/rate_limits";
 import { HomeFeedService } from "./home-feed.service";
 import { RecommendationsService } from "./recommendations.service";
 import { SetPreferencesDto } from "./preferences.dto";
 import { ApplyTasteEditsDto, PreviewTasteEditsDto } from "./taste_edit.dto";
 import { TasteMemoryService } from "./taste_memory.service";
 
-const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
 
 @Controller("recommendations")
 export class RecommendationsController {
