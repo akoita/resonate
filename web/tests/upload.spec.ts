@@ -24,7 +24,7 @@ test.describe("Upload Flow", () => {
     test("UPLOAD-02: Auth gate has connect button", async ({ page }) => {
         await page.goto("/artist/upload");
         // Should have a connect wallet button
-        await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+        await expect(page.locator("#main-content").getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
     });
 
     test("UPLOAD-03: Artist upload route is accessible", async ({ page }) => {
