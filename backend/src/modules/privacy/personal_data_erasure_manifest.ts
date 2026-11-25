@@ -933,6 +933,13 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "basis once the account is erased. Counts the artist already saw were aggregates.",
   },
   {
+    model: "TrackComposition",
+    disposition: "delete",
+    reason:
+      "Composition details the artist typed for their tracks (#2669), including other writers' names. The releases "
+      + "are withdrawn on erasure, so nothing is reported for them afterwards and the details have no retention basis.",
+  },
+  {
     model: "SupportRequest",
     disposition: "delete",
     reason:

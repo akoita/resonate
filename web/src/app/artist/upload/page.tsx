@@ -3,6 +3,14 @@
 import EmailPromptCard from "../../../components/email/EmailPromptCard";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { CompositionEditor } from "../../../components/catalog/CompositionEditor";
+import {
+  EMPTY_COMPOSITION_DRAFT,
+  hasCompositionErrors,
+  toCompositionInput,
+  validateCompositionDraft,
+  type CompositionDraft,
+} from "../../../lib/composition";
 import AuthGate from "../../../components/auth/AuthGate";
 import ArtistGate from "../../../components/auth/ArtistGate";
 import { Button } from "../../../components/ui/Button";
@@ -138,6 +146,8 @@ type Stem = {
     explicit: boolean;
     featuredArtists: string;
     aiDisclosure: AiDisclosure;
+    /** #2669: optional composition details, sent with the track. */
+    composition?: CompositionDraft;
   };
 };
 
@@ -457,6 +467,18 @@ export default function ArtistUploadPage() {
       });
       return;
     }
+    const compositionProblem = stems.find(
+      (stem) => stem.metadata.composition && hasCompositionErrors(validateCompositionDraft(stem.metadata.composition)),
+    );
+    if (compositionProblem) {
+      setSelectedStemId(compositionProblem.id);
+      addToast({
+        type: "error",
+        title: "Check the composition details",
+        message: `"${compositionProblem.metadata.title || compositionProblem.name}" has composition details to fix. They are optional: you can also clear them.`,
+      });
+      return;
+    }
     if (!formData.primaryArtist.trim()) {
       addToast({
         type: "error",
@@ -625,6 +647,7 @@ export default function ArtistUploadPage() {
             level: s.metadata.aiDisclosure.level,
             facets: s.metadata.aiDisclosure.facets,
           },
+          composition: s.metadata.composition ? toCompositionInput(s.metadata.composition) ?? undefined : undefined,
         }))
       };
 
@@ -1629,6 +1652,40 @@ export default function ArtistUploadPage() {
                           }}
                         />
                       </label>
+                      <details className="upload-composition">
+                        <summary>Composition details (optional)</summary>
+                        <p className="composition-editor__hint">
+                          Writers, publisher and work code. They let usage be reported to collecting societies. You can add or change them later on the release page.
+                        </p>
+                        <CompositionEditor
+                          idPrefix={`upload-composition-${selectedStemId}`}
+                          value={stems.find(s => s.id === selectedStemId)?.metadata.composition ?? EMPTY_COMPOSITION_DRAFT}
+                          errors={(() => {
+                            const draft = stems.find(s => s.id === selectedStemId)?.metadata.composition;
+                            return draft ? validateCompositionDraft(draft) : {};
+                          })()}
+                          onChange={(next) => {
+                            setStems(prev => prev.map(s => s.id === selectedStemId ? { ...s, metadata: { ...s.metadata, composition: next } } : s));
+                          }}
+                        />
+                        {stems.length > 1 && (
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn-ghost"
+                            onClick={() => {
+                              const source = stems.find(s => s.id === selectedStemId)?.metadata.composition;
+                              if (!source) return;
+                              setStems(prev => prev.map(s => s.id === selectedStemId ? s : {
+                                ...s,
+                                metadata: { ...s.metadata, composition: { ...source, writers: source.writers.map((w) => ({ ...w })), iswc: "" } },
+                              }));
+                              addToast({ type: "success", title: "Copied", message: "Copied to the other tracks, without the work code." });
+                            }}
+                          >
+                            Copy to all tracks
+                          </button>
+                        )}
+                      </details>
                       <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <input
                           type="checkbox"

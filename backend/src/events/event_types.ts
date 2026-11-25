@@ -35,6 +35,8 @@ export interface StemsUploadedEvent extends BaseEvent {
       position: number;
       isrc?: string;
       explicit?: boolean;
+      /** #2669: validated composition details (see composition/composition.ts). */
+      composition?: import("../modules/composition/composition").CompositionData;
       aiDisclosure?: {
         level: "NONE" | "PARTLY" | "ALL";
         facets: string[];

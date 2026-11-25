@@ -25,6 +25,7 @@ import { validateArtworkUpload } from "../shared/artwork-validation";
 import { readIngestionUploadBuffer } from "./ingestion-upload-buffer";
 import { assertWithinUploadLimits } from "../trust/upload_limits";
 import { assertParticipationAccepted } from "../participation/participation.service";
+import { parseCompositionOrThrow } from "../composition/composition.service";
 
 type UploadStatus = "queued" | "processing" | "complete" | "failed";
 const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
@@ -401,6 +402,12 @@ export class IngestionService {
       throw error;
     }
 
+    // #2669: optional composition details per track, checked before any
+    // audio is stored so a bad work code or share total fails the upload early.
+    const compositions = input.files.map((_, index) =>
+      parseCompositionOrThrow(input.metadata?.tracks?.[index]?.composition),
+    );
+
     const mm = await import("music-metadata");
     const releaseId = this.generateId("rel");
 
@@ -480,6 +487,7 @@ export class IngestionService {
         position: index + 1,
         explicit: trackMeta?.explicit ?? false,
         isrc: trackMeta?.isrc,
+        composition: compositions[index] ?? undefined,
         aiDisclosure: {
           ...disclosures[index],
         },
