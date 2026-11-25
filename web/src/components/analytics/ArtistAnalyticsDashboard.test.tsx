@@ -1,6 +1,11 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// #2663: Scene Scout cards follow their switch; on for these cases.
+vi.mock("../../hooks/useProductSurfaces", () => ({
+  useProductSurfaces: () => ({ surfaces: { sceneScout: true }, loaded: true }),
+}));
 import ArtistAnalyticsDashboard from "./ArtistAnalyticsDashboard";
 import type { ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
 

@@ -379,7 +379,7 @@ export default function ArtistManagementPage() {
   };
 
   return (
-    <AuthGate title="Connect your wallet to manage artist access.">
+    <AuthGate title="Sign in to manage artist access.">
       <main className="analytics-container" style={{ padding: "12px 0 64px" }}>
         <header className="analytics-header-section">
           <p className="artist-analytics-eyebrow">Artist management</p>

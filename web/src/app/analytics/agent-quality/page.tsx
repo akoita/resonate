@@ -79,7 +79,7 @@ export default function AgentQualityAnalyticsPage() {
   }, [canRead, days, token]);
 
   return (
-    <AuthGate title="Connect your wallet to view AI DJ quality analytics.">
+    <AuthGate title="Sign in to view AI DJ quality analytics.">
       {state.status === "loading" ? (
         <AgentQualityDashboard status="loading" days={days} onDaysChange={setDays} />
       ) : null}

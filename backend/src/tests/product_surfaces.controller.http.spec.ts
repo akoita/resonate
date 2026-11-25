@@ -39,7 +39,19 @@ describe("product surfaces over HTTP (#2658)", () => {
       wallet: true,
       agentPayments: true,
       aiGeneration: true,
+      disputes: true,
+      community: true,
+      sceneScout: true,
+      sonicRadar: true,
+      desktopApp: true,
     });
+  });
+
+  it("turns a navigation switch off by setting (#2663)", async () => {
+    process.env.DISPUTES_ENABLED = "false";
+    const res = await request(app.getHttpServer()).get("/config/surfaces").expect(200);
+    expect(res.body.surfaces.disputes).toBe(false);
+    expect(res.body.surfaces.community).toBe(true);
   });
 
   it("reports production defaults off and an explicit opt-in on", async () => {

@@ -453,6 +453,11 @@ signal (every image sets it to `production`). Accepted values: `true`/`false`
 | `WALLET_ENABLED` | The Wallet page, self-custody and budget-cap panels | `POST /wallet/fund`, `POST /wallet/budget`, `POST /wallet/provider` |
 | `AGENT_PAYMENTS_ENABLED` | Agent payments and the agent storefront purchase tools | `POST /wallet/agent/enable`, `POST /wallet/agent/session-key/activate`, `POST /wallet/agent/purchase`; MCP `stem.quote`/`stem.download` answer `X402_DISABLED` |
 | `AI_GENERATION_ENABLED` | AI generation and prompted remix drafts. Stem-mix renders (no AI) stay available | `POST /generation/create`, `/generation/complementary`, `/generation/artwork`; prompted remix drafts and AI parts answer `provider_disabled` (also requires `REMIX_GENERATION_ENABLED=true`) |
+| `DISPUTES_ENABLED` | Navigation only (#2663): the Disputes item in the artist group | None; the page stays reachable by link |
+| `COMMUNITY_ENABLED` | Navigation only (#2663): the artist Community tab and the Settings card | None |
+| `SCENE_SCOUT_ENABLED` | Navigation only (#2663): Scene Scout cards in artist analytics | None |
+| `SONIC_RADAR_ENABLED` | Navigation only (#2663): reserved for Sonic Radar entry points | None |
+| `DESKTOP_APP_ENABLED` | Navigation only (#2663): the desktop app suggestion | None |
 
 Routes that complete something already paid (pledge confirm and refund, paid
 collect and x402 smart-account settlement, crate quote settle) stay open so an

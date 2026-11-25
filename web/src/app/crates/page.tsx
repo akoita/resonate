@@ -434,7 +434,7 @@ function CratesAndStems() {
         {tab === "stems" ? (
           <MarketplaceBrowse headingLevel={2} />
         ) : (
-          <AuthGate title="Connect your wallet to build a crate.">
+          <AuthGate title="Sign in to build a crate.">
             <CratesHome />
           </AuthGate>
         )}

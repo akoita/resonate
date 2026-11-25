@@ -1,5 +1,6 @@
 "use client";
 
+import { useProductSurfaces } from "../../../hooks/useProductSurfaces";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -29,6 +30,7 @@ export default function ArtistPage() {
     const router = useRouter();
     const { token } = useAuth();
     const { playQueue } = usePlayer();
+    const { surfaces } = useProductSurfaces();
     const artistId = typeof params.id === 'string' ? decodeURIComponent(params.id) : null;
 
     const [artist, setArtist] = useState<ArtistProfile | null>(null);
@@ -290,7 +292,8 @@ export default function ArtistPage() {
             <Tabs
                 items={[
                     { id: "discography", label: "Discography", panelId: "discography-panel" },
-                    { id: "community", label: "Community", panelId: "community-panel" },
+                    // #2663: the community tab follows the community switch.
+                    ...(surfaces.community ? [{ id: "community", label: "Community", panelId: "community-panel" }] : []),
                 ]}
                 activeId={activeTab}
                 onChange={(id) => setActiveTab(id as ArtistTab)}
@@ -356,7 +359,7 @@ export default function ArtistPage() {
                 aria-labelledby="community-tab"
                 hidden={activeTab !== "community"}
             >
-              {activeTab === "community" && artistId && (
+              {activeTab === "community" && surfaces.community && artistId && (
                   <ArtistCommunityTab artistId={artistId} artist={artist} />
               )}
             </div>

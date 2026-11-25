@@ -114,7 +114,7 @@ export default function CommunityModerationAdminPage() {
   }, [addToast, canRead, signMessage, token]);
 
   return (
-    <AuthGate title="Connect your wallet to manage community moderation.">
+    <AuthGate title="Sign in to manage community moderation.">
       {state.status === "loading" ? <CommunityModerationDashboard status="loading" /> : null}
       {state.status === "forbidden" ? <CommunityModerationDashboard status="forbidden" /> : null}
       {state.status === "error" ? (

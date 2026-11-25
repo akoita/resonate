@@ -389,7 +389,7 @@ export function MintStemButton({
 
     const openTierDialog = (mode: "mint" | "list") => {
         if (!address) {
-            addToast({ type: "error", title: "Wallet Required", message: "Connect your wallet" });
+            addToast({ type: "error", title: "Sign in required", message: "Sign in to continue." });
             return;
         }
         if (listingPriceUnits <= 0n) {
@@ -441,7 +441,7 @@ export function MintStemButton({
 
     const handleMintAndList = async (tierInputs: TierListingInput[]) => {
         if (!address) {
-            addToast({ type: "error", title: "Wallet Required", message: "Connect your wallet" });
+            addToast({ type: "error", title: "Sign in required", message: "Sign in to continue." });
             return;
         }
         const ordered = orderTiers(tierInputs);
@@ -549,7 +549,7 @@ export function MintStemButton({
                     cursor: "not-allowed",
                 }}
             >
-                Connect Wallet
+                Sign in
             </button>
         );
     }

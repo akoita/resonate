@@ -21,9 +21,21 @@ or AI-generation action, and turn any of them back on without new code.
 | Shows pledging | `SHOWS_PLEDGING_ENABLED` | The pledge panel on a campaign page (a short note replaces it) |
 | Paid collects | `PAID_COLLECTS_ENABLED` | The priced Collect button on a drop (free collects stay) |
 | Stem and licence buying | `STEM_PURCHASES_ENABLED` | Buy buttons and licence chips in the marketplace and on a stem page; the crate quote panel |
-| Wallet | `WALLET_ENABLED` | The Wallet sidebar item and page; the account chip opens Settings instead |
+| Wallet | `WALLET_ENABLED` | The Wallet page; the account chip opens Settings instead (the sidebar has no Wallet item since #2663) |
 | Agent payments | `AGENT_PAYMENTS_ENABLED` | None today (the web app no longer offers agent purchases); backend refusal only |
-| AI generation | `AI_GENERATION_ENABLED` | The Create sidebar item and page; prompted remix drafts answer "not enabled" in Remix Studio |
+| AI generation | `AI_GENERATION_ENABLED` | The Create with AI item (last in the artist group) and page; prompted remix drafts answer "not enabled" in Remix Studio |
+
+### Navigation switches (#2663)
+
+These hide entry points to surfaces that are not ready to show newcomers. Their routes stay reachable by direct link and the backend does not refuse them. Same defaults as above.
+
+| Surface | Variable | Web entry points hidden when off |
+| --- | --- | --- |
+| Disputes | `DISPUTES_ENABLED` | The Disputes item in the artist group |
+| Community rooms and cohorts | `COMMUNITY_ENABLED` | The Community tab on artist pages; the Open Community card in Settings |
+| Scene Scout cards | `SCENE_SCOUT_ENABLED` | The Scene Scout panel in artist analytics |
+| Sonic Radar | `SONIC_RADAR_ENABLED` | Reserved; Sonic Radar has no sidebar item since #2663 and is reached from the AI DJ |
+| Desktop app link | `DESKTOP_APP_ENABLED` | The desktop app suggestion in Settings → Library |
 
 ## How it works
 
