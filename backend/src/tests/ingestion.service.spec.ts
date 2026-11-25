@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { IngestionService } from "../modules/ingestion/ingestion.service";
@@ -26,6 +26,26 @@ function makeService(artistProfile: { id: string } | null) {
 }
 
 describe("IngestionService upload ownership", () => {
+  it("refuses invalid composition details before storing any audio (#2669)", async () => {
+    const storageProvider = { upload: jest.fn() };
+    const service = new IngestionService(
+      { publish: jest.fn(), subscribe: jest.fn() } as any,
+      storageProvider as any,
+      {} as any,
+      { getProfile: jest.fn() } as any,
+      {} as any,
+      { add: jest.fn() } as any,
+    );
+    await expect(
+      service.handleFileUpload({
+        artistId: "artist-1",
+        files: [{ originalname: "a.wav", mimetype: "audio/wav", buffer: Buffer.from("x"), size: 1 } as Express.Multer.File],
+        metadata: { tracks: [{ composition: { iswc: "T-034.524.680-9" } }] },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storageProvider.upload).not.toHaveBeenCalled();
+  });
+
   it("rejects uploads that target another artist profile", async () => {
     const service = makeService({ id: "artist-owned-by-user" });
 
@@ -80,11 +100,18 @@ describe("IngestionService upload ownership", () => {
           filename,
         } as Express.Multer.File],
         metadata: {
-          tracks: [{ aiDisclosure: { level: "none", facets: [] } }],
+          tracks: [{
+            aiDisclosure: { level: "none", facets: [] },
+            // #2669: composition details travel with the track, normalized.
+            composition: { writers: [{ name: " Ada ", role: "composer" }], iswc: "T-034.524.680-1" },
+          }],
         },
       });
 
       expect(result.status).toBe("processing");
+      expect(uploadedEvents[0].metadata.tracks[0].composition).toEqual(
+        expect.objectContaining({ writers: [{ name: "Ada", role: "composer" }], iswc: "T0345246801" }),
+      );
       expect(storageProvider.upload).toHaveBeenCalledWith(audio, expect.any(String), "audio/wav");
       expect(uploadedEvents[0].metadata.tracks[0].stems[0].data).toBeUndefined();
     } finally {

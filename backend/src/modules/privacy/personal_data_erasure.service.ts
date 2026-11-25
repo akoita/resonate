@@ -151,6 +151,9 @@ const PERSON_KEY_OVERRIDES: Readonly<Record<string, readonly PersonKey[] | "casc
   ListenerTasteNoteEmbedding: "cascade",
   // Dangling `artistId` (#2670): a refusal count kept without a relation.
   UploadLimitRefusal: [{ kind: "artistId", column: "artistId" }],
+  // Dangling `artistId` (#2669): copied from the release so the artist's typed
+  // composition details are found without a relation that would block deletes.
+  TrackComposition: [{ kind: "artistId", column: "artistId" }],
 };
 
 /**

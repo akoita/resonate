@@ -36,6 +36,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/admin/takedowns", "Takedown Notices"],
   ["/admin/support", "Support Requests"],
   ["/admin/preview-measures", "Preview Measures"],
+  ["/admin/usage-report", "Usage Report"],
   ["/artist/catalog", "Catalog"],
   ["/artist/listings", "Listings"],
   ["/artist/upload", "Upload"],

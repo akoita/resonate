@@ -8824,7 +8824,9 @@ export type AdminAuditAction =
   | "remix_watermark.evidence_attached"
   | "support.requests_viewed"
   | "support.request_status_changed"
-  | "preview_measures.viewed";
+  | "preview_measures.viewed"
+  | "composition.usage_exported"
+  | "composition.support_viewed";
 
 export type AdminAuditOutcome = "success" | "denied";
 

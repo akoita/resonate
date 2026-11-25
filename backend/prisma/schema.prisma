@@ -1435,6 +1435,7 @@ model Track {
   // Mashups (#2558): projects that use this track as their second source.
   secondaryRemixProjects RemixProject[] @relation("RemixProjectSecondarySource")
   punchlineDrops       PunchlineDrop[]
+  composition          TrackComposition?
   rightsRoute          String?
   rightsFlags          Json?
   rightsReason         String?           @db.Text
@@ -1443,6 +1444,27 @@ model Track {
 
   @@index([rightsRoute])
   @@index([aiDisclosureLevel])
+}
+
+/// #2669: the composition a track performs, entered by the artist: writers
+/// (JSON array of { name, role, share?, society?, ipi? }), publisher, work code
+/// (ISWC, stored compact as T1234567890) and a cover/samples declaration.
+/// `artistId` is the release's artist, so export and erasure reach the writer
+/// names that artist typed. Validation lives in `composition/composition.ts`.
+model TrackComposition {
+  trackId        String   @id
+  artistId       String
+  writers        Json     @default("[]")
+  publisher      String?  @db.VarChar(200)
+  selfPublished  Boolean  @default(false)
+  iswc           String?  @db.VarChar(11)
+  coverOrSamples Boolean  @default(false)
+  coverNote      String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  track          Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([artistId])
 }
 
 enum AiDisclosureLevel {

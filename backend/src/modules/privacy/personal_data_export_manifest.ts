@@ -831,6 +831,14 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "Added by #2670. Uploads by this person's artist profile that an upload limit refused: which limit and when.",
   },
   {
+    model: "TrackComposition",
+    primaryKey: "trackId",
+    keys: [{ kind: "artistId", column: "artistId" }],
+    note:
+      "Added by #2669. Composition details this person entered for their tracks: writer names, roles, shares, "
+      + "societies and IPI numbers, publisher, work code and the cover or samples note.",
+  },
+  {
     model: "ReleaseArtistCredit",
     primaryKey: "id",
     keys: [{ kind: "artistId", column: "artistId" }],

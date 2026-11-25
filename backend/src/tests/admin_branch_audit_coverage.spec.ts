@@ -51,6 +51,7 @@ const FILES: Record<string, Entry> = {
   // Recorded branches inside user-facing routes.
   "identity/wallet.service.ts": { count: 1, actions: ["wallet.support_viewed"] },
   "identity/wallet.controller.ts": { count: 1, actions: ["wallet.support_changed"] },
+  "composition/composition.service.ts": { count: 2, actions: ["composition.support_viewed"] },
   "contracts/metadata.controller.ts": {
     count: 4,
     actions: [
