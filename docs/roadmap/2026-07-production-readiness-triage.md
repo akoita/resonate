@@ -17,6 +17,61 @@ related:
 fees) per ADR-BM-6 sequencing; the triage itself is vision-neutral
 (launch-quality/infra).
 
+## Progress update — preview and production opening (2026-11-25)
+
+The owner split the road to real users in two stages (Vision Sprint 59
+"Clear for newcomers", "The road to the preview"):
+
+- **Preview**: free and invitation-only, on the pre-production environment.
+  No money moves: the money and AI-generation surfaces are switched off
+  (#2658). This is the target of Vision Sprints 58–60.
+- **Production opening**: planned and not scheduled (milestone 59: #2660,
+  #1663, #1667). Real money waits for this stage.
+
+Each ledger line is now marked **Preview** (must hold before invited people
+come in) or **Opening** (waits for the production opening). A line is checked
+only with evidence; "accept the gap" is a valid answer if written down.
+
+### Lines that block the preview
+
+| Line | State | Evidence or what remains |
+| --- | --- | --- |
+| Terms, privacy policy, refund promise, imprint | Done | Published in-app (#1769). A legal review before live charging is an opening line (#2649). |
+| Data download and account deletion | Done | Export and erasure manifests cover every model; account closure and deletion (#1777 children). |
+| Participation agreement on record | Done, text pending | #2666: acceptance per artist and per version. The agreement text is a marked placeholder until the operator publishes it. |
+| Invitation-only sign-up, artist cap | Done | #2662. |
+| Money and AI generation switched off | Done | #2658 switches: Shows pledging, paid collects, stem purchases, wallet, agent payments, AI generation. Covers ledger D "generation-credit billing", "Marketplace buy/list" and "audio-conditioned provider". |
+| Listeners never receive the uploaded original | Done | #2661 streaming renditions. |
+| Publishing without a deposit, with upload limits | Done | #2659. |
+| Plain sign-in wording, short navigation | Done | #2663. |
+| Report and takedown without an account | Done | #2664. |
+| Email at sign-up and service emails | Done | #2665. Sending needs the email provider (deployment half). |
+| Support channel and service status | Done | #2667. An on-call statement is an opening line. |
+| Copy audit (no overclaiming) | Done | #477. |
+| User Guide current | Done | #428, kept current per change (`web/AGENTS.md`). |
+| Repository security settings | Done | #1539. |
+| Composition details at upload | In review | #2669. |
+| Preview measures | In review | #2670. |
+| First-run, upload, playback and library QA | Open | Covered by the rehearsal with invited artists, #2672. |
+| Community kept to a minimum slice; `/disputes` and `/curators` admin only; analytics labelled beta; routes without a feature page hidden; demo and seed leaks | Open | To be verified during the rehearsal, #2672. |
+| Rate limits shared across instances | Open | Deployment half, tracked privately. |
+
+### Lines that wait for the production opening
+
+| Line | Why it waits |
+| --- | --- |
+| Payments and compliance review for USDC escrow; legal review of withdrawal, closure, renewal and dispute rules (#2649) | No money moves in the preview. |
+| Shows with real pledges (#1583) | Pledging is switched off; the preview collects "I would come" interest (#2668). |
+| Wallet funding and budget cap QA | The wallet surface is switched off. |
+| Remix provider registration (#1342 follow-up) | AI generation is switched off. |
+| External security review, or a written accept-the-gap decision | Before real money and open sign-up. |
+| Supply-chain baseline (#1551), secret rotation posture | Opening hardening. |
+| Start-up guards against development defaults (#2660) | Production environment. |
+| Target configuration and cutover smoke (#1663) | Production environment. |
+| First protected software release (#1667); release process otherwise done (#1593) | Production environment. |
+| Backups and recovery, cost budgets and alerts, domain and email deliverability, on-call statement | Production environment. |
+| Desktop app (unsigned, no auto-update) | Web only until then. |
+
 ## Progress update — Vision Sprint 11 close (2026-08-11)
 
 Vision Sprint 11 closed its nine focused slices without making a production-go
