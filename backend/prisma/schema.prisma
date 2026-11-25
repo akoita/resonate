@@ -105,6 +105,7 @@ model User {
   noticesReceived             Notice[]                      @relation("NoticeRecipient")
   noticeReads                 NoticeRead[]
   contactEmail                ContactEmail?
+  showInterests               ShowInterest[]
   invitationsCreated          Invitation[]                  @relation("InvitationCreatedBy")
   invitationRedemptions       InvitationRedemption[]
   participationAcceptances    ParticipationAcceptance[]
@@ -3004,6 +3005,9 @@ model ShowCampaign {
   cancelledAt                 DateTime?
   refundAvailableAt           DateTime?
   refundedAt                  DateTime?
+  /// #2668: `pledge` (the default) or `interest`: an "I would come" demand
+  /// signal with no payment, escrow or contract call.
+  mode                        String                       @default("pledge") @db.VarChar(16)
   createdAt                   DateTime                     @default(now())
   updatedAt                   DateTime                     @updatedAt
   artist                      Artist?                      @relation(fields: [artistId], references: [id])
@@ -3013,6 +3017,7 @@ model ShowCampaign {
   events                      ShowCampaignEvent[]
   visuals                     ShowCampaignVisual[]
   disputes                    ShowCampaignDispute[]
+  interests                   ShowInterest[]
 
   @@index([artistId])
   @@index([sourceReleaseId])
@@ -4174,5 +4179,23 @@ model ArtistConsentChange {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([artistId, changedAt])
+  @@index([userId])
+}
+
+/// #2668: one fan's "I would come" for a campaign in interest mode. The city is
+/// what the fan chose (never inferred). Withdrawing deletes the row.
+model ShowInterest {
+  id             String       @id @default(uuid())
+  campaignId     String
+  userId         String
+  city           String?      @db.VarChar(80)
+  /// Tell me when tickets or pledges open.
+  notifyWhenOpen Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  campaign       ShowCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, userId])
   @@index([userId])
 }

@@ -4,6 +4,7 @@ import { RolesGuard } from "../modules/auth/roles.guard";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 import { ShowsController } from "../modules/shows/shows.controller";
 import { ShowRefundReminderService } from "../modules/shows/show-refund-reminder.service";
+import { ShowInterestService } from "../modules/shows/show-interest.service";
 import { ShowsService } from "../modules/shows/shows.service";
 import { writeAdminAuditEvent } from "../modules/admin_audit/admin_audit_event";
 import { authToken, confirmedBearer as confirmed, createControllerTestApp, expectStepUpRequired } from "./e2e-helpers";
@@ -68,6 +69,14 @@ const mockCommunityRoomsService = {
   }),
 };
 
+const mockShowInterest = {
+  getState: jest.fn().mockResolvedValue({ mode: "interest", open: true, mine: null }),
+  declare: jest.fn().mockResolvedValue({ city: "Lyon", notifyWhenOpen: true }),
+  withdraw: jest.fn().mockResolvedValue({ withdrawn: true }),
+  summary: jest.fn().mockResolvedValue({ total: 0 }),
+  setMode: jest.fn().mockResolvedValue({ id: "c-1", mode: "pledge", notified: 0 }),
+};
+
 describe("ShowsController (http)", () => {
   let app: INestApplication;
   // #2128: real artists sign in with the `listener` role; no `artist` role is issued.
@@ -78,6 +87,7 @@ describe("ShowsController (http)", () => {
       { provide: ShowsService, useValue: mockShowsService },
       { provide: CommunityRoomsService, useValue: mockCommunityRoomsService },
       { provide: ShowRefundReminderService, useValue: mockRefundReminders },
+      { provide: ShowInterestService, useValue: mockShowInterest },
       RolesGuard,
     ]);
   });
@@ -481,6 +491,7 @@ describe("ShowsController operator actions are audited (#2362)", () => {
       { provide: ShowsService, useValue: mockShowsService },
       { provide: CommunityRoomsService, useValue: mockCommunityRoomsService },
       { provide: ShowRefundReminderService, useValue: mockRefundReminders },
+      { provide: ShowInterestService, useValue: mockShowInterest },
       RolesGuard,
     ]);
   });
@@ -569,5 +580,71 @@ describe("ShowsController operator actions are audited (#2362)", () => {
     await request(app.getHttpServer()).get("/shows/operator/reconciliation-mismatches").set(operator).expect(200);
     await request(app.getHttpServer()).get("/shows/operator/unclaimed-refunds").set(operator).expect(200);
     expect(mockAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("ShowsController interest routes (#2668)", () => {
+  let app: INestApplication;
+  const listener = { Authorization: `Bearer ${authToken("user-1", "listener")}` };
+
+  beforeAll(async () => {
+    app = await createControllerTestApp(ShowsController, [
+      { provide: ShowsService, useValue: mockShowsService },
+      { provide: CommunityRoomsService, useValue: mockCommunityRoomsService },
+      { provide: ShowRefundReminderService, useValue: mockRefundReminders },
+      { provide: ShowInterestService, useValue: mockShowInterest },
+      RolesGuard,
+    ]);
+  });
+  afterAll(async () => {
+    await app.close();
+  });
+  beforeEach(() => jest.clearAllMocks());
+
+  it("reads the mode publicly, and the caller's own declaration when signed in", async () => {
+    await request(app.getHttpServer()).get("/shows/campaigns/c-1/interest").expect(200);
+    expect(mockShowInterest.getState).toHaveBeenLastCalledWith("c-1", null);
+    await request(app.getHttpServer()).get("/shows/campaigns/c-1/interest").set(listener).expect(200);
+    expect(mockShowInterest.getState).toHaveBeenLastCalledWith("c-1", "user-1");
+  });
+
+  it("needs a session to declare or withdraw", async () => {
+    await request(app.getHttpServer()).put("/shows/campaigns/c-1/interest").send({}).expect(401);
+    await request(app.getHttpServer()).delete("/shows/campaigns/c-1/interest").expect(401);
+    expect(mockShowInterest.declare).not.toHaveBeenCalled();
+    expect(mockShowInterest.withdraw).not.toHaveBeenCalled();
+  });
+
+  it("declares with a chosen city and the notify choice", async () => {
+    await request(app.getHttpServer())
+      .put("/shows/campaigns/c-1/interest")
+      .set(listener)
+      .send({ city: "Lyon", notifyWhenOpen: true })
+      .expect(200);
+    expect(mockShowInterest.declare).toHaveBeenCalledWith(
+      { userId: "user-1", role: "listener" },
+      "c-1",
+      expect.objectContaining({ city: "Lyon", notifyWhenOpen: true }),
+    );
+  });
+
+  it.each([
+    ["a city that is too long", { city: "x".repeat(81) }],
+    ["a notify flag that is not a boolean", { notifyWhenOpen: "yes" }],
+  ])("400 for %s", async (_label, body) => {
+    await request(app.getHttpServer()).put("/shows/campaigns/c-1/interest").set(listener).send(body).expect(400);
+    expect(mockShowInterest.declare).not.toHaveBeenCalled();
+  });
+
+  it("withdraws the caller's own declaration", async () => {
+    await request(app.getHttpServer()).delete("/shows/campaigns/c-1/interest").set(listener).expect(200);
+    expect(mockShowInterest.withdraw).toHaveBeenCalledWith({ userId: "user-1", role: "listener" }, "c-1");
+  });
+
+  it("validates the mode and passes the caller for the ownership check", async () => {
+    await request(app.getHttpServer()).post("/shows/campaigns/c-1/mode").set(listener).send({ mode: "tickets" }).expect(400);
+    await request(app.getHttpServer()).post("/shows/campaigns/c-1/mode").set(listener).send({ mode: "pledge" }).expect(200);
+    expect(mockShowInterest.setMode).toHaveBeenCalledWith({ userId: "user-1", role: "listener" }, "c-1", "pledge");
+    await request(app.getHttpServer()).get("/shows/campaigns/c-1/interest/summary").expect(401);
   });
 });

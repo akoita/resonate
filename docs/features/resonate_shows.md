@@ -364,6 +364,34 @@ oracle attestation feeding an on-chain dispute state) are deliberately deferred;
 the current contract exposes only a time-based window, so richer dispute
 settlement is a later protocol slice rather than MVP scope.
 
+## "I would come" interest mode (#2668)
+
+A campaign has a `mode`: `pledge` (default) or `interest`. Interest mode is a
+demand signal that works while pledging is switched off: no payment, escrow or
+contract call, and the fan-facing copy never says "pledge" or "back".
+
+- Fans: `GET /shows/campaigns/:id/interest` (public; the caller's own
+  declaration when signed in), `PUT` (declare or update: optional city the fan
+  types, optional `notifyWhenOpen`), `DELETE` (withdraw). One `ShowInterest`
+  row per account per campaign (unique `campaignId, userId`); withdrawing
+  deletes it. Declarations are accepted only in interest mode, before the
+  deadline, and while the campaign is not cancelled, refunded or released.
+- Artist and operators: `GET /shows/campaigns/:id/interest/summary` (same
+  ownership check as the managed read) returns the total, the notify count and
+  counts by city. A city below the minimum group (`DISCOVERY_MIN_AUDIENCE`,
+  default 3, the Scene Scout rule) is folded into `otherCount`; names are grouped
+  case- and accent-insensitively.
+- `POST /shows/campaigns/:id/mode`: `interest` only for a draft with no pledges;
+  `pledge` only when `showsPledging` is on. Moving to pledge sends one `service`
+  notice (dedupe key `show_interest_open:<campaignId>`) to everyone who asked
+  to be told. A pledge intent on an interest campaign is refused.
+- Web: the campaign page shows `ShowInterestPanel` in place of the pledge rail,
+  hides the funding stats, trust panel and mobile pledge bar, and the owner sees
+  `ShowInterestOwnerPanel` (counts by city, Ask who would come, Open pledges).
+- Privacy: `ShowInterest` is exported by `userId` and deleted on erasure.
+- Not yet: the counts in the artist analytics dashboard (they are on the
+  campaign page only).
+
 ## Current UI Surfaces
 
 | Surface | Status | Notes |

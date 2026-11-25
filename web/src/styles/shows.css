@@ -4481,3 +4481,38 @@
   font-weight: 700;
   color: var(--color-accent);
 }
+
+/* #2668: "I would come" interest mode. */
+.show-interest__lead { margin: 8px 0 12px; line-height: 1.55; color: var(--color-muted); }
+.show-interest__form { display: grid; gap: 12px; }
+.show-interest__field { display: grid; gap: 6px; }
+.show-interest__field input {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.show-interest__field small { color: var(--color-muted); line-height: 1.45; }
+.show-interest__check { display: flex; gap: 8px; align-items: flex-start; line-height: 1.45; }
+.show-interest__done p, .show-interest__closed { margin: 0 0 10px; line-height: 1.5; }
+.show-interest__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.show-interest__error { margin: 10px 0 0; color: var(--color-danger, #ff9f9f); }
+.show-interest-owner {
+  margin: 0 0 20px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg, 12px);
+  border: 1px solid var(--color-border);
+  display: grid;
+  gap: 10px;
+}
+.show-interest-owner h2 { margin: 0; font-size: 1.05rem; }
+.show-interest-owner p { margin: 0; line-height: 1.5; }
+.show-interest-owner__hint { color: var(--color-muted); font-size: 13px; }
+.show-interest-owner__table { border-collapse: collapse; width: min(420px, 100%); }
+.show-interest-owner__table th,
+.show-interest-owner__table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--color-border); }
+.show-interest-owner__table td:last-child,
+.show-interest-owner__table th:last-child { text-align: right; }

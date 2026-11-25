@@ -8,6 +8,8 @@ import { CampaignCommunityPanel } from "../../../components/shows/CampaignCommun
 import { CampaignMobilePledgeBar } from "../../../components/shows/CampaignMobilePledgeBar";
 import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperatorPanel";
 import { PledgeIntentPanel } from "../../../components/shows/PledgeIntentPanel";
+import { ShowInterestOwnerPanel } from "../../../components/shows/ShowInterestOwnerPanel";
+import { ShowInterestPanel } from "../../../components/shows/ShowInterestPanel";
 import { SurfaceGate } from "../../../components/system/SurfaceGate";
 import { CampaignTrustPanel } from "../../../components/shows/CampaignTrustPanel";
 import {
@@ -77,6 +79,8 @@ export default async function CampaignDetailPage({ params }: Props) {
     redirect(canonicalRedirect);
   }
 
+  // #2668: an interest campaign shows "I would come" and no payment element.
+  const interestMode = campaign.mode === "interest";
   const displayTitle = campaignDisplayTitle(campaign);
   const tiers = campaign.tiers.length > 0
     ? campaign.tiers
@@ -114,8 +118,12 @@ export default async function CampaignDetailPage({ params }: Props) {
         </div>
 
         <CampaignDraftOwnerBar campaign={campaign} />
+        <ShowInterestOwnerPanel campaign={campaign} />
 
         <CampaignDetailHero campaign={campaign}>
+          {interestMode ? (
+            <ShowInterestPanel campaign={campaign} />
+          ) : (
           <SurfaceGate
             surface="showsPledging"
             fallback={
@@ -127,6 +135,7 @@ export default async function CampaignDetailPage({ params }: Props) {
           >
             <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
           </SurfaceGate>
+          )}
         </CampaignDetailHero>
 
         <div className="show-detail__body">
@@ -252,16 +261,18 @@ export default async function CampaignDetailPage({ params }: Props) {
             </section>
           </div>
 
+          {interestMode ? null : (
           <aside
             className="show-detail__pledge-rail"
             aria-label="Campaign trust and terms"
           >
             <CampaignTrustPanel campaign={campaign} />
           </aside>
+          )}
         </div>
 
         <CampaignOperatorPanel campaign={campaign} />
-        <CampaignMobilePledgeBar campaign={campaign} />
+        {interestMode ? null : <CampaignMobilePledgeBar campaign={campaign} />}
       </div>
     </main>
   );

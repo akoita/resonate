@@ -4315,6 +4315,54 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["shows-run", "smart-wallet", "community"],
   },
   {
+    slug: "shows-would-come",
+    title: "Say you would come to a show",
+    summary:
+      "Some show campaigns ask who would come before anything is paid. Say you would come, add your city if you like, and ask to be told when tickets or pledges open.",
+    category: "shows",
+    audiences: ["listener", "artist"],
+    keywords: ["shows", "would come", "interest", "concert", "city", "demand", "notify", "tickets", "free"],
+    sections: [
+      {
+        id: "saying-you-would-come",
+        heading: "Saying you would come",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "When a show campaign is asking who would come, its page shows Would you come? instead of payment options. It costs nothing and needs no wallet. Sign in, type your city if you want to (we never guess it), choose whether to be told when tickets or pledges open, and choose I would come.",
+          },
+          {
+            kind: "paragraph",
+            text: "You can say it once per show. Choose Change to update your city or the reminder, or I changed my mind to take it back. Your choices are part of your data download and are deleted if you delete your account.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "What the artist sees",
+            text: "The artist sees how many people would come and, for each city, how many people named it, but never who they are. A city appears only once enough people name it; smaller ones are counted together.",
+          },
+        ],
+      },
+      {
+        id: "asking-who-would-come",
+        heading: "Asking who would come (artists)",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open your draft campaign's page while signed in with the account that manages the artist.",
+              "Under Who would come, choose Ask who would come and confirm. Fans with the link can now say they would come.",
+              "Watch the count and the cities in the same place.",
+              "When pledges are available on Resonate, choose Open pledges. Everyone who asked to be told gets a notice.",
+            ],
+          },
+        ],
+      },
+    ],
+    appLinks: [{ label: "Shows", href: "/shows", description: "Browse show campaigns." }],
+    related: ["shows-run", "platform-notices"],
+  },
+  {
     slug: "shows-run",
     title: "Run a Shows campaign",
     summary:

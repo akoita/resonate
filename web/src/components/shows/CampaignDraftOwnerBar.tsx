@@ -10,7 +10,7 @@ import { useCampaignManageAccess } from "./useCampaignManageAccess";
  * and other accounts never see a dead button. Non-draft campaigns never ask.
  */
 export function CampaignDraftOwnerBar({ campaign }: {
-  campaign: Pick<Campaign, "id" | "backendId" | "rawStatus">;
+  campaign: Pick<Campaign, "id" | "backendId" | "rawStatus" | "mode">;
 }) {
   const isDraft = campaign.rawStatus === "draft";
   const access = useCampaignManageAccess(campaign, { enabled: isDraft });
@@ -21,8 +21,9 @@ export function CampaignDraftOwnerBar({ campaign }: {
       <div className="show-detail__draft-bar-copy">
         <span className="show-detail__draft-bar-kicker">Draft</span>
         <p>
-          Only you and Resonate operators can see this. Fans can&apos;t pledge
-          until the campaign is activated.
+          {campaign.mode === "interest"
+            ? "Fans with the link can say they would come. Nothing is charged, and pledges stay closed until you open them."
+            : "Only you and Resonate operators can see this. Fans can\u2019t pledge until the campaign is activated."}
         </p>
       </div>
       <Link href={campaignEditHref(campaign)} className="show-detail__draft-bar-action">

@@ -3,9 +3,11 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Request,
   Res,
@@ -23,6 +25,11 @@ import { RolesGuard } from "../auth/roles.guard";
 import { CommunityRoomsService } from "../community/community_rooms.service";
 import { ShowRefundReminderService } from "./show-refund-reminder.service";
 import { ShowsService } from "./shows.service";
+import { ShowInterestService } from "./show-interest.service";
+import { DeclareShowInterestDto, SetShowCampaignModeDto } from "./show-interest.dto";
+import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
+import { Throttle } from "@nestjs/throttler";
+import { hours } from "../shared/rate_limits";
 import { RequireStepUp } from "../admin_step_up/require_step_up.decorator";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import {
@@ -40,6 +47,7 @@ export class ShowsController {
     private readonly showsService: ShowsService,
     private readonly communityRoomsService: CommunityRoomsService,
     private readonly refundReminders: ShowRefundReminderService,
+    private readonly showInterestService: ShowInterestService,
   ) {}
 
   @Get("campaigns")
@@ -88,6 +96,42 @@ export class ShowsController {
   @Post("campaigns/:id/community/city-interest/join")
   joinCampaignCityInterest(@Param("id") id: string, @Request() req: any) {
     return this.communityRoomsService.joinShowCampaignCityDemand(req.user.userId, id);
+  }
+
+  /** #2668: this campaign's mode and the caller's own declaration, if signed in. */
+  @UseGuards(OptionalJwtAuthGuard)
+  @Get("campaigns/:id/interest")
+  getInterest(@Param("id") id: string, @Request() req: any) {
+    return this.showInterestService.getState(id, req.user?.userId ?? null);
+  }
+
+  /** #2668: "I would come", with an optional city and "tell me when it opens". */
+  @UseGuards(AuthGuard("jwt"))
+  @Throttle({ default: { limit: 30, ttl: hours(1) } })
+  @Put("campaigns/:id/interest")
+  declareInterest(@Param("id") id: string, @Request() req: any, @Body() body: DeclareShowInterestDto) {
+    return this.showInterestService.declare(this.actorFromRequest(req), id, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Delete("campaigns/:id/interest")
+  withdrawInterest(@Param("id") id: string, @Request() req: any) {
+    return this.showInterestService.withdraw(this.actorFromRequest(req), id);
+  }
+
+  /** #2668: counts by city for the campaign's artist or an operator (minimum-group rule applied). */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("campaigns/:id/interest/summary")
+  getInterestSummary(@Param("id") id: string, @Request() req: any) {
+    return this.showInterestService.summary(this.actorFromRequest(req), id);
+  }
+
+  /** #2668: run as interest (draft, no pledges) or move to pledge mode (when pledging is available). */
+  @UseGuards(AuthGuard("jwt"))
+  @HttpCode(200)
+  @Post("campaigns/:id/mode")
+  setCampaignMode(@Param("id") id: string, @Request() req: any, @Body() body: SetShowCampaignModeDto) {
+    return this.showInterestService.setMode(this.actorFromRequest(req), id, body.mode);
   }
 
   @UseGuards(AuthGuard("jwt"))
