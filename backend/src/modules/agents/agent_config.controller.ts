@@ -335,7 +335,8 @@ export class AgentConfigController {
         );
     }
 
-    @AllowWhileSuspended()
+    // Not allowed while suspended: an AI DJ session can spend model tokens.
+    // Stopping one stays allowed.
     @Post("session")
     @UseGuards(AuthGuard("jwt"))
     @Throttle({ default: { limit: SESSION_START_LIMIT.limit, ttl: SESSION_START_LIMIT.ttl, getTracker: trackByUser } })

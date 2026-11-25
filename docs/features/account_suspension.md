@@ -54,14 +54,16 @@ Purchases, uploads, listings, pledges and posting stay blocked.
 
 - **Allowed** (`@AllowWhileSuspended()`, pinned by `account_status_allowlist.spec.ts`):
   the player telemetry routes (`POST /analytics/playback/event` and
-  `/analytics/playback/completed`), DJ session start/stop/next
-  (`POST /agents/config/session`, `/agents/config/session/stop`,
-  `/sessions/start`, `/sessions/stop`, `/sessions/agent/next`) and the
+  `/analytics/playback/completed`), stopping a DJ session
+  (`POST /agents/config/session/stop`, `/sessions/stop`) and the
   playback-intent routes (`/sessions/playback/{device,resolve,queue,play,control,commands/:id/confirm}`).
   Audio is served by `GET`, which is never blocked.
 - **Still refused**: priced session play (`POST /sessions/play`, an agent
   purchase), playback capability grants, `POST /analytics/ingest`,
-  `/analytics/product/event` and `POST /agents/config/signals`.
+  `/analytics/product/event` and `POST /agents/config/signals`. Starting an AI
+  DJ session and asking it for picks (`POST /agents/config/session`,
+  `/sessions/start`, `/sessions/agent/next`) are refused too, by owner
+  decision: they can spend model tokens, which plain listening does not.
 - **Not counted**: `AnalyticsInstrumentationService.recordPlaybackCompleted`,
   `recordPlaybackLifecycle` and `recordProductEvent` (for `playback.*` names)
   drop the event when the actor's account is not active, before anything is

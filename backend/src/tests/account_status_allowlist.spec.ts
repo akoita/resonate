@@ -80,15 +80,14 @@ describe("@AllowWhileSuspended allowlist", () => {
         "ContactEmailController.resend",
         "ContactEmailController.remove",
         "ContactEmailController.setPreferences",
-        // Listening (#2167): player telemetry, DJ session start/stop/next and the
+        // Listening (#2167): player telemetry, stopping a DJ session and the
         // playback-intent routes. Plays from a restricted account are not counted.
+        // Starting an AI DJ session and asking it for picks can spend model
+        // tokens, so those stay blocked (owner decision, see below).
         "AnalyticsController.recordPlaybackCompleted",
         "AnalyticsController.recordPlaybackEvent",
-        "AgentConfigController.startSession",
         "AgentConfigController.stopSession",
-        "SessionsController.start",
         "SessionsController.stop",
-        "SessionsController.agentNext",
         "SessionsController.registerPlaybackDevice",
         "SessionsController.resolvePlaybackIntent",
         "SessionsController.queuePlaybackIntent",
@@ -108,6 +107,10 @@ describe("@AllowWhileSuspended allowlist", () => {
       "AnalyticsController.ingest",
       "AnalyticsController.recordProductEvent",
       "AgentConfigController.recordSignal",
+      // AI DJ starts and picks can spend model tokens.
+      "AgentConfigController.startSession",
+      "SessionsController.start",
+      "SessionsController.agentNext",
     ]) {
       expect(allowed).not.toContain(blocked);
     }
