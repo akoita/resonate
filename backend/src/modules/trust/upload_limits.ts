@@ -133,6 +133,8 @@ export async function assertWithinUploadLimits(
   for (const key of UPLOAD_LIMIT_KEYS) {
     const limit = allowance.limits[key];
     if (limit !== null && allowance.used[key] + adding[key] > limit) {
+      // #2670: counted for the preview measures; a failed write never changes the answer.
+      await prisma.uploadLimitRefusal.create({ data: { artistId, limitKey: key } }).catch(() => undefined);
       throw new UploadLimitReachedException(key, limit, allowance.used[key]);
     }
   }

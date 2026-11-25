@@ -4247,3 +4247,16 @@ model ShowInterest {
   @@unique([campaignId, userId])
   @@index([userId])
 }
+
+/// #2670: one upload refused by an upload limit (#2659), so the operator can
+/// see how often limits bite. Counts only: which limit, for which artist, when.
+model UploadLimitRefusal {
+  id        String   @id @default(uuid())
+  artistId  String
+  /// releasesPerDay | releasesTotal | tracksPerDay | tracksTotal
+  limitKey  String   @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([artistId])
+}

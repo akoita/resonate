@@ -444,6 +444,20 @@ export default function Sidebar() {
               <span className="link-text">Audit Log</span>
             </Link>
             <Link
+              href="/admin/preview-measures"
+              prefetch={false}
+              className={`sidebar-link ${pathname === "/admin/preview-measures" ? 'active' : ''}`}
+              aria-current={pathname === "/admin/preview-measures" ? "page" : undefined}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3v18h18" />
+                  <path d="M7 15l4-4 3 3 5-6" />
+                </svg>
+              </span>
+              <span className="link-text">Preview Measures</span>
+            </Link>
+            <Link
               href="/admin/remix-mark-check"
               prefetch={false}
               className={`sidebar-link ${pathname === "/admin/remix-mark-check" ? 'active' : ''}`}

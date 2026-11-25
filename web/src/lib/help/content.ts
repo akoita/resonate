@@ -426,7 +426,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "account",
     audiences: ["operator"],
     status: "partial",
-    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan", "billing", "reconciliation", "month end", "stripe", "refunds", "invoices", "csv", "remix mark", "watermark", "leak", "detect", "invitations", "invite code", "waiting list", "founding artists"],
+    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan", "billing", "reconciliation", "month end", "stripe", "refunds", "invoices", "csv", "remix mark", "watermark", "leak", "detect", "invitations", "invite code", "waiting list", "founding artists", "preview measures", "activation", "retention", "feature use"],
     sections: [
       {
         id: "who-can-use-it",
@@ -656,6 +656,20 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "preview-measures",
+        heading: "Preview measures (admins)",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Preview Measures in the sidebar (admins only) shows, for a period you choose: how many artists joined with an artist invitation and how many published a release within 14 days; how many listeners joined and how many came back in each of their first four weeks; how many people used each feature per week; support requests and the median time to an answer; uploads refused by a limit; and reports received.",
+          },
+          {
+            kind: "paragraph",
+            text: "Counts from 1 to 4 show as \"fewer than five\", and a percentage appears only when its group has at least five people. Listener activity comes from product analytics, so it counts only people who allowed it. Opening the page is recorded in the admin audit log.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Users (operators)", href: "/admin/users", description: "The overview, search and filters, and each person's record." },
@@ -663,6 +677,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Audit Log (admins)", href: "/admin/audit", description: "See what operators did, newest first.", audience: "operator" },
       { label: "Billing Reconciliation (operators)", href: "/admin/billing-reconciliation", description: "Open one month of credit pack payments, credits and Artist Pro invoices, and download each section.", audience: "operator" },
       { label: "Remix Mark Check (admins)", href: "/admin/remix-mark-check", description: "Upload a clip and see whether it came from a remix rendered here.", audience: "operator" },
+      { label: "Preview Measures (admins)", href: "/admin/preview-measures", description: "Activation, retention, feature use, support and reports for a period.", audience: "operator" },
     ],
     related: ["account-suspension", "platform-notices", "settings-privacy"],
   },

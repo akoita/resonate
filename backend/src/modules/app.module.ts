@@ -38,6 +38,7 @@ import { X402Module } from "./x402/x402.module";
 import { FingerprintModule } from "./fingerprint/fingerprint.module";
 import { DmcaModule } from "./dmca/dmca.module";
 import { SupportModule } from "./support/support.module";
+import { PreviewMeasuresModule } from "./preview_measures/preview_measures.module";
 import { CompositionModule } from "./composition/composition.module";
 import { TrustModule } from "./trust/trust.module";
 import { NotificationModule } from "./notifications/notification.module";
@@ -109,6 +110,7 @@ import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
     FingerprintModule,
     DmcaModule,
     SupportModule,
+    PreviewMeasuresModule,
     CompositionModule,
     TrustModule,
     NotificationModule,

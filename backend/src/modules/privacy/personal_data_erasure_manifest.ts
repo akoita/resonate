@@ -933,6 +933,13 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "basis once the account is erased. Counts the artist already saw were aggregates.",
   },
   {
+    model: "UploadLimitRefusal",
+    disposition: "delete",
+    reason:
+      "A count of uploads an upload limit refused (#2670), kept for the operator's preview measures; it has no "
+      + "retention basis once the account is erased.",
+  },
+  {
     model: "TrackComposition",
     disposition: "delete",
     reason:

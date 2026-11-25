@@ -110,6 +110,7 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "remix_watermark.evidence_attached", label: "Attached a remix mark match as evidence" },
   { value: "support.requests_viewed", label: "Opened the support requests" },
   { value: "support.request_status_changed", label: "Changed a support request's status" },
+  { value: "preview_measures.viewed", label: "Viewed the preview measures" },
   { value: "composition.usage_exported", label: "Downloaded the usage report" },
   { value: "composition.support_viewed", label: "Read a release's composition details" },
 ];
