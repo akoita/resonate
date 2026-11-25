@@ -273,6 +273,19 @@ const AUTH_TARGETS = [
     },
   }],
   ["/artist/upload", "upload.png"],
+  ["/artist/onboarding", "artist-agreement.png", {
+    // #2666: step 2 of artist onboarding, drawn from a fixed agreement and
+    // status so the picture needs no backend.
+    mockParticipation: true,
+    viewportHeight: 1400,
+    selectors: ["input[type='checkbox']"],
+    text: ["Your participation agreement"],
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.evaluate(() => document.activeElement?.blur());
+      await page.mouse.move(0, 0);
+    },
+  }],
   ["/create", "create.png"],
   ["/settings", "settings.png", {
     // #2006: the Taste Memory section with the "Tell us what you want more or
@@ -464,6 +477,47 @@ async function capture(page, targets, passName) {
   for (const [route, file, ready] of targets) {
     if (process.env.CAPTURE_ONLY && file !== process.env.CAPTURE_ONLY) continue;
     if (ready?.mockSceneScout) await mockSceneScoutApi(page, typeof ready.mockSceneScout === "string" ? ready.mockSceneScout : "city");
+    if (ready?.mockParticipation) {
+      const choices = { remixConsent: "allowed", aiRemixApproval: "required", aiSourceUse: "disabled", stemListing: "disabled" };
+      const hash = "0".repeat(64);
+      await page.route("**/artists/me", (request) => request.fulfill({ json: {
+        id: "guide-artist", userId: "test-user", displayName: "Guide Artist", profileType: "artist",
+      } }));
+      await page.route("**/participation/agreement", (request) => request.fulfill({ json: {
+        version: "2026-12-01",
+        textHash: hash,
+        placeholder: false,
+        available: true,
+        text: [
+          "# Artist participation agreement",
+          "",
+          "This agreement explains, in plain words, what Resonate does with the music you upload and what it never does.",
+          "",
+          "## Your music stays yours",
+          "",
+          "You keep every right in your music. Resonate may store, stream and sell it on the terms below, and only while you keep it on the platform.",
+          "",
+          "## How you are paid",
+          "",
+          "You receive at least 85% of each sale of your work, with no minimum threshold.",
+          "",
+          "## Your choices",
+          "",
+          "The choices below control remixing, collectibles and any AI-assisted use of your work. You can change them at any time.",
+        ].join("\n"),
+      } }));
+      await page.route("**/artists/test-artist-id/participation", (request) => request.fulfill({ json: {
+        artistId: "test-artist-id",
+        agreement: { version: "2026-12-01", textHash: hash, placeholder: false, available: true },
+        required: true,
+        accepted: null,
+        needsAcceptance: true,
+        acceptances: [],
+        choices: { remixConsent: "allowed", aiRemixApproval: "not_required", aiSourceUse: "allowed", stemListing: "allowed" },
+        defaultChoices: choices,
+        history: [],
+      } }));
+    }
     if (ready?.mockAnalyticsConsent) {
       await page.route("**/analytics/consent", (request) => request.fulfill({ json: {
         productAnalytics: false, decided: false, needsDecision: true,
@@ -696,7 +750,7 @@ async function capture(page, targets, passName) {
           managedReleases: [],
           pendingGrants: ready.mockInvitation ? [{
             id: "guide-invitation",
-            artistId: "guide-artist",
+            artistId: "test-artist-id",
             releaseId: null,
             resourceName: "Test Artist",
             scopes: ["PROFILE_EDIT"],
@@ -764,7 +818,7 @@ async function capture(page, targets, passName) {
         json: {
           grants: [{
             id: "guide-invitation",
-            artistId: "guide-artist",
+            artistId: "test-artist-id",
             releaseId: null,
             resourceName: "Test Artist",
             scopes: ["PROFILE_EDIT"],

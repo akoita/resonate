@@ -26,6 +26,7 @@ export const ADMIN_AUDIT_ACTION_OPTIONS: ReadonlyArray<{ value: AdminAuditAction
   { value: "trust.artist_verified", label: "Verified an artist" },
   { value: "trust.upload_limits_changed", label: "Lifted or restored upload limits" },
   { value: "invitations.viewed", label: "Opened the invitations" },
+  { value: "artist_participation.viewed", label: "Opened an artist's participation record" },
   { value: "invitation.created", label: "Created an invitation" },
   { value: "invitation.revoked", label: "Revoked an invitation" },
   { value: "waitlist.viewed", label: "Opened the waiting list" },

@@ -10,7 +10,11 @@ import type { UploadRightsRoute } from "../rights/upload-rights-policy";
 // publish time.
 // v4 (#1174): owning the source artist profile satisfies the remix-license
 // requirement on the artist's own material; all other checks unchanged.
-export const REMIX_POLICY_VERSION = "2026-07-03.v6";
+// v7 (#2666): the source artist's participation choices apply to everyone
+// but the artist themself. "AI use of my work" off denies Remix Studio (which
+// is AI-assisted); "approve AI remixes" on keeps remixes of their work to
+// private drafts until an approval step exists.
+export const REMIX_POLICY_VERSION = "2026-11-26.v7";
 
 export const REMIX_ACTIONS = [
   "private_draft",
@@ -28,11 +32,17 @@ export const REMIX_DENIAL_CODES = [
   "source_rights_unknown",
   "source_not_opted_in",
   "artist_remix_disabled",
+  "artist_ai_use_disabled",
   "stem_not_remixable",
   "license_required",
 ] as const;
 
 export type RemixDenialCode = (typeof REMIX_DENIAL_CODES)[number];
+
+/** Limits that leave the remix allowed but narrow what may be done with it. */
+export type RemixLimitCode = "artist_approval_required";
+
+export type RemixLimit = { code: RemixLimitCode; message: string };
 
 export type RemixDenialReason = {
   code: RemixDenialCode;
@@ -71,6 +81,12 @@ export type RemixEligibilityPolicyInput = {
   sourceOptedIn: boolean;
   /** Artist.remixConsent resolved server-side from the source release artist. */
   artistRemixConsent?: "allowed" | "disabled";
+  /** Artist.aiSourceUse (#2666). "disabled" denies Remix Studio to others. */
+  artistAiSourceUse?: "allowed" | "disabled";
+  /** Artist.aiRemixApproval (#2666). "required" keeps others to private drafts. */
+  artistAiRemixApproval?: "required" | "not_required";
+  /** The caller owns the source artist profile; the artist's own choices never limit them. */
+  callerOwnsSource?: boolean;
   /**
    * True when the caller named specific stems (project creation, generation,
    * stem-scoped CTAs): every selected stem must then be licensed and
@@ -87,6 +103,8 @@ export type RemixEligibilityDecision = {
   requiredLicense: "remix" | null;
   allowedActions: RemixAction[];
   reasons: RemixDenialReason[];
+  /** Present when an allowed remix is narrowed (#2666). */
+  limits?: RemixLimit[];
   policyVersion: string;
 };
 
@@ -142,6 +160,15 @@ function sourceDenialReasons(
     reasons.push({
       code: "artist_remix_disabled",
       message: "The artist has disabled Remix Studio access for this source.",
+    });
+  } else if (
+    reasons.length === 0 &&
+    input.artistAiSourceUse === "disabled" &&
+    !input.callerOwnsSource
+  ) {
+    reasons.push({
+      code: "artist_ai_use_disabled",
+      message: "The artist does not allow AI-assisted use of their work.",
     });
   } else if (reasons.length === 0 && !input.sourceOptedIn) {
     reasons.push({
@@ -227,6 +254,25 @@ export function evaluateRemixEligibility(
     : exportLicensedStems.length > 0;
   if (exportSatisfied) {
     allowedActions.push("export");
+  }
+  // v7 (#2666): the artist asked to approve AI remixes of their work. Until
+  // an approval step exists, others keep a private draft only: no publishing
+  // and no export.
+  if (input.artistAiRemixApproval === "required" && !input.callerOwnsSource) {
+    return {
+      allowed: true,
+      requiredLicense: null,
+      allowedActions: ["private_draft"],
+      reasons: [],
+      limits: [
+        {
+          code: "artist_approval_required",
+          message:
+            "The artist approves remixes of their work before they are shared, so this remix stays a private draft for now.",
+        },
+      ],
+      policyVersion: REMIX_POLICY_VERSION,
+    };
   }
   return {
     allowed: true,

@@ -7,6 +7,7 @@ import {
   ApiRequestError,
   createArtist,
   getArtistMe,
+  getArtistParticipation,
   getMyInvitations,
   getRegistrationStatus,
   fetchPayoutEligibility,
@@ -21,6 +22,18 @@ import AuthGate from "../../../components/auth/AuthGate";
 import HumanVerificationCard from "../../../components/disputes/HumanVerificationCard";
 import { PayoutEligibilityNotice } from "../../../components/payments/PayoutEligibilityNotice";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
+import { ArtistParticipationPanel } from "../../../components/participation/ArtistParticipationPanel";
+
+/** #2666: whether this artist still has to accept the current participation agreement. */
+async function needsAgreement(token: string, artistId: string): Promise<boolean> {
+  try {
+    const status = await getArtistParticipation(token, artistId);
+    return status.required && status.needsAcceptance;
+  } catch {
+    // Uploads re-check on the server; a failed read never blocks the way on.
+    return false;
+  }
+}
 
 function ArtistOnboardingPageContent() {
   const { token, address, role } = useAuth();
@@ -44,6 +57,8 @@ function ArtistOnboardingPageContent() {
   const [inviteCode, setInviteCode] = useState("");
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [redeeming, setRedeeming] = useState(false);
+  // #2666: step 2, the participation agreement and consent choices.
+  const [agreementArtistId, setAgreementArtistId] = useState<string | null>(null);
 
   // Check if user already has an artist profile
   useEffect(() => {
@@ -52,6 +67,11 @@ function ArtistOnboardingPageContent() {
         try {
           const artist = await getArtistMe(token);
           if (artist) {
+            if (await needsAgreement(token, artist.id)) {
+              setAgreementArtistId(artist.id);
+              setIsLoading(false);
+              return;
+            }
             const returnUrl = searchParams.get("returnUrl");
             router.push(returnUrl || "/artist/upload");
             return;
@@ -198,6 +218,10 @@ function ArtistOnboardingPageContent() {
         title: "Welcome to Resonate!",
         message: "Your artist profile has been created successfully.",
       });
+      if (await needsAgreement(token, artist.id)) {
+        setAgreementArtistId(artist.id);
+        return;
+      }
       const returnUrl = searchParams.get("returnUrl");
       router.push(returnUrl || "/artist/upload");
     } catch (err) {
@@ -239,7 +263,32 @@ function ArtistOnboardingPageContent() {
   return (
     <AuthGate title="Connect your wallet to begin your journey.">
       <div className="onboarding-container">
-        {needsInvitation && token ? (
+        {agreementArtistId && token ? (
+        <div className="onboarding-glass-card">
+          <div className="card-accent-line" />
+          <div className="step-indicator">
+            <div className="step-dot" />
+            <div className="step-line" />
+            <div className="step-dot active" />
+            <span className="step-label">Step 2 of 2</span>
+          </div>
+          <div className="onboarding-header">
+            <h1 className="onboarding-title">Your participation agreement</h1>
+            <p className="onboarding-description">
+              The terms you publish under on Resonate, and your choices for how your music may be used.
+            </p>
+          </div>
+          <ArtistParticipationPanel
+            token={token}
+            artistId={agreementArtistId}
+            mode="onboarding"
+            onAccepted={() => {
+              addToast({ type: "success", title: "Agreement accepted", message: "You can change your choices at any time in Settings." });
+              router.push(searchParams.get("returnUrl") || "/artist/upload");
+            }}
+          />
+        </div>
+        ) : needsInvitation && token ? (
         <div className="onboarding-glass-card">
           <div className="card-accent-line" />
           <div className="onboarding-header">

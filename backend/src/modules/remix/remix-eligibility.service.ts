@@ -78,7 +78,14 @@ export class RemixEligibilityService {
         release: {
           select: {
             rightsRoute: true,
-            artist: { select: { remixConsent: true, userId: true } },
+            artist: {
+              select: {
+                remixConsent: true,
+                aiSourceUse: true,
+                aiRemixApproval: true,
+                userId: true,
+              },
+            },
           },
         },
         stems: {
@@ -156,6 +163,13 @@ export class RemixEligibilityService {
         track.release?.artist?.remixConsent === "disabled"
           ? "disabled"
           : "allowed",
+      artistAiSourceUse:
+        track.release?.artist?.aiSourceUse === "disabled" ? "disabled" : "allowed",
+      artistAiRemixApproval:
+        track.release?.artist?.aiRemixApproval === "required"
+          ? "required"
+          : "not_required",
+      callerOwnsSource: creatorOwner,
       explicitStemSelection: !!input.stemIds?.length,
       stems,
     });

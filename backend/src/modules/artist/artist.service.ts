@@ -656,10 +656,23 @@ export class ArtistService {
         if (previous === next) {
             return artistSettingsDto(artist);
         }
-        const updated = await prisma.artist.update({
-            where: { id: artist.id },
-            data: { remixConsent: next },
-        });
+        // #2666: every consent change keeps a dated history row.
+        const [updated] = await prisma.$transaction([
+            prisma.artist.update({
+                where: { id: artist.id },
+                data: { remixConsent: next },
+            }),
+            prisma.artistConsentChange.create({
+                data: {
+                    artistId: artist.id,
+                    userId,
+                    setting: "remixConsent",
+                    previousValue: previous,
+                    value: next,
+                    source: "settings",
+                },
+            }),
+        ]);
         this.eventBus.publish({
             eventName: "artist.remix_consent_updated",
             eventVersion: 1,

@@ -16,3 +16,7 @@
 .app-footer-slot { padding-top: 48px; }
 .app-footer-slot .legal-footer { margin-top: 0; }
 @media (max-width:600px) { .legal-footer { flex-direction: column; } }
+/* #2666: the participation agreement shown inside the artist onboarding and Settings. */
+.legal-page--embedded { width: 100%; padding: 8px 0; }
+.legal-page--embedded h1 { font-size: 1.4rem; letter-spacing: -.01em; margin: 8px 0 12px; }
+.legal-page--embedded h2 { margin: 20px 0 8px; font-size: 1.1rem; }

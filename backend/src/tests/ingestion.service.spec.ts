@@ -6,6 +6,10 @@ import { EventBus } from "../modules/shared/event_bus";
 
 // Upload limits read the database (#2659); these unit specs cover the upload
 // flow itself, and the limits have their own integration spec.
+// #2666: the participation gate reads the database; these tests cover storage.
+jest.mock("../modules/participation/participation.service", () => ({
+  assertParticipationAccepted: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock("../modules/trust/upload_limits", () => ({
   assertWithinUploadLimits: jest.fn().mockResolvedValue(undefined),
 }));

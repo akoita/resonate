@@ -329,4 +329,52 @@ describe("remix eligibility policy", () => {
     expect(codes).toContain("stem_not_remixable");
     expect(decision.requiredLicense).toBeNull();
   });
+
+  describe("artist participation choices (#2666)", () => {
+    const licensedForExport = {
+      stems: [{ stemId: "stem-1", mintRemixable: null, licensed: true, exportLicensed: true }],
+    };
+
+    it("denies others when the artist turned AI use of their work off", () => {
+      const decision = evaluateRemixEligibility(
+        input({ ...licensedForExport, artistAiSourceUse: "disabled" }),
+      );
+      expect(decision.allowed).toBe(false);
+      expect(decision.reasons.map((r) => r.code)).toEqual(["artist_ai_use_disabled"]);
+    });
+
+    it("lets the artist use their own work whatever they chose", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          ...licensedForExport,
+          artistAiSourceUse: "disabled",
+          artistAiRemixApproval: "required",
+          callerOwnsSource: true,
+        }),
+      );
+      expect(decision.allowed).toBe(true);
+      expect(decision.allowedActions).toEqual(["private_draft", "publish_resonate", "export"]);
+      expect(decision.limits).toBeUndefined();
+    });
+
+    it("keeps others to a private draft when the artist approves AI remixes", () => {
+      const decision = evaluateRemixEligibility(
+        input({ ...licensedForExport, artistAiRemixApproval: "required" }),
+      );
+      expect(decision.allowed).toBe(true);
+      expect(decision.allowedActions).toEqual(["private_draft"]);
+      expect(decision.limits?.map((l) => l.code)).toEqual(["artist_approval_required"]);
+    });
+
+    it("leaves existing behaviour unchanged with the stored defaults", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          ...licensedForExport,
+          artistAiSourceUse: "allowed",
+          artistAiRemixApproval: "not_required",
+        }),
+      );
+      expect(decision.allowedActions).toEqual(["private_draft", "publish_resonate", "export"]);
+    });
+  });
 });

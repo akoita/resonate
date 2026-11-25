@@ -431,6 +431,41 @@ describe("Remix eligibility and projects (integration)", () => {
       expect(restored.allowed).toBe(true);
     });
 
+    it("applies the source artist's AI choices to others but not to the artist (#2666)", async () => {
+      await prisma.artist.update({ where: { id: ARTIST_ID }, data: { aiSourceUse: "disabled" } });
+      try {
+        const denied = await eligibilityService.checkEligibility({
+          userId: CREATOR_ID,
+          trackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+        });
+        expect(denied.allowed).toBe(false);
+        expect(denied.reasons.map((reason) => reason.code)).toEqual(["artist_ai_use_disabled"]);
+        const own = await eligibilityService.checkEligibility({
+          userId: ARTIST_OWNER_ID,
+          trackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+        });
+        expect(own.allowed).toBe(true);
+      } finally {
+        await prisma.artist.update({ where: { id: ARTIST_ID }, data: { aiSourceUse: "allowed" } });
+      }
+
+      await prisma.artist.update({ where: { id: ARTIST_ID }, data: { aiRemixApproval: "required" } });
+      try {
+        const draftOnly = await eligibilityService.checkEligibility({
+          userId: CREATOR_ID,
+          trackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+        });
+        expect(draftOnly.allowed).toBe(true);
+        expect(draftOnly.allowedActions).toEqual(["private_draft"]);
+        expect(draftOnly.limits?.map((limit) => limit.code)).toEqual(["artist_approval_required"]);
+      } finally {
+        await prisma.artist.update({ where: { id: ARTIST_ID }, data: { aiRemixApproval: "not_required" } });
+      }
+    });
+
     it("treats the artist owner as licensed for their own stems without a purchase (#1174)", async () => {
       const result = await eligibilityService.checkEligibility({
         userId: ARTIST_OWNER_ID,

@@ -2210,7 +2210,9 @@ export class CatalogService implements OnModuleInit {
         artworkMimeType: true,
         artworkRevision: true,
         artist: {
-          select: { id: true, displayName: true, userId: true }
+          // #2666: stemListing tells the release page whether the artist
+          // chose to offer stems as collectibles.
+          select: { id: true, displayName: true, userId: true, stemListing: true }
         },
         artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
         tracks: {
@@ -2295,7 +2297,7 @@ export class CatalogService implements OnModuleInit {
             artworkMimeType: true,
             artworkRevision: true,
             artist: {
-              select: { id: true, displayName: true, userId: true }
+              select: { id: true, displayName: true, userId: true, stemListing: true }
             },
             artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
             tracks: {
