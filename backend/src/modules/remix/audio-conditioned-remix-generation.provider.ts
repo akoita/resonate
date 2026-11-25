@@ -26,6 +26,7 @@ import { remixStretchMetadata } from "./remix-stretch";
 import { remixStructureDspVersion } from "./remix-structure";
 import { REMIX_BEAT_DSP_VERSION } from "./remix-beat";
 import { REMIX_PARTS_DSP_VERSION } from "./remix-parts";
+import { isRemixGenerationEnabled as isProviderAndSurfaceEnabled } from "../../config/product_surfaces";
 
 /**
  * Audio-conditioned remix provider (#1182 slice 4) — the first provider that
@@ -392,7 +393,7 @@ export const AUDIO_CONDITIONED_REMIX_GENERATION_PROVIDER_KIND =
   "audio-conditioned";
 
 export function isRemixGenerationEnabled(): boolean {
-  return process.env.REMIX_GENERATION_ENABLED === "true";
+  return isProviderAndSurfaceEnabled();
 }
 
 export function isAudioConditionedRemixGenerationActiveAndEnabled(): boolean {

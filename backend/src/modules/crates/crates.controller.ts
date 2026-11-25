@@ -29,6 +29,7 @@ import { CrateQuoteService } from "./crate_quote.service";
 import { CreateCrateQuoteDto, SettleCrateQuoteDto } from "./crate_quote.dto";
 import type { CrateQuoteDto } from "./crate_quote.dto";
 import { CratesService } from "./crates.service";
+import { RequireSurface } from "../product_surfaces/product_surface.guard";
 
 /** Tracked per signed-in person where the guard has resolved them, else per IP. */
 const trackByUser = (req: Record<string, any>) => req.user?.userId ?? req.ip;
@@ -142,6 +143,7 @@ export class CratesController {
    */
   @UseGuards(AuthGuard("jwt"))
   @Throttle({ default: { limit: 20, ttl: minutes(1), getTracker: trackByUser } })
+  @RequireSurface("stemPurchases")
   @Post(":id/quote")
   createQuote(
     @Req() req: any,

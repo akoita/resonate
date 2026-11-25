@@ -19,6 +19,7 @@ import { MCP_ERROR_RECOVERY, type McpErrorCode } from "./mcp.constants";
 import { knownStemFileExtension } from "../shared/stem-media";
 import { stemSourceFacts, type StemSourceFacts } from "../shared/stem-source";
 import { plainLicenseTerms } from "../contracts/stem_license_tier";
+import { isSurfaceEnabled } from "../../config/product_surfaces";
 
 export type McpStemQuote = {
   summary: string;
@@ -484,7 +485,13 @@ export class McpStemService {
   }
 
   private assertX402Enabled() {
-    if (!this.x402Config.enabled || !this.x402Config.payoutAddress) {
+    if (
+      !this.x402Config.enabled ||
+      !this.x402Config.payoutAddress ||
+      // Product surface switches (#2658): agent purchases need both.
+      !isSurfaceEnabled("agentPayments") ||
+      !isSurfaceEnabled("stemPurchases")
+    ) {
       throw new McpToolError(
         "X402_DISABLED",
         "x402 payments are not enabled on this server",

@@ -32,6 +32,7 @@ import {
 import { ContentLengthLimitInterceptor } from "../shared/content-length-limit.interceptor";
 import { BoundedMemoryStorage } from "../shared/bounded-memory.storage";
 import { AdminAudit, auditBody, auditCode, auditRef } from "../admin_audit/admin_audit.interceptor";
+import { RequireSurface } from "../product_surfaces/product_surface.guard";
 
 @Controller("shows")
 export class ShowsController {
@@ -400,6 +401,7 @@ export class ShowsController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @RequireSurface("showsPledging")
   @Post("campaigns/:id/pledges/intent")
   createPledgeIntent(
     @Param("id") id: string,

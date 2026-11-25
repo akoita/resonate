@@ -612,6 +612,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "smart-wallet",
+    surfaces: ["wallet"],
     title: "Your wallet & smart account",
     summary:
       "Every account comes with a built-in 'smart account' wallet for payouts, purchases, and stakes — funded with stablecoins and protected by your passkey.",
@@ -1320,6 +1321,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "crate-digger",
+    surfaces: ["stemPurchases"],
     title: "Crate Digger",
     summary:
       "Describe what your DJ set needs and get a crate of tracks you can reorder, lock, swap and save, then get a quote and buy the stems with one signature, export the stems you own to rekordbox or Serato, and watch a saved crate for new tracks that fit it.",
@@ -1797,6 +1799,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   // ─────────────────────────── Collect & sell ─────────────────────────────
   {
     slug: "marketplace-buy",
+    surfaces: ["stemPurchases"],
     title: "Browse & collect stems",
     summary:
       "Preview and collect licensed audio stems from artists worldwide, choosing the license tier that fits how you'll use them.",
@@ -2167,6 +2170,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   // ─────────────────────────── Create & remix ─────────────────────────────
   {
     slug: "create-ai-music",
+    surfaces: ["aiGeneration"],
     title: "Create music with AI",
     summary:
       "Generate original tracks from a text prompt and publish them to your catalog, with AI provenance recorded automatically.",
@@ -3843,6 +3847,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "punchline-drops",
+    surfaces: ["paidCollects"],
     title: "Drops: turn your track's best moments into collectibles",
     summary:
       "Pick the hook, the punchline, the line everyone quotes — and release it as a small set of collectible moments fans can own, free or paid.",
@@ -4053,6 +4058,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   // ─────────────────────────── Resonate Shows ─────────────────────────────
   {
     slug: "shows-back",
+    surfaces: ["showsPledging"],
     title: "Back a show (Resonate Shows)",
     summary:
       "Turn 'I'd go to that' into a real concert: signal demand and pledge funds into escrow that you can claim back if the show doesn't happen.",

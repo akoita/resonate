@@ -10,6 +10,7 @@ import {
   HelpOperatorOnly,
   HelpRelatedList,
 } from "./HelpReaderViews";
+import { HelpSurfaceNotice } from "./HelpSurfaceNotice";
 
 /**
  * Renders a full guide article. Server component — fully readable without
@@ -55,6 +56,8 @@ export function HelpArticleView({ article }: { article: HelpArticle }) {
           ) : null}
         </div>
       </header>
+
+      {article.surfaces?.length ? <HelpSurfaceNotice surfaces={article.surfaces} /> : null}
 
       {isOperatorOnly(article.audiences) ? <HelpOperatorOnly>{body}</HelpOperatorOnly> : body}
 
