@@ -5,7 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ConnectButton from "../auth/ConnectButton";
 import NotificationBell from "../notifications/NotificationBell";
+import TopbarSearch from "./TopbarSearch";
 import { useUIStore } from "../../lib/uiStore";
+import "../../styles/topbar-search.css";
 
 export type TopbarProps = {
   title?: string;
@@ -82,6 +84,7 @@ export default function Topbar({ title, actions }: TopbarProps) {
         </button>
         <div className="topbar-title">{title ?? getRouteTitle(pathname)}</div>
       </div>
+      <TopbarSearch />
       <div className="topbar-actions">
         <button
           type="button"

@@ -1,0 +1,169 @@
+import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
+import { prisma } from "../../db/prisma";
+import {
+  PLAYABLE_TRACK_WHERE,
+  WITHDRAWABLE_RELEASE_STATUSES,
+} from "../catalog/track-availability";
+import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
+import { PlaylistService } from "../playlist/playlist.service";
+
+/** Shortest query worth a round trip; one letter matches half the catalog. */
+export const SEARCH_MIN_QUERY_LENGTH = 2;
+/** Longer input is cut, not refused: a pasted title still finds something. */
+export const SEARCH_MAX_QUERY_LENGTH = 80;
+export const SEARCH_GROUP_LIMIT = 5;
+
+export type SearchArtist = { id: string; displayName: string; imageUrl: string | null };
+export type SearchRelease = {
+  id: string;
+  title: string;
+  type: string;
+  artistName: string;
+  hasArtwork: boolean;
+  artworkRevision: number;
+};
+export type SearchTrack = {
+  id: string;
+  title: string;
+  artistName: string;
+  releaseId: string;
+  releaseTitle: string;
+  hasArtwork: boolean;
+  artworkRevision: number;
+};
+export type SearchPlaylist = {
+  id: string;
+  name: string;
+  ownerDisplayName: string | null;
+  playableTrackCount: number;
+};
+export type SearchResults = {
+  query: string;
+  artists: SearchArtist[];
+  releases: SearchRelease[];
+  tracks: SearchTrack[];
+  playlists: SearchPlaylist[];
+};
+
+/** Trim, collapse spaces and cut to the maximum length. */
+export function normalizeSearchQuery(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, SEARCH_MAX_QUERY_LENGTH);
+}
+
+const PUBLIC_ROUTE = {
+  OR: [{ rightsRoute: null }, { rightsRoute: { in: [...PUBLIC_RELEASE_ROUTES] } }],
+} satisfies Prisma.ReleaseWhereInput;
+
+/**
+ * A release anyone may open: ready or published, on a public rights route,
+ * with at least one track that can be played right now. Withdrawn, removed or
+ * restricted releases never match.
+ */
+export const LISTED_RELEASE_WHERE = {
+  AND: [
+    { status: { in: [...WITHDRAWABLE_RELEASE_STATUSES] } },
+    PUBLIC_ROUTE,
+    { tracks: { some: PLAYABLE_TRACK_WHERE } },
+  ],
+} satisfies Prisma.ReleaseWhereInput;
+
+/**
+ * Top-bar search (#2671): artists, releases, tracks and public playlists in
+ * one call. Every group applies the playable-content rule, so content a
+ * listener cannot open never appears.
+ */
+@Injectable()
+export class SearchService {
+  constructor(private readonly playlists: PlaylistService) {}
+
+  async search(rawQuery: unknown): Promise<SearchResults> {
+    const query = normalizeSearchQuery(rawQuery);
+    if (query.length < SEARCH_MIN_QUERY_LENGTH) {
+      return { query, artists: [], releases: [], tracks: [], playlists: [] };
+    }
+    const contains = { contains: query, mode: "insensitive" as const };
+
+    const [artists, releases, tracks, playlists] = await Promise.all([
+      prisma.artist.findMany({
+        where: { displayName: contains, releases: { some: LISTED_RELEASE_WHERE } },
+        orderBy: { displayName: "asc" },
+        take: SEARCH_GROUP_LIMIT,
+        select: { id: true, displayName: true, imageUrl: true },
+      }),
+      prisma.release.findMany({
+        where: {
+          AND: [
+            LISTED_RELEASE_WHERE,
+            { OR: [{ title: contains }, { primaryArtist: contains }, { artist: { displayName: contains } }] },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        take: SEARCH_GROUP_LIMIT,
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          primaryArtist: true,
+          artworkMimeType: true,
+          artworkRevision: true,
+          artist: { select: { displayName: true } },
+        },
+      }),
+      prisma.track.findMany({
+        where: { AND: [PLAYABLE_TRACK_WHERE, { OR: [{ title: contains }, { artist: contains }] }] },
+        orderBy: { createdAt: "desc" },
+        take: SEARCH_GROUP_LIMIT,
+        select: {
+          id: true,
+          title: true,
+          artist: true,
+          releaseId: true,
+          release: {
+            select: {
+              title: true,
+              primaryArtist: true,
+              artworkMimeType: true,
+              artworkRevision: true,
+              artist: { select: { displayName: true } },
+            },
+          },
+        },
+      }),
+      this.playlists.listPublicPlaylists({ query, limit: SEARCH_GROUP_LIMIT }),
+    ]);
+
+    return {
+      query,
+      artists: artists.map((artist) => ({
+        id: artist.id,
+        displayName: artist.displayName,
+        imageUrl: artist.imageUrl ?? null,
+      })),
+      releases: releases.map((release) => ({
+        id: release.id,
+        title: release.title,
+        type: release.type,
+        artistName: release.primaryArtist || release.artist.displayName,
+        hasArtwork: Boolean(release.artworkMimeType),
+        artworkRevision: release.artworkRevision,
+      })),
+      tracks: tracks.map((track) => ({
+        id: track.id,
+        title: track.title,
+        artistName: track.artist || track.release.primaryArtist || track.release.artist.displayName,
+        releaseId: track.releaseId,
+        releaseTitle: track.release.title,
+        hasArtwork: Boolean(track.release.artworkMimeType),
+        artworkRevision: track.release.artworkRevision,
+      })),
+      playlists: playlists.map((playlist) => ({
+        id: playlist.id,
+        name: playlist.name,
+        ownerDisplayName: playlist.ownerDisplayName,
+        playableTrackCount: playlist.playableTrackCount,
+      })),
+    };
+  }
+}
