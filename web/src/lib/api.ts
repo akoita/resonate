@@ -8369,6 +8369,86 @@ export function getSentBroadcastNotices(token: string) {
   return apiRequest<{ notices: SentBroadcastNotice[] }>("/notices/sent", { cache: "no-store" }, token);
 }
 
+/** End a broadcast now (#2667): its banner and the public status line clear. */
+export function endBroadcastNotice(token: string, noticeId: string) {
+  return apiRequest<{ id: string; expiresAt: string }>(
+    `/notices/${encodeURIComponent(noticeId)}/end`,
+    { method: "POST" },
+    token,
+  );
+}
+
+/** The active service status (#2667), public: shown on the sign-in screen. */
+export interface ServiceStatus {
+  id: string;
+  title: string;
+  body: string;
+  link: string | null;
+  createdAt: string;
+}
+
+export function getServiceStatus() {
+  return apiRequest<{ status: ServiceStatus | null }>("/notices/status", { cache: "no-store", silentErrorCodes: [404, 500, 502, 503] });
+}
+
+// ============ Support requests (#2667) ============
+
+export type SupportTopic = "account" | "uploads" | "payments" | "listening" | "rights" | "other";
+export type SupportRequestStatus = "new" | "answered" | "closed";
+
+export interface SupportRequestInput {
+  topic: SupportTopic;
+  message: string;
+  email?: string;
+  /** Honeypot: always empty from the real form. */
+  website?: string;
+}
+
+export interface SupportRequestReceipt {
+  id: string;
+  status: SupportRequestStatus;
+  createdAt: string;
+  receiptSent: boolean;
+}
+
+export interface AdminSupportRequest {
+  id: string;
+  topic: SupportTopic;
+  message: string;
+  status: SupportRequestStatus;
+  signedIn: boolean;
+  userId: string | null;
+  replyTo: string | null;
+  createdAt: string;
+  statusChangedAt: string | null;
+}
+
+/** Send a support request; the session, when there is one, links it to the person. */
+export function sendSupportRequest(input: SupportRequestInput, token?: string | null) {
+  return apiRequest<SupportRequestReceipt>(
+    "/support/requests",
+    { method: "POST", body: JSON.stringify(input), silentErrorCodes: [400, 429] },
+    token,
+  );
+}
+
+export function listAdminSupportRequests(token: string, status?: SupportRequestStatus) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiRequest<{ requests: AdminSupportRequest[]; counts: Record<SupportRequestStatus, number> }>(
+    `/admin/support/requests${query}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export function setSupportRequestStatus(token: string, id: string, status: SupportRequestStatus) {
+  return apiRequest<{ id: string; status: SupportRequestStatus; statusChangedAt: string | null }>(
+    `/admin/support/requests/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify({ status }) },
+    token,
+  );
+}
+
 // ============ Email notices (#2169) ============
 
 export type ContactEmailStatus = "none" | "pending" | "confirmed" | "disabled";
@@ -8566,6 +8646,7 @@ export type AdminAuditAction =
   | "agent_session.events_viewed"
   | "notice.broadcast_sent"
   | "notice.targeted_sent"
+  | "notice.broadcast_ended"
   | "admin.step_up_verified"
   | "admin.step_up_refused"
   | "credits.granted"
@@ -8657,7 +8738,9 @@ export type AdminAuditAction =
   | "billing.reconciliation_viewed"
   | "remix_watermark.detect_started"
   | "remix_watermark.detect_viewed"
-  | "remix_watermark.evidence_attached";
+  | "remix_watermark.evidence_attached"
+  | "support.requests_viewed"
+  | "support.request_status_changed";
 
 export type AdminAuditOutcome = "success" | "denied";
 

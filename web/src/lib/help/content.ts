@@ -306,6 +306,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             ],
           },
           {
+            kind: "paragraph",
+            text: "For an outage, start from a Service status template (Slow or partly down, Outage or Resolved). An Incident notice to everyone also shows on the sign-in screen. Choose End now on a sent broadcast to stop showing it at once.",
+          },
+          {
             kind: "callout",
             tone: "warning",
             title: "Sent notices cannot be recalled",
@@ -319,7 +323,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Notices (operators)", href: "/admin/notices", description: "Compose a broadcast and see the ones already sent.", audience: "operator" },
       { label: "Dispute center", href: "/disputes", description: "Disputes about a track or release." },
     ],
-    related: ["legal-privacy-refunds", "getting-started"],
+    related: ["legal-privacy-refunds", "getting-started", "contact-support"],
   },
   {
     slug: "account-suspension",
@@ -5014,8 +5018,110 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Settings → Troubleshooting", href: "/settings", description: "Reset this browser's saved session." },
+      { label: "Contact support", href: "/support", description: "Still stuck? Send a message to the Resonate team." },
     ],
-    related: ["getting-started", "smart-wallet", "settings-privacy"],
+    related: ["getting-started", "smart-wallet", "settings-privacy", "contact-support"],
+  },
+  {
+    slug: "contact-support",
+    title: "Contact support",
+    summary:
+      "Ask the Resonate team for help, signed in or not, and see whether something is wrong with the service right now. For operators: answering requests and posting a service status.",
+    category: "account",
+    audiences: ["everyone", "operator"],
+    keywords: ["support", "help", "contact", "question", "problem", "stuck", "status", "outage", "down", "not working", "email us"],
+    sections: [
+      {
+        id: "send-a-message",
+        heading: "Send a message",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Choose Contact support at the bottom of any page, in Settings under Troubleshooting, or below. Pick what your message is about, say what you were trying to do and what happened, and send it. A person on the Resonate team reads every message.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/contact-support.png`,
+              alt: "The Contact support page with a short introduction, a topic menu, a message box, an optional reply address field and a Send message button.",
+              caption: "Contact support works with or without an account.",
+              width: 1440,
+              height: 900,
+              source: LOCAL_PUBLIC,
+            },
+          },
+          {
+            kind: "paragraph",
+            text: "If you are signed in, the message is linked to your account and we answer at the email address in your settings; you can give a different address if you prefer. If you are not signed in, leave an email address if you want an answer. We use it only for that message. Either way you get a reference, and an email with the same reference when we have an address.",
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "Never send secrets",
+            text: "Do not put passwords, recovery phrases or card numbers in a message. Nobody at Resonate will ever ask for them.",
+          },
+          {
+            kind: "paragraph",
+            text: "You can send a few messages a day. If you reach the limit, we still have your earlier messages and will answer them. To report content that uses your work without permission, use the report form instead: it goes to the people who review takedown notices.",
+          },
+          {
+            kind: "paragraph",
+            text: "Messages you send while signed in are part of your data download, and they are deleted if you delete your account.",
+          },
+        ],
+      },
+      {
+        id: "service-status",
+        heading: "If something is wrong with Resonate",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "When there is an outage or something is slow, the team posts a service status. Signed-in people see it as a bar at the top of the app and in their notifications. It also shows on the sign-in screen, so you see it even if you cannot sign in. When the problem is fixed, the status says so and then disappears.",
+          },
+        ],
+      },
+      {
+        id: "answering-requests",
+        heading: "Answering requests (operators)",
+        audience: "operator",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open Support Requests in the sidebar (operators and admins only). New requests are listed first.",
+              "Read the message and answer from your own mailbox, using the reply address shown. If there is none, the person cannot be answered.",
+              "Choose Mark answered, or Mark closed if no answer is needed. Reopen a request if it needs more work.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Opening the list and every status change are recorded in the admin audit log.",
+          },
+        ],
+      },
+      {
+        id: "posting-a-status",
+        heading: "Posting a service status (operators)",
+        audience: "operator",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open Notices and, under Service status, choose Slow or partly down, Outage or Resolved. The notice is filled in for everyone.",
+              "Adjust the words if needed, then choose Review and send and confirm.",
+              "When the problem is fixed, send Resolved. It ends by itself after 24 hours. To clear any status at once, choose End now on it under Sent broadcasts.",
+            ],
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Contact support", href: "/support", description: "Send a message to the Resonate team." },
+      { label: "Report content", href: "/report", description: "Report content that uses your work without permission." },
+      { label: "Support Requests (operators)", href: "/admin/support", description: "Read and answer support requests.", audience: "operator" },
+      { label: "Notices (operators)", href: "/admin/notices", description: "Post or end a service status.", audience: "operator" },
+    ],
+    related: ["troubleshooting", "platform-notices", "legal-privacy-refunds"],
   },
   {
     slug: "desktop-app",

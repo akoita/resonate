@@ -6,10 +6,17 @@ import { useAuth } from "../../../components/auth/AuthProvider";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useToast } from "../../../components/ui/Toast";
 import { AdminStepUpCancelledError, withAdminStepUp } from "../../../lib/adminStepUp";
-import { getAdminUsersOverview, getSentBroadcastNotices, sendBroadcastNotice } from "../../../lib/api";
+import {
+  endBroadcastNotice,
+  getAdminUsersOverview,
+  getSentBroadcastNotices,
+  sendBroadcastNotice,
+  type SentBroadcastNotice,
+} from "../../../lib/api";
 import { loadPlatformNotices } from "../../../lib/platformNotices";
 import {
   EMPTY_DRAFT,
+  draftFromStatusTemplate,
   getSendConfirmMessage,
   toBroadcastInput,
   validateNoticeDraft,
@@ -34,6 +41,8 @@ export default function AdminNoticesPage() {
   const [sent, setSent] = useState<SentNoticesState>({ status: "loading" });
   // Head count for the "who receives it" line; left out silently if the overview fails.
   const [audienceSize, setAudienceSize] = useState<number | null>(null);
+  const [ending, setEnding] = useState<SentBroadcastNotice | null>(null);
+  const [endingId, setEndingId] = useState<string | null>(null);
 
   const loadSent = useCallback(async () => {
     if (!token || !canSend) return;
@@ -110,6 +119,28 @@ export default function AdminNoticesPage() {
     }
   };
 
+  /** #2667: end a broadcast now; its banner and the public status line clear. */
+  const endNow = async () => {
+    const notice = ending;
+    if (!token || !notice || endingId) return;
+    setEndingId(notice.id);
+    try {
+      await endBroadcastNotice(token, notice.id);
+      addToast({ type: "success", title: "Notice ended", message: "It no longer shows to anyone." });
+      void loadSent();
+      void loadPlatformNotices(token);
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Notice not ended",
+        message: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setEnding(null);
+      setEndingId(null);
+    }
+  };
+
   return (
     <AuthGate title="Sign in with an operator account to send platform notices.">
       <NoticesView
@@ -127,6 +158,21 @@ export default function AdminNoticesPage() {
           if (checkDraft()) setConfirming(true);
         }}
         onRetrySent={() => void loadSent()}
+        onApplyTemplate={(template) => {
+          setDraft(draftFromStatusTemplate(template));
+          setErrors({});
+        }}
+        onEndNotice={(notice) => setEnding(notice)}
+        endingId={endingId}
+      />
+      <ConfirmDialog
+        isOpen={ending !== null}
+        title="End this notice now?"
+        message={`"${ending?.title ?? ""}" stops showing in banners, notifications and on the sign-in screen. This cannot be undone.`}
+        confirmLabel={endingId ? "Ending..." : "End notice"}
+        variant="warning"
+        onConfirm={endNow}
+        onCancel={() => setEnding(null)}
       />
       <ConfirmDialog
         isOpen={confirming}

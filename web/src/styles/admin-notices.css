@@ -360,3 +360,7 @@ input.admin-form-input[type="date"] { max-width: 240px; }
   .admin-notices-composer__actions .ui-btn { width: 100%; }
   .admin-notices-sent__date { margin-left: 0; flex-basis: 100%; }
 }
+
+/* #2667: service status templates and ending a broadcast early. */
+.admin-notices-templates { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-notices-sent__actions { display: flex; gap: 8px; margin-top: 8px; }
