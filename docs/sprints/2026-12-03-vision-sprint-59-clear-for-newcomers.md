@@ -1,8 +1,8 @@
 # Vision Sprint 59: Clear for newcomers
 
 **Status:** 🟡 Approved by the owner on 2026-11-25. Second of three sprints to
-the first production version. Starts when
-[Sprint 58](2026-11-26-vision-sprint-58-safe-to-open.md) closes.
+the invitation-only preview. Starts when
+[Sprint 58](2026-11-26-vision-sprint-58-safe-to-show.md) closes.
 **Milestone:** [57](https://github.com/akoita/resonate/milestone/57), due
 2026-12-09.
 **Goal:** A person who has never used a wallet can sign up, listen, publish
@@ -10,7 +10,7 @@ and ask for help, and only invited people can get in.
 
 ## Why this theme
 
-- **The pilot is capped.** Registration is open to anyone in the code today.
+- **The preview is capped.** Registration is open to anyone in the code today.
 - **The app speaks the language of wallets.** Sign-in is a passkey, and the
   wording and the navigation should say so.
 - **The operator must be reachable, and must be able to reach people.** A
@@ -31,7 +31,8 @@ and ask for help, and only invited people can get in.
 
 **Dependencies.** #2663 needs #2658 (Sprint 58) merged. #2666 needs the
 agreement text from the operator and ships with a marked placeholder until
-then. #2665 needs the email provider (deployment half). The others are
+then; the placeholder says that the text has not had a legal review. #2665
+needs the email provider (deployment half). The others are
 independent.
 
 ## Deployment halves
@@ -39,7 +40,7 @@ independent.
 Tracked in `resonate-iac` (private):
 
 - resonate-iac#284: email provider account and sending domain.
-- resonate-iac#339: registration mode and cap for production.
+- The registration mode and cap for the preview environment.
 - resonate-iac#309 and resonate-iac#307: rate limits that are per user and
   shared between instances, and the AI spend budget.
 
