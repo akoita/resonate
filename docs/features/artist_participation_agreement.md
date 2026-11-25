@@ -32,7 +32,10 @@ The operator supplies the text as a Markdown file:
 - Until both are set, a clearly marked placeholder is served. A test or
   staging deployment lets artists accept it to try the flow; a production
   deployment does not (`503 participation_agreement_unavailable`), so artist
-  uploads stay closed there until the real text is published.
+  uploads stay closed there until the real text is published. "Production"
+  means a production-tier `RESONATE_ENVIRONMENT_ID`, or `NODE_ENV=production`
+  with no deployment identity at all; `NODE_ENV` alone is not the signal,
+  because every container image sets it, staging included.
 - The server stores the SHA-256 of the exact text the artist accepted. An
   acceptance sent with another version or hash than the one served is
   refused (`409 participation_agreement_changed`) and the page reloads the
