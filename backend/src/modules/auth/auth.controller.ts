@@ -21,6 +21,11 @@ import { writeStructuredLog } from "../shared/structured_logging";
 import { AllowWhileSuspended } from "../accounts/allow_while_suspended.decorator";
 import { UserActivityService } from "../accounts/user_activity.service";
 import { LOCAL_CHAIN_ID, LOCAL_UNIVERSAL_SIG_VALIDATOR } from "../shared/local_signature_validator";
+import {
+  InvitationRefusedError,
+  InvitationsService,
+  type InvitationReservation,
+} from "../invitations/invitations.service";
 
 // Sign-in must always work for a restricted account (#2147).
 @AllowWhileSuspended()
@@ -35,6 +40,7 @@ export class AuthController {
     private readonly accountClosureService: AccountClosureService,
     @Optional() private readonly signupFaucetService?: SignupFaucetService,
     @Optional() private readonly userActivity?: UserActivityService,
+    @Optional() private readonly invitations?: InvitationsService,
   ) { }
 
   @Post("login")
@@ -92,6 +98,7 @@ export class AuthController {
           walletAddress: body.address,
           role: body.role,
           authMode: body.authMode,
+          inviteCode: body.inviteCode,
           requestedChainId: body.chainId,
           verifiedChainId: chainId,
           pubKeyX: body.pubKeyX,
@@ -139,6 +146,7 @@ export class AuthController {
           walletAddress: body.address,
           role: body.role,
           authMode: body.authMode,
+          inviteCode: body.inviteCode,
           requestedChainId: body.chainId,
           verifiedChainId: chainId,
           pubKeyX: body.pubKeyX,
@@ -187,6 +195,7 @@ export class AuthController {
           walletAddress: body.address,
           role: body.role,
           authMode: body.authMode,
+          inviteCode: body.inviteCode,
           requestedChainId: body.chainId,
           verifiedChainId: chainId,
           pubKeyX: body.pubKeyX,
@@ -203,6 +212,7 @@ export class AuthController {
         walletAddress: body.address,
         role: body.role,
         authMode: body.authMode,
+        inviteCode: body.inviteCode,
         requestedChainId: body.chainId,
         verifiedChainId: chainId,
         pubKeyX: body.pubKeyX,
@@ -266,19 +276,66 @@ export class AuthController {
     walletAddress: string;
     role?: string;
     authMode?: AuthMode;
+    inviteCode?: string;
     requestedChainId?: number;
     verifiedChainId: number;
     pubKeyX?: string;
     pubKeyY?: string;
   }) {
-    const wallet = await this.authService.upsertWalletIdentity({
-      userId: input.userId,
-      walletAddress: input.walletAddress,
-      chainId: input.requestedChainId ?? input.verifiedChainId,
-      pubKeyX: input.pubKeyX,
-      pubKeyY: input.pubKeyY,
-    });
+    // #2662: in invitation mode a passkey with no account behind it needs a
+    // valid code before an account is created. Signing in to an existing
+    // account is unaffected. The use is counted first and given back if the
+    // account cannot be created, so a failure never strands a code.
+    let reservation: InvitationReservation | undefined;
+    if (this.invitations?.mode() === "invite") {
+      const exists = await this.authService.accountExists({
+        userId: input.userId,
+        pubKeyX: input.pubKeyX,
+        pubKeyY: input.pubKeyY,
+      });
+      if (!exists) {
+        if (!input.inviteCode?.trim()) {
+          return { status: "invite_required" as const };
+        }
+        try {
+          reservation = await this.invitations.reserve(input.inviteCode);
+        } catch (error) {
+          if (error instanceof InvitationRefusedError) {
+            return { status: `invite_${error.status}` as const };
+          }
+          throw error;
+        }
+      }
+    }
+
+    let wallet: Awaited<ReturnType<AuthService["upsertWalletIdentity"]>>;
+    try {
+      wallet = await this.authService.upsertWalletIdentity({
+        userId: input.userId,
+        walletAddress: input.walletAddress,
+        chainId: input.requestedChainId ?? input.verifiedChainId,
+        pubKeyX: input.pubKeyX,
+        pubKeyY: input.pubKeyY,
+      });
+    } catch (error) {
+      if (reservation) await this.invitations?.release(reservation);
+      throw error;
+    }
     const canonicalUserId = wallet.userId ?? input.userId;
+    if (reservation) {
+      try {
+        await this.invitations?.complete(reservation, canonicalUserId);
+      } catch (error) {
+        writeStructuredLog({
+          level: "error",
+          event: "auth.invitation.complete_failed",
+          message: "An invitation use was counted but could not be tied to the new account",
+          userId: canonicalUserId,
+          invitationId: reservation.invitationId,
+          error: (error as Error).message,
+        });
+      }
+    }
 
     // Signing in calls off a scheduled erasure — see below. Awaited before the
     // token is issued so the answer to "did my account survive?" is settled by

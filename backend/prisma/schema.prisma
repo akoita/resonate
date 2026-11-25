@@ -105,6 +105,9 @@ model User {
   noticesReceived             Notice[]                      @relation("NoticeRecipient")
   noticeReads                 NoticeRead[]
   contactEmail                ContactEmail?
+  invitationsCreated          Invitation[]                  @relation("InvitationCreatedBy")
+  invitationRedemptions       InvitationRedemption[]
+  waitlistEntries             WaitlistEntry[]
   emailDeliveries             EmailDelivery[]
   // #2166 operational activity for account administration (legitimate interest):
   // the last sign-in and the last authenticated request, the latter written at
@@ -4036,5 +4039,75 @@ model AdminAuditEvent {
   @@index([targetUserId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([action, createdAt])
+  @@index([createdAt])
+}
+
+/// #2662. An invitation code for invitation-only registration. Only a sha256
+/// hash of the code is stored; the code itself is shown once, at creation.
+/// Created by an operator (any role), or by a founding artist (listener codes
+/// only, within their allowance).
+model Invitation {
+  id              String                 @id @default(uuid())
+  codeHash        String                 @unique
+  /// The code's last four characters, so people can tell codes apart in a list.
+  codeHint        String
+  /// listener | artist
+  role            String
+  maxUses         Int                    @default(1)
+  useCount        Int                    @default(0)
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdByUserId String
+  /// operator | artist
+  issuedBy        String                 @default("operator")
+  /// Set when the invitation was sent to a waiting-list entry.
+  waitlistEntryId String?                @unique
+  createdAt       DateTime               @default(now())
+  createdBy       User                   @relation("InvitationCreatedBy", fields: [createdByUserId], references: [id])
+  waitlistEntry   WaitlistEntry?         @relation(fields: [waitlistEntryId], references: [id], onDelete: SetNull)
+  redemptions     InvitationRedemption[]
+
+  @@index([createdByUserId])
+  @@index([createdAt])
+}
+
+/// #2662. One account's use of an invitation. An artist redemption is what
+/// makes a founding artist, and what the founding-artist cap counts.
+model InvitationRedemption {
+  id           String     @id @default(uuid())
+  invitationId String
+  userId       String
+  /// listener | artist (copied from the invitation)
+  role         String
+  redeemedAt   DateTime   @default(now())
+  invitation   Invitation @relation(fields: [invitationId], references: [id])
+  user         User       @relation(fields: [userId], references: [id])
+
+  @@unique([invitationId, userId])
+  @@index([userId])
+  @@index([role])
+}
+
+/// #2662. A person without a code who asked to be told when there is room.
+model WaitlistEntry {
+  id              String      @id @default(uuid())
+  /// As entered (trimmed).
+  email           String
+  /// Lowercased; one entry per address.
+  emailNormalized String      @unique
+  /// listener | artist
+  kind            String
+  /// The version of the consent wording shown when the person joined.
+  consentVersion  String
+  consentedAt     DateTime
+  /// Set when a signed-in person joined, or when the invitation sent to this entry was redeemed.
+  userId          String?
+  invitedAt       DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  invitation      Invitation?
+
+  @@index([userId])
   @@index([createdAt])
 }

@@ -128,6 +128,21 @@ export class AuthService {
     return /^0x[0-9a-fA-F]{40}$/.test(subject) ? subject.toLowerCase() : null;
   }
 
+  /**
+   * Whether this sign-in reaches an account that already exists (#2662): the
+   * passkey is already linked to one, or the address is an account id. Used to
+   * tell a sign-in from a registration in invitation mode.
+   */
+  async accountExists(input: { userId: string; pubKeyX?: string | null; pubKeyY?: string | null }): Promise<boolean> {
+    const publicKeyHash = this.getPasskeyPublicKeyHash(input.pubKeyX, input.pubKeyY);
+    if (publicKeyHash) {
+      const identity = await prisma.passkeyIdentity.findUnique({ where: { publicKeyHash }, select: { id: true } });
+      if (identity) return true;
+    }
+    const user = await prisma.user.findUnique({ where: { id: input.userId.toLowerCase() }, select: { id: true } });
+    return user !== null;
+  }
+
   async upsertWalletIdentity(input: {
     userId: string;
     walletAddress: string;
