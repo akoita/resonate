@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
-import { getArtistMe } from "../../lib/api";
+import { getArtistMe, getArtistParticipation } from "../../lib/api";
 import { Button } from "../ui/Button";
 
 interface ArtistGateProps {
     children: React.ReactNode;
 }
 
-type ArtistGateState = "checking" | "ready" | "missing" | "unavailable";
+type ArtistGateState = "checking" | "ready" | "missing" | "agreement" | "unavailable";
 
 export default function ArtistGate({ children }: ArtistGateProps) {
     const { token, status, disconnect } = useAuth();
@@ -48,7 +48,15 @@ export default function ArtistGate({ children }: ArtistGateProps) {
                     const artist = await getArtistMe(token);
                     if (cancelled) return;
                     setErrorMessage(null);
-                    setGateState(artist ? "ready" : "missing");
+                    if (!artist) {
+                        setGateState("missing");
+                        return;
+                    }
+                    // #2666: uploads need the current participation agreement
+                    // accepted. A failed read lets the server decide.
+                    const participation = await getArtistParticipation(token, artist.id).catch(() => null);
+                    if (cancelled) return;
+                    setGateState(participation?.required && participation.needsAcceptance ? "agreement" : "ready");
                 } catch (error) {
                     console.error("Failed to check artist status:", error);
                     if (cancelled) return;
@@ -264,7 +272,8 @@ export default function ArtistGate({ children }: ArtistGateProps) {
         );
     }
 
-    if (gateState === "missing") {
+    if (gateState === "missing" || gateState === "agreement") {
+        const agreement = gateState === "agreement";
         return (
             <div className="gate-container">
                 <div className="gate-glass-card">
@@ -276,9 +285,11 @@ export default function ArtistGate({ children }: ArtistGateProps) {
                             </svg>
                         </div>
                     </div>
-                    <h2 className="gate-title">Artist Profile Required</h2>
+                    <h2 className="gate-title">{agreement ? "One step before you upload" : "Artist Profile Required"}</h2>
                     <p className="gate-description">
-                        To share your music with the world and manage your tracks, you first need to create your artist identity.
+                        {agreement
+                            ? "Read the artist participation agreement and choose how your music may be used."
+                            : "To share your music with the world and manage your tracks, you first need to create your artist identity."}
                     </p>
                     <Button
                         onClick={navigateToOnboarding}
@@ -286,7 +297,7 @@ export default function ArtistGate({ children }: ArtistGateProps) {
                         className="gate-submit-btn"
                     >
                         <span className="btn-content">
-                            Create Artist Profile
+                            {agreement ? "Read the agreement" : "Create Artist Profile"}
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <line x1="5" y1="12" x2="19" y2="12"></line>
                                 <polyline points="12 5 19 12 12 19"></polyline>

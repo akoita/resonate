@@ -516,6 +516,8 @@ export type Release = {
     displayName: string;
     userId?: string | null;
     payoutAddress?: string | null;
+    /** #2666: "disabled" when the artist chose not to offer stems as collectibles. */
+    stemListing?: "allowed" | "disabled";
   };
   artistCredits?: ReleaseArtistCredit[];
   /** Present for `type === "remix"` releases published from the studio (#1196). */
@@ -1271,6 +1273,86 @@ export async function updateArtistSettings(
       body: JSON.stringify({ remixConsent: input.remixConsent }),
       silentErrorCodes: [403, 404],
     },
+    token,
+  );
+}
+
+/** Artist participation agreement and consent choices (#2666). */
+export type ParticipationConsentChoices = {
+  remixConsent: "allowed" | "disabled";
+  aiRemixApproval: "required" | "not_required";
+  aiSourceUse: "allowed" | "disabled";
+  stemListing: "allowed" | "disabled";
+};
+
+export type ParticipationAgreementText = {
+  version: string;
+  text: string;
+  textHash: string;
+  placeholder: boolean;
+  available: boolean;
+};
+
+export type ParticipationConsentChange = {
+  setting: keyof ParticipationConsentChoices;
+  previousValue: string | null;
+  value: string;
+  source: "onboarding" | "settings";
+  changedAt: string;
+};
+
+export type ArtistParticipationStatus = {
+  artistId: string;
+  agreement: Omit<ParticipationAgreementText, "text">;
+  required: boolean;
+  accepted: { version: string; textHash: string; acceptedAt: string } | null;
+  needsAcceptance: boolean;
+  acceptances: Array<{ version: string; textHash: string; acceptedAt: string }>;
+  choices: ParticipationConsentChoices;
+  defaultChoices: ParticipationConsentChoices;
+  history: ParticipationConsentChange[];
+};
+
+export async function getParticipationAgreement() {
+  return apiRequest<ParticipationAgreementText>("/participation/agreement", { cache: "no-store" });
+}
+
+export async function getArtistParticipation(token: string, artistId: string) {
+  return apiRequest<ArtistParticipationStatus>(
+    `/artists/${encodeURIComponent(artistId)}/participation`,
+    { cache: "no-store", silentErrorCodes: [403, 404] },
+    token,
+  );
+}
+
+export async function acceptParticipationAgreement(
+  token: string,
+  artistId: string,
+  input: { version: string; textHash: string; choices: ParticipationConsentChoices },
+) {
+  return apiRequest<ArtistParticipationStatus>(
+    `/artists/${encodeURIComponent(artistId)}/participation/accept`,
+    { method: "POST", body: JSON.stringify(input), silentErrorCodes: [409, 503] },
+    token,
+  );
+}
+
+export async function updateParticipationChoices(
+  token: string,
+  artistId: string,
+  choices: Partial<ParticipationConsentChoices>,
+) {
+  return apiRequest<ArtistParticipationStatus>(
+    `/artists/${encodeURIComponent(artistId)}/participation/choices`,
+    { method: "PATCH", body: JSON.stringify(choices) },
+    token,
+  );
+}
+
+export async function getAdminArtistParticipation(token: string, artistId: string) {
+  return apiRequest<ArtistParticipationStatus>(
+    `/admin/artists/${encodeURIComponent(artistId)}/participation`,
+    { cache: "no-store", silentErrorCodes: [404] },
     token,
   );
 }
@@ -8579,6 +8661,7 @@ export type AdminAuditAction =
   | "trust.artist_verified"
   | "trust.upload_limits_changed"
   | "invitations.viewed"
+  | "artist_participation.viewed"
   | "invitation.created"
   | "invitation.revoked"
   | "waitlist.viewed"

@@ -3456,7 +3456,82 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Upload", href: "/artist/upload", description: "Upload and publish a release." },
       { label: "Your catalog", href: "/artist/catalog", description: "Manage your releases and tracks." },
     ],
-    related: ["rights-protection", "marketplace-sell", "artist-analytics", "create-ai-music"],
+    related: ["rights-protection", "marketplace-sell", "artist-analytics", "create-ai-music", "artist-agreement"],
+  },
+  {
+    slug: "artist-agreement",
+    title: "Your artist agreement and consent choices",
+    summary:
+      "Read and accept the artist participation agreement, choose how your music may be used, and change your choices at any time.",
+    category: "artists",
+    audiences: ["artist"],
+    status: "partial",
+    keywords: ["agreement", "participation agreement", "terms", "accept", "consent", "choices", "remix consent", "collectibles", "stems for sale", "ai", "ai remix", "approval", "withdraw consent", "history"],
+    sections: [
+      {
+        id: "accept",
+        heading: "Accepting the agreement",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Before your first upload, Resonate shows the artist participation agreement and four choices about how your music may be used. Read it, set your choices, tick that you accept and select Accept and continue. Resonate keeps the version you accepted and the date.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-agreement.png`,
+              alt: "Step 2 of artist onboarding: the participation agreement in a scrolling box, four choices with tick boxes (remixing, stems as collectibles, asking before AI-assisted remixes are shared, AI use of your music), an I accept box and an Accept and continue button.",
+              caption: "Step 2 of setting up your artist profile.",
+              width: 1440,
+              height: 1400,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "When the agreement changes",
+            text: "If a new version of the agreement is published, you are asked to read and accept it again before your next upload. Your earlier acceptance stays on record.",
+          },
+        ],
+      },
+      {
+        id: "choices",
+        heading: "Your choices",
+        blocks: [
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "Let listeners remix my music in Remix Studio",
+                description: "On by default. Remixes credit you and pay you your share. Turning it off stops new remixes and takes published remixes of your music down until you turn it back on.",
+              },
+              {
+                term: "Offer my stems as collectibles",
+                description: "Off until you decide. While it is off, Mint & List stays disabled on your release pages.",
+              },
+              {
+                term: "Ask me before AI-assisted remixes of my music are shared",
+                description: "On by default. Others can make a private draft but cannot publish or export it. A step for approving a specific remix is coming; until then this means private drafts only.",
+              },
+              {
+                term: "Allow AI-assisted tools to use my music",
+                description: "Off by default. Remix Studio is AI-assisted, so while this is off nobody else can start a remix of your music. Your own use of your music is never limited by your choices.",
+              },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Change any choice in Settings, Artist, Agreement and consent. A change applies to new uses from the moment you save it, and the change history there lists every change with its date.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Agreement and consent", href: "/settings", description: "Settings, Artist: your agreement, choices and history." },
+      { label: "Set up an artist profile", href: "/artist/onboarding", description: "Create your profile and accept the agreement." },
+    ],
+    related: ["upload-music", "remix-studio", "marketplace-sell", "artist-profile"],
   },
   {
     slug: "artist-profile",

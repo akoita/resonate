@@ -45,6 +45,9 @@ export default defineConfig({
         // This backend instance exists only for the local/CI E2E harness.
         // Protected route tests obtain a real signed token through /auth/login.
         AUTH_DEV_LOGIN_ENABLED: "true",
+        // #2666: the participation agreement gate has its own backend tests;
+        // E2E artists (mock auth) never accept it, so upload flows run ungated.
+        PARTICIPATION_AGREEMENT_REQUIRED: "false",
       },
     },
     {

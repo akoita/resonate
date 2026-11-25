@@ -41,6 +41,7 @@ export const ADMIN_AUDIT_ACTIONS = [
   "trust.upload_limits_changed",
   /** #2662: invitation-only registration and the waiting list (ids, roles and counts; never a code or an address). */
   "invitations.viewed",
+  "artist_participation.viewed",
   "invitation.created",
   "invitation.revoked",
   "waitlist.viewed",
