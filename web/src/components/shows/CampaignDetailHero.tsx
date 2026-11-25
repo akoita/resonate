@@ -45,6 +45,7 @@ export function CampaignDetailHero({ campaign, children }: Props) {
   const backersNeeded = Math.max(0, campaign.thresholdBackers - campaign.backerCount);
   const hasLinkedEscrow = Boolean(campaign.contractAddress && campaign.contractCampaignId);
   const displayTitle = campaignDisplayTitle(campaign);
+  const interestMode = campaign.mode === "interest";
   const heroVisual = campaign.heroImage || campaign.visuals[0]?.url;
   const hasHeroImage = Boolean(heroVisual);
   const denseCopy = displayTitle.length > 54 || (campaign.venue?.length ?? 0) > 72;
@@ -96,6 +97,25 @@ export function CampaignDetailHero({ campaign, children }: Props) {
         <div className="campaign-detail-hero__copy">
           <p className="campaign-detail-hero__tagline">{campaign.tagline}</p>
 
+          {interestMode ? (
+            <dl className="campaign-detail-hero__stats" aria-label="Show details">
+              <div className="campaign-detail-hero__stat">
+                <dt>Asking until</dt>
+                <dd>
+                  <strong>{daysLeft}d left</strong>
+                  <small>closes {deadlineFmt}</small>
+                </dd>
+              </div>
+              <div className="campaign-detail-hero__stat">
+                <dt>Show target</dt>
+                <dd>
+                  <strong title={campaign.venue ?? campaign.city}>{campaign.venue ?? campaign.city}</strong>
+                  <small>{targetDateFmt}</small>
+                </dd>
+              </div>
+            </dl>
+          ) : (
+          <>
           <CampaignProgress campaign={campaign} daysLeft={daysLeft} />
 
           <dl className="campaign-detail-hero__stats" aria-label="Campaign signal snapshot">
@@ -149,12 +169,19 @@ export function CampaignDetailHero({ campaign, children }: Props) {
               </>
             ) : null}
           </p>
+          </>
+          )}
+          {interestMode ? (
+            <p className="campaign-detail-hero__trust-line">
+              The artist is asking who would come before booking. Nothing is charged and no wallet is needed.
+            </p>
+          ) : null}
         </div>
 
         <div
           id="campaign-pledge-rail"
           className="campaign-detail-hero__pledge"
-          aria-label="Pledge from this campaign"
+          aria-label={interestMode ? "Say you would come" : "Pledge from this campaign"}
         >
           {children}
         </div>

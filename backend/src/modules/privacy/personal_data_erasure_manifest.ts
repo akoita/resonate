@@ -926,6 +926,13 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "notices; it has no retention basis once the account is erased.",
   },
   {
+    model: "ShowInterest",
+    disposition: "delete",
+    reason:
+      "A fan's \"I would come\" for a show (#2668): a demand signal with no payment behind it and no retention "
+      + "basis once the account is erased. Counts the artist already saw were aggregates.",
+  },
+  {
     model: "SupportRequest",
     disposition: "delete",
     reason:

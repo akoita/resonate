@@ -586,6 +586,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "the dates and the categories they turned off. The confirmation token hash is redacted.",
   },
   {
+    model: "ShowInterest",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "Added by #2668. Shows this person said they would come to, the city they chose and whether they asked to be told when it opens.",
+  },
+  {
     model: "SupportRequest",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

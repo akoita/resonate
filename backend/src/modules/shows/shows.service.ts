@@ -457,7 +457,7 @@ function campaignCriticalTerms(
 
 const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
 const MAX_SHOWS_GALLERY_VISUALS = 8;
-const PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES = [
+export const PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES = [
   "refund_available",
   "cancelled",
   "refunded",
@@ -925,6 +925,8 @@ export function serializePublicShowCampaign(campaign: any) {
     contractCampaignId: campaign.contractCampaignId ?? null,
     status: campaign.status,
     campaignLevel: campaign.campaignLevel,
+    // #2668: `interest` campaigns collect "I would come", never pledges.
+    mode: campaign.mode ?? "pledge",
     // Authority/beneficiary SUMMARY only — status + beneficiary (public on-chain
     // data), never the evidence-bundle / credential identifiers.
     artistAuthorityStatus: campaign.artistAuthorityStatus,
@@ -3235,7 +3237,12 @@ export class ShowsService {
     contractAddress: string | null;
     contractCampaignId: string | null;
     deadline: Date;
+    mode?: string;
   }) {
+    // #2668: a campaign collecting "I would come" interest takes no pledges.
+    if (campaign.mode === "interest") {
+      throw new BadRequestException("This show is collecting interest, not pledges");
+    }
     if (campaign.campaignLevel !== "active_escrow_campaign") {
       throw new BadRequestException("Only active escrow campaigns can receive pledges");
     }

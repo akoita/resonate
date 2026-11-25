@@ -9,6 +9,7 @@
 import { ADMIN_STEP_UP_HEADER, API_BASE, ApiRequestError, type Release } from "./api";
 import { artistProfileHref, catalogArtistHref } from "./artistRoutes";
 import { getChainExplorerContractUrl } from "./explorer";
+import { campaignMode, type ShowCampaignMode } from "./showInterest";
 
 export type CampaignStatus = "active" | "funded" | "refunded" | "booked";
 export type CampaignListScope = "all";
@@ -76,6 +77,8 @@ export interface Campaign {
   backendId: string;
   rawStatus: string;
   campaignLevel: string;
+  /** #2668: "interest" collects "I would come" declarations instead of pledges. */
+  mode?: ShowCampaignMode;
   artistAuthorityStatus: string;
   authorityCredentialId?: string | null;
   authorityEvidenceBundleId?: string | null;
@@ -1091,6 +1094,8 @@ export type ShowCampaignDraftInput = {
 type BackendShowCampaign = {
   id: string;
   slug: string;
+  /** #2668: `interest` campaigns collect "I would come", never pledges. */
+  mode?: string | null;
   artistId?: string | null;
   sourceReleaseId?: string | null;
   artistDisplayName: string;
@@ -2217,6 +2222,7 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     backendId: campaign.id,
     rawStatus: campaign.status,
     campaignLevel: campaign.campaignLevel ?? "signal",
+    mode: campaignMode(campaign.mode),
     artistAuthorityStatus: campaign.artistAuthorityStatus ?? "none",
     authorityCredentialId: campaign.authorityCredentialId ?? null,
     authorityEvidenceBundleId: campaign.authorityEvidenceBundleId ?? null,
