@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString } from "class-validator";
+import { IsNumber, IsOptional, IsString, MaxLength } from "class-validator";
 import type { AuthMode } from "./signup_faucet.service";
 
 /**
@@ -47,4 +47,10 @@ export class AuthVerifyDto {
   @IsOptional()
   @IsString()
   pubKeyY?: string;
+
+  /** #2662: the invitation code a new account signs up with, in invitation mode. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  inviteCode?: string;
 }

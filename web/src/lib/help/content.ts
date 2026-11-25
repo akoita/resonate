@@ -35,7 +35,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Resonate uses a passkey instead of a password — set it up once and your device unlocks everything, including a built-in wallet.",
     category: "get-started",
     audiences: ["everyone"],
-    keywords: ["sign up", "log in", "passkey", "password", "register", "account", "connect wallet", "sidebar", "navigation", "menu", "face id", "fingerprint", "tips", "hints", "turn off tips", "show tips again", "help & tips"],
+    keywords: ["sign up", "log in", "passkey", "password", "register", "account", "invitation", "invite code", "waiting list", "waitlist", "founding artist", "connect wallet", "sidebar", "navigation", "menu", "face id", "fingerprint", "tips", "hints", "turn off tips", "show tips again", "help & tips"],
     sections: [
       {
         id: "what-you-need",
@@ -75,6 +75,26 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 900,
               source: STAGING,
             },
+          },
+        ],
+      },
+      {
+        id: "invitation",
+        heading: "Signing up with an invitation",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "During the preview, new accounts are by invitation. When you select Create account at the top of the page, a window asks for your invitation code. Enter it and choose Check code; if it is valid, choose Create account and approve the passkey. If someone sent you a link with the code in it, the window opens with the code already filled in.",
+          },
+          {
+            kind: "paragraph",
+            text: "No code yet? In the same window, leave your email address, say whether you listen or make music, and join the waiting list. We only use the address to write to you about your invitation, and you can ask for it to be removed at any time.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Founding artists",
+            text: "Artist profiles are by invitation too. If you received a founding-artist code, use it when you sign up, or enter it on the artist set-up page if you already have an account. Founding artists can invite a few listeners of their own from Settings, under Artist.",
           },
         ],
       },
@@ -394,7 +414,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "account",
     audiences: ["operator"],
     status: "partial",
-    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan", "billing", "reconciliation", "month end", "stripe", "refunds", "invoices", "csv", "remix mark", "watermark", "leak", "detect"],
+    keywords: ["users", "directory", "people", "operator", "admin", "last active", "last sign-in", "inactive", "search", "suspend", "audit log", "user record", "passkey", "confirm", "step-up", "pro", "artist pro", "grant pro", "plan", "billing", "reconciliation", "month end", "stripe", "refunds", "invoices", "csv", "remix mark", "watermark", "leak", "detect", "invitations", "invite code", "waiting list", "founding artists"],
     sections: [
       {
         id: "who-can-use-it",
@@ -512,6 +532,20 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "The confirmation only works for the account that gave it, for these actions, for a few minutes. It does not extend how long you stay signed in.",
               "Each accepted or refused confirmation appears in the audit log.",
             ],
+          },
+        ],
+      },
+      {
+        id: "invitations",
+        heading: "Invitations and the waiting list",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Open Invitations in the sidebar to create codes for new accounts. Choose listener or founding artist, how many times the code can be used and when it expires. The code is shown once: copy it and send it yourself. Codes that are no longer needed can be revoked.",
+          },
+          {
+            kind: "paragraph",
+            text: "The page also shows how many founding-artist places are taken, and the waiting list. Export it as a spreadsheet, choose Invite to make a single-use code for one person, or Remove to take someone off the list when they ask.",
           },
         ],
       },

@@ -39,6 +39,13 @@ export const ADMIN_AUDIT_ACTIONS = [
   "dmca.report_resolved",
   "trust.artist_verified",
   "trust.upload_limits_changed",
+  /** #2662: invitation-only registration and the waiting list (ids, roles and counts; never a code or an address). */
+  "invitations.viewed",
+  "invitation.created",
+  "invitation.revoked",
+  "waitlist.viewed",
+  "waitlist.entry_invited",
+  "waitlist.entry_deleted",
   "curation.reports_viewed",
   "catalog_credit.identity_reviewed",
   "artist_claims.viewed",

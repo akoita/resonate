@@ -19,6 +19,7 @@ import {
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import type { WebAuthnMode } from "@zerodev/passkey-validator";
 import { useToast } from "../ui/Toast";
+import { INVITE_STATUS_MESSAGES, isInviteStatus } from "../../lib/invitationCopy";
 
 type AuthState = {
   status: "idle" | "loading" | "authenticated" | "error";
@@ -34,6 +35,8 @@ type AuthState = {
   userId: string | null;
   wallet: WalletRecord | null;
   error?: string;
+  /** #2662: set when sign-up was refused for want of a usable invitation code. */
+  errorCode?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kernelAccount: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,7 +50,8 @@ type AuthState = {
   // that need to operate on a different chain (e.g. x402 builds a parallel
   // Base Sepolia account from the same passkey). The return is null on error.
   login: () => Promise<LoginResult | null>;
-  signup: () => Promise<void>;
+  /** Create an account. In invitation mode a new account needs `inviteCode` (#2662). */
+  signup: (inviteCode?: string) => Promise<void>;
   connectPrivy: () => Promise<void>;
   connectEmbedded: () => Promise<void>;
   disconnect: () => void;
@@ -194,6 +198,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [knownAddresses, setKnownAddresses] = useState<string[]>([]);
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const { projectId, publicClient, chainId } = useZeroDev();
 
   // Keep track of the active account in memory if possible (for mock mode especially)
@@ -339,10 +344,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [projectId, publicClient, chainId, activeAccount]);
 
 
-  const authenticate = useCallback(async (mode: WebAuthnMode) => {
+  const authenticate = useCallback(async (mode: WebAuthnMode, inviteCode?: string) => {
     console.log("[Auth] Starting authentication...", { mode, chainId, projectId });
     setStatus("loading");
     setError(undefined);
+    setErrorCode(undefined);
     try {
       const connectResult = await getOrConnectAccount(mode);
       // getOrConnectAccount returns { account, webAuthnKey } for real passkeys, or just the account for mock
@@ -382,9 +388,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         chainId,
         pubKeyX: webAuthnKey?.pubX?.toString(16)?.padStart(64, "0"),
         pubKeyY: webAuthnKey?.pubY?.toString(16)?.padStart(64, "0"),
+        ...(inviteCode?.trim() ? { inviteCode: inviteCode.trim() } : {}),
       });
 
       if (!("accessToken" in result)) {
+        if (isInviteStatus(result.status)) {
+          setErrorCode(result.status);
+          throw new Error(INVITE_STATUS_MESSAGES[result.status]);
+        }
         throw new Error(result.status);
       }
 
@@ -473,13 +484,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     return authenticate(WebAuthnMode.Login);
   }, [authenticate]);
 
-  const signup = useCallback(async () => {
+  const signup = useCallback(async (inviteCode?: string) => {
     const { WebAuthnMode } = await import("@zerodev/passkey-validator");
     if (getRecoverableSmartAccountAddress()) {
-      await authenticate(WebAuthnMode.Login);
+      await authenticate(WebAuthnMode.Login, inviteCode);
       return;
     }
-    await authenticate(WebAuthnMode.Register);
+    await authenticate(WebAuthnMode.Register, inviteCode);
   }, [authenticate]);
 
   const connectPrivy = useCallback(async () => {
@@ -499,6 +510,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     clearEmbeddedAccount();
     clearAuthState();
     setError(undefined);
+    setErrorCode(undefined);
   }, [clearAuthState]);
 
   const value = useMemo<AuthState>(
@@ -511,6 +523,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       userId,
       wallet,
       error,
+      errorCode,
       kernelAccount: activeAccount,
       webAuthnKey: storedWebAuthnKey,
       knownAddresses,
@@ -524,7 +537,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       refreshWallet,
       signMessage,
     }),
-    [status, sessionChecked, address, token, role, userId, wallet, error, activeAccount, storedWebAuthnKey, knownAddresses, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
+    [status, sessionChecked, address, token, role, userId, wallet, error, errorCode, activeAccount, storedWebAuthnKey, knownAddresses, smartAccountAddress, connect, login, signup, connectPrivy, connectEmbedded, disconnect, refreshWallet, signMessage]
   );
 
 

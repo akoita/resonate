@@ -4,11 +4,16 @@ import { Suspense, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import {
+  ApiRequestError,
   createArtist,
   getArtistMe,
+  getMyInvitations,
+  getRegistrationStatus,
   fetchPayoutEligibility,
+  redeemInvitation,
   type PayoutEligibility,
 } from "../../../lib/api";
+import { INVITE_STATUS_MESSAGES } from "../../../lib/invitationCopy";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { useToast } from "../../../components/ui/Toast";
@@ -18,7 +23,7 @@ import { PayoutEligibilityNotice } from "../../../components/payments/PayoutElig
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
 
 function ArtistOnboardingPageContent() {
-  const { token, address } = useAuth();
+  const { token, address, role } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { addToast } = useToast();
@@ -33,6 +38,12 @@ function ArtistOnboardingPageContent() {
   const [payoutEligibility, setPayoutEligibility] =
     useState<PayoutEligibility | null>(null);
   const humanVerificationRef = useRef<HTMLDivElement | null>(null);
+  // #2662: during the invitation-only preview an artist profile needs a
+  // founding-artist invitation. The server enforces it; this shows the form.
+  const [needsInvitation, setNeedsInvitation] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [redeeming, setRedeeming] = useState(false);
 
   // Check if user already has an artist profile
   useEffect(() => {
@@ -48,11 +59,46 @@ function ArtistOnboardingPageContent() {
         } catch (err) {
           console.error("Failed to check artist profile:", err);
         }
+        if (role !== "admin" && role !== "operator") {
+          try {
+            const registration = await getRegistrationStatus();
+            if (registration.mode === "invite") {
+              const mine = await getMyInvitations(token);
+              setNeedsInvitation(!mine.foundingArtist);
+            }
+          } catch {
+            // The server still refuses a profile without an invitation; the form handles that answer.
+          }
+        }
       }
       setIsLoading(false);
     }
     checkExistingArtist();
-  }, [token, router, searchParams]);
+  }, [token, role, router, searchParams]);
+
+  const handleRedeem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    setRedeeming(true);
+    setInviteMessage(null);
+    try {
+      const result = await redeemInvitation(token, inviteCode.trim());
+      if (result.status === "redeemed") {
+        setNeedsInvitation(false);
+        addToast({ type: "success", title: "Invitation accepted", message: "Welcome, founding artist. Set up your profile below." });
+        return;
+      }
+      setInviteMessage(
+        result.status === "already_member"
+          ? "That is a listener invitation. An artist profile needs a founding-artist invitation."
+          : INVITE_STATUS_MESSAGES[`invite_${result.status}`],
+      );
+    } catch (err) {
+      setInviteMessage(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setRedeeming(false);
+    }
+  };
 
   // Keep payout address in sync with wallet
   useEffect(() => {
@@ -155,6 +201,14 @@ function ArtistOnboardingPageContent() {
       const returnUrl = searchParams.get("returnUrl");
       router.push(returnUrl || "/artist/upload");
     } catch (err) {
+      if (
+        err instanceof ApiRequestError
+        && err.status === 403
+        && (err.details as { code?: unknown } | null)?.code === "artist_invitation_required"
+      ) {
+        setNeedsInvitation(true);
+        return;
+      }
       addToast({
         type: "error",
         title: "Failed to create profile",
@@ -185,6 +239,41 @@ function ArtistOnboardingPageContent() {
   return (
     <AuthGate title="Sign in to begin your journey.">
       <div className="onboarding-container">
+        {needsInvitation && token ? (
+        <div className="onboarding-glass-card">
+          <div className="card-accent-line" />
+          <div className="onboarding-header">
+            <h1 className="onboarding-title">Artist profiles are by invitation</h1>
+            <p className="onboarding-description">
+              During the preview, a small group of founding artists is invited to publish. If you received a
+              founding-artist invitation, enter the code to set up your profile.
+            </p>
+          </div>
+          <form onSubmit={handleRedeem} className="onboarding-form">
+            <div className="input-group">
+              <label className="input-label" htmlFor="artist-invite-code">Invitation code</label>
+              <div className="input-wrapper">
+                <Input
+                  id="artist-invite-code"
+                  className="premium-input"
+                  placeholder="XXXX-XXXX-XXXX"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={64}
+                  required
+                  aria-describedby="artist-invite-status"
+                />
+              </div>
+              <p id="artist-invite-status" className="input-hint" role="status">{inviteMessage ?? ""}</p>
+            </div>
+            <Button type="submit" disabled={redeeming || !inviteCode.trim()} variant="primary" className="onboarding-submit-btn">
+              <span className="btn-content">{redeeming ? "Checking…" : "Use invitation"}</span>
+            </Button>
+          </form>
+        </div>
+        ) : (
         <div className="onboarding-glass-card">
           {/* Top accent line */}
           <div className="card-accent-line" />
@@ -357,6 +446,7 @@ function ArtistOnboardingPageContent() {
             </div>
           )}
         </div>
+        )}
 
         {/* Decorative background elements */}
         <div className="onboarding-blob-1"></div>

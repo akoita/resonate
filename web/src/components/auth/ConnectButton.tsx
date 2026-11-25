@@ -1,16 +1,61 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
 import { AUTH_COPY } from "../../lib/authCopy";
+import InviteSignupDialog from "./InviteSignupDialog";
+import { getRegistrationStatus } from "../../lib/api";
+import { readRememberedInvite, rememberInviteFromUrl } from "../../lib/invitationCopy";
+
+function sessionStorageOrNull(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 const subscribe = () => () => { };
 
 export default function ConnectButton() {
-  const { status, sessionChecked, address, login, signup, disconnect, error } = useAuth();
+  const { status, sessionChecked, address, login, signup, disconnect, error, errorCode } = useAuth();
   const [copied, setCopied] = useState(false);
   const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
+  // #2662: invitation-only sign-up. The dialog opens from Create account when the
+  // server is in invitation mode, from an `?invite=` link, or after a sign-in
+  // that needed a code.
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+
+  useEffect(() => {
+    if (!sessionChecked || status === "authenticated") return;
+    const fromUrl = rememberInviteFromUrl(window.location.search, sessionStorageOrNull());
+    if (fromUrl) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInviteCode(fromUrl);
+      setInviteOpen(true);
+    }
+  }, [sessionChecked, status]);
+
+  const startSignup = async () => {
+    try {
+      const registration = await getRegistrationStatus();
+      if (registration.mode === "invite") {
+        setInviteCode(readRememberedInvite(sessionStorageOrNull()));
+        setInviteOpen(true);
+        return;
+      }
+    } catch {
+      // If the mode cannot be read, try the plain sign-up; the server still decides.
+    }
+    await signup();
+  };
+
+  const createWithCode = (code: string) => {
+    setInviteOpen(false);
+    void signup(code);
+  };
 
   const copyAddress = async () => {
     if (!address) return;
@@ -118,7 +163,7 @@ export default function ConnectButton() {
 
         <button
           className="wallet-connect-btn signup"
-          onClick={signup}
+          onClick={() => void startSignup()}
           disabled={status === "loading"}
         >
           <span className="wallet-connect-btn-glow" />
@@ -144,9 +189,25 @@ export default function ConnectButton() {
       </p>
 
       {status === "error" && error ? (
-        <div className="wallet-error">{error}</div>
+        <div className="wallet-error">
+          {error}
+          {errorCode?.startsWith("invite_") ? (
+            <>
+              {" "}
+              <button type="button" className="wallet-error-action" onClick={() => setInviteOpen(true)}>
+                Enter an invitation code
+              </button>
+            </>
+          ) : null}
+        </div>
       ) : null}
     </div>
+    <InviteSignupDialog
+      open={inviteOpen}
+      initialCode={inviteCode}
+      onClose={() => setInviteOpen(false)}
+      onCreateAccount={createWithCode}
+    />
     </>
   );
 }
