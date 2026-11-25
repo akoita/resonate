@@ -586,6 +586,28 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
       + "the dates and the categories they turned off. The confirmation token hash is redacted.",
   },
   {
+    model: "Invitation",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "createdByUserId" }],
+    note:
+      "Added by #2662. Invitation codes this person created (a founding artist's listener codes, or an "
+      + "operator's): role, uses, expiry and state. The code itself is never stored; its hash is redacted.",
+  },
+  {
+    model: "InvitationRedemption",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "Added by #2662. The invitation this account signed up or became a founding artist with, and when.",
+  },
+  {
+    model: "WaitlistEntry",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #2662. The waiting-list entry linked to this account: the address given, listener or artist, "
+      + "and the consent wording version and date.",
+  },
+  {
     model: "EmailDelivery",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],
@@ -911,6 +933,10 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
  * redaction is not a filter applied to a row that already exists in memory.
  */
 export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  Invitation: {
+    codeHash:
+      "Hash of an invitation code (#2662); while the code is unused it lets whoever holds the code create an account.",
+  },
   ContactEmail: {
     confirmTokenHash:
       "Hash of the emailed confirmation link (#2169); while it is unexpired it is a bearer credential for confirming the address.",

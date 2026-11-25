@@ -109,6 +109,10 @@ const FILES: Record<string, Entry> = {
     count: 1,
     reason: "Operator-only unclaimed refund read, an aggregate by campaign with no person's data (listed in admin_audit_coverage.spec.ts).",
   },
+  "invitations/invitations.service.ts": {
+    count: 2,
+    reason: "An admin or operator may become an artist without a founding-artist invitation; this skips the invitation gate on their own account and reads no one else's data.",
+  },
   "rights/trusted-source.service.ts": {
     count: 1,
     reason: "Reached with role \"admin\" only by the service's own calls after an admin review, which is recorded by @AdminAudit (trusted_source_link.*); no user-facing route passes a role.",

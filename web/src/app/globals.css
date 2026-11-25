@@ -3469,6 +3469,18 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
   font-size: 12px;
 }
 
+.wallet-error-action {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+
 /* Auth Panel for gates */
 .auth-panel {
   border: 1px solid rgba(124, 92, 255, 0.2);
