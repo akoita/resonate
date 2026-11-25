@@ -35,7 +35,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Resonate uses a passkey instead of a password — set it up once and your device unlocks everything, including a built-in wallet.",
     category: "get-started",
     audiences: ["everyone"],
-    keywords: ["sign up", "log in", "passkey", "password", "register", "account", "invitation", "invite code", "waiting list", "waitlist", "founding artist", "connect wallet", "face id", "fingerprint", "tips", "hints", "turn off tips", "show tips again", "help & tips"],
+    keywords: ["sign up", "log in", "passkey", "password", "register", "account", "invitation", "invite code", "waiting list", "waitlist", "founding artist", "connect wallet", "sidebar", "navigation", "menu", "face id", "fingerprint", "tips", "hints", "turn off tips", "show tips again", "help & tips"],
     sections: [
       {
         id: "what-you-need",
@@ -60,7 +60,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "Open Resonate and select Sign Up in the top-right corner.",
+              "Open Resonate and select Create account in the top-right corner.",
               "When your device prompts you, approve the passkey with Face ID, your fingerprint, or your device PIN.",
               "That's it — your account and a personal wallet (your 'smart account') are created together.",
             ],
@@ -69,8 +69,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/connect-wallet.png`,
-              alt: "A Resonate page showing a single 'Connect Wallet' button under a 'Connect' heading, with Log In and Sign Up buttons in the top-right.",
-              caption: "Most personal features ask you to connect first. Sign Up creates your account; Log In returns to an existing one.",
+              alt: "A Resonate page asking you to sign in, with Sign in and Create account buttons in the top-right.",
+              caption: "Most personal features ask you to sign in first. Create account makes your account; Sign in returns to an existing one.",
               width: 1440,
               height: 900,
               source: STAGING,
@@ -84,7 +84,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "During the preview, new accounts are by invitation. When you select Sign Up, a window asks for your invitation code. Enter it and choose Check code; if it is valid, choose Create account and approve the passkey. If someone sent you a link with the code in it, the window opens with the code already filled in.",
+            text: "During the preview, new accounts are by invitation. When you select Create account at the top of the page, a window asks for your invitation code. Enter it and choose Check code; if it is valid, choose Create account and approve the passkey. If someone sent you a link with the code in it, the window opens with the code already filled in.",
           },
           {
             kind: "paragraph",
@@ -104,13 +104,23 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Choose Log In and approve the same passkey. On a brand-new device, sign in with the passkey you saved (most phones and browsers sync passkeys for you), then continue where you left off.",
+            text: "Choose Sign in and approve the same passkey. On a brand-new device, sign in with the passkey you saved (most phones and browsers sync passkeys for you), then continue where you left off.",
           },
           {
             kind: "callout",
             tone: "tip",
             title: "Browse before you sign in",
-            text: "You can explore Discover, the catalog, Browse stems in Crates & Stems, and Shows campaigns without signing in. You'll be asked to connect only when you save, buy, pledge, or upload.",
+            text: "You can explore Discover, the catalog, Browse stems in Crates & Stems, and Shows campaigns without signing in. You'll be asked to sign in only when you save, buy, pledge, or upload.",
+          },
+        ],
+      },
+      {
+        id: "finding-your-way",
+        heading: "Finding your way",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The sidebar keeps to what you use most: Home, Player, Library (your playlists are inside it), Shows, Drops, Crates & Stems, then Settings and this User Guide. Artist accounts also see their tools under For artists: Upload, Catalog, Listings and Analytics, with creating music with AI last. Your account chip at the bottom of the sidebar opens your account.",
           },
         ],
       },
@@ -660,7 +670,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Your smart account is the wallet Resonate created with your passkey. It holds your balance, receives artist payouts, pays for stems and pledges, and tracks any stakes you have placed. You approve each action with your passkey — there are no separate keys to back up. Open it from the Wallet entry in the sidebar, or by clicking your account chip at the bottom of the sidebar.",
+            text: "Your smart account is the wallet Resonate created with your passkey. It holds your balance, receives artist payouts, pays for stems and pledges, and tracks any stakes you have placed. You approve each action with your passkey — there are no separate keys to back up. Open it by clicking your account chip at the bottom of the sidebar.",
           },
           {
             kind: "figure",
@@ -2219,7 +2229,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "Open Create and connect if needed.",
+              "Open Create with AI (in the artist tools of the sidebar) and sign in if needed.",
               "Describe the music you want — genre, mood, instruments, tempo.",
               "Pick a duration and an optional style preset.",
               "Generate, preview the result, and refine your prompt until you're happy.",

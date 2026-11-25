@@ -1067,7 +1067,7 @@ export default function ArtistUploadPage() {
   );
 
   return (
-    <AuthGate title="Connect your wallet to upload releases.">
+    <AuthGate title="Sign in to upload releases.">
       <ArtistGate>
         <main className="upload-grid">
           <Card>

@@ -30,7 +30,7 @@ export function FundingActions({
 
   const runEndpoint = async (option: FundingOption) => {
     if (!wallet) {
-      setStatus("Connect wallet to use funding actions.");
+      setStatus("Sign in to use funding actions.");
       return;
     }
     try {
@@ -53,7 +53,7 @@ export function FundingActions({
 
   const copyWallet = async (option: FundingOption) => {
     if (!wallet) {
-      setStatus("Connect wallet to copy a funding address.");
+      setStatus("Sign in to copy a funding address.");
       return;
     }
     await navigator.clipboard.writeText(wallet);
@@ -62,7 +62,7 @@ export function FundingActions({
 
   const disabledReason = (option: FundingOption) => {
     if (option.disabledReason) return option.disabledReason;
-    if (option.requiresWallet && !wallet) return "Connect wallet first.";
+    if (option.requiresWallet && !wallet) return "Sign in first.";
     if ((option.kind === "onramp" || option.kind === "offramp") && !option.url && !option.endpoint) {
       return "Provider not configured.";
     }

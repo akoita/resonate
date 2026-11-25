@@ -549,7 +549,7 @@ export default function CrateDetailPage() {
   const params = useParams<{ id: string }>();
   const crateId = typeof params?.id === "string" ? params.id : "";
   return (
-    <AuthGate title="Connect your wallet to open your crate.">
+    <AuthGate title="Sign in to open your crate.">
       {crateId ? <CrateEditor key={crateId} crateId={crateId} /> : null}
     </AuthGate>
   );

@@ -1362,7 +1362,7 @@ function ReleaseDetailsContent() {
       if (!canUseMixerPreview) {
         addToast({
           title: "Sign in to preview stems",
-          message: "Connect your wallet to use the mixer.",
+          message: "Sign in to use the mixer.",
           type: "info",
         });
         return;

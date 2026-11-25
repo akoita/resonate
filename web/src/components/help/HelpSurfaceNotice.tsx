@@ -10,6 +10,11 @@ const SURFACE_LABELS: Record<ProductSurface, string> = {
   wallet: "the wallet",
   agentPayments: "agent payments",
   aiGeneration: "AI music generation",
+  disputes: "disputes",
+  community: "community rooms and cohorts",
+  sceneScout: "Scene Scout cards",
+  sonicRadar: "Sonic Radar",
+  desktopApp: "the desktop app",
 };
 
 /**

@@ -131,7 +131,7 @@ export default function LibraryArtistPage() {
   };
 
   return (
-    <AuthGate title="Connect your wallet to view your library.">
+    <AuthGate title="Sign in to view your library.">
       <div className="page-container artist-page">
         <div className="artist-hero glass-panel">
           <Button variant="ghost" className="back-btn" onClick={() => router.push(libraryArtistsHref())}>

@@ -107,7 +107,7 @@ export default function CommunityCohortAdminPage() {
   }, []);
 
   return (
-    <AuthGate title="Connect your wallet to manage community cohorts.">
+    <AuthGate title="Sign in to manage community cohorts.">
       {state.status === "loading" ? (
         <CommunityCohortOperationsPanel
           status="loading"

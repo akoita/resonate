@@ -90,7 +90,7 @@ const campaign = {
 describe("PledgeIntentPanel campaign fee copy", () => {
   it("shows success-only fee copy beside the pledge CTA", () => {
     const html = renderToStaticMarkup(<PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />);
-    expect(html).toContain("Connect wallet to pledge");
+    expect(html).toContain("Sign in to pledge");
     expect(html).toContain("A 6% platform fee applies only if the campaign is funded");
     expect(html).toContain("If the campaign fails, you are refunded 100%.");
   });
@@ -111,7 +111,7 @@ describe("PledgeIntentPanel refund disclosure (#2150)", () => {
     const disclosure = html.indexOf("10% of the money pledged can be released to the artist as a deposit");
     expect(disclosure).toBeGreaterThan(-1);
     expect(html).toContain("you would get back about 90% of your pledge.");
-    expect(disclosure).toBeLessThan(html.indexOf("Connect wallet to pledge"));
+    expect(disclosure).toBeLessThan(html.indexOf("Sign in to pledge"));
   });
 
   it("shows no reduction wording for a 0% deposit campaign", () => {

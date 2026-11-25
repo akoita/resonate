@@ -132,7 +132,7 @@ export function CrateExportView({
                   >
                     Download stems
                   </button>
-                  {!canDownload ? <span className="crates-hint">Connect your wallet to download.</span> : null}
+                  {!canDownload ? <span className="crates-hint">Sign in to download.</span> : null}
                 </div>
                 {notice ? <p className="crates-notice">{notice}</p> : null}
                 {failedStems.length > 0 ? (

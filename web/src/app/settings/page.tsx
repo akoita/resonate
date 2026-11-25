@@ -36,6 +36,7 @@ import { clearLibrary, listTracks } from "../../lib/localLibrary";
 import { summarizeOtherDeviceFolders, type OtherDeviceFolder } from "../../lib/otherDeviceFolders";
 import { OtherDeviceFilesNotice } from "../../components/library/OtherDeviceFilesNotice";
 import { useAuth } from "../../components/auth/AuthProvider";
+import { useProductSurfaces } from "../../hooks/useProductSurfaces";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
 type SettingsSectionId = "library" | "artist" | "taste" | "dj" | "privacy" | "community" | "cohorts" | "usage" | "notifications" | "email" | "tips" | "troubleshooting";
@@ -122,6 +123,7 @@ const SETTINGS_SECTIONS: Array<{
 
 export default function SettingsPage() {
     const { addToast } = useToast();
+    const { surfaces } = useProductSurfaces();
     const { token, disconnect } = useAuth();
     const [activeSection, setActiveSection] = useState<SettingsSectionId>("library");
     const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
@@ -364,7 +366,7 @@ export default function SettingsPage() {
     const hasSources = sourceNames.length > 0;
 
     return (
-        <AuthGate title="Connect your wallet to access settings.">
+        <AuthGate title="Sign in to access settings.">
             <main className="settings-workspace">
                 <header className="settings-hero">
                     <div>
@@ -411,7 +413,7 @@ export default function SettingsPage() {
                                 <div className="settings-unsupported">
                                     <strong>This browser can&apos;t link folders on your computer.</strong>
                                     <p>
-                                        Use Chrome, Edge, another Chromium-based browser, or the Resonate desktop app
+                                        Use Chrome, Edge{surfaces.desktopApp ? ", another Chromium-based browser, or the Resonate desktop app" : " or another Chromium-based browser"}{" "}
                                         to add your own music. Your local files never leave your device.
                                     </p>
                                 </div>
@@ -598,6 +600,7 @@ export default function SettingsPage() {
                                         </p>
                                     </div>
                                 </div>
+                                {surfaces.community ? (
                                 <Link href="/community" className="settings-pointer-card">
                                     <div>
                                         <strong>Open Community</strong>
@@ -605,6 +608,7 @@ export default function SettingsPage() {
                                     </div>
                                     <span className="settings-pointer-card__arrow" aria-hidden="true">→</span>
                                 </Link>
+                                ) : null}
                             </div>
                         ) : null}
 

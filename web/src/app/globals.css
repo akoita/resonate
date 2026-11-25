@@ -3469,6 +3469,22 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
   font-size: 12px;
 }
 
+.sidebar-group-label {
+  padding: 4px 12px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+
+.auth-new-here {
+  margin: 8px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
 .wallet-error-action {
   border: 0;
   padding: 0;
