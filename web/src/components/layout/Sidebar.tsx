@@ -9,6 +9,8 @@ import { getArtistMe, type ArtistProfile } from "../../lib/api";
 import { getEnvironment, isProduction } from "../../lib/buildInfo";
 import { AboutModal } from "../ui/AboutModal";
 import { BrandLogo } from "../brand/BrandLogo";
+import { useProductSurfaces } from "../../hooks/useProductSurfaces";
+import type { ProductSurface } from "../../lib/productSurfaces";
 
 const subscribe = () => () => {};
 
@@ -43,6 +45,7 @@ const PRIMARY_ITEMS = [
   {
     name: "Create",
     href: "/create",
+    surface: "aiGeneration" as ProductSurface,
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 3v18" /><path d="M18.5 8.5L6 17" /><path d="M6 8.5l12.5 8.5" />
@@ -172,6 +175,7 @@ const SECONDARY_ITEMS = [
   {
     name: "Wallet",
     href: "/wallet",
+    surface: "wallet" as ProductSurface,
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
@@ -230,6 +234,11 @@ export default function Sidebar() {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const showEnvBadge = mounted && !isProduction();
   const envLabel = getEnvironment();
+  // Product surface switches (#2658): hide entry points the deployment has
+  // switched off.
+  const { surfaces } = useProductSurfaces();
+  const isItemOffered = (item: { surface?: ProductSurface }) => !item.surface || surfaces[item.surface];
+  const accountHref = surfaces.wallet ? "/wallet" : "/settings";
 
   // Auto-close drawer on route change only. `closeSidebar` is a Zustand
   // action — referentially stable, deliberately excluded from deps so
@@ -309,7 +318,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav primary" aria-label="Primary">
-        {PRIMARY_ITEMS.map((item) => {
+        {PRIMARY_ITEMS.filter(isItemOffered).map((item) => {
           const isActive = isPrimaryItemActive(pathname, item.href);
           const badge = "badge" in item ? item.badge : undefined;
           return (
@@ -335,7 +344,7 @@ export default function Sidebar() {
 
       <nav className="sidebar-nav secondary" aria-label="Artist and account">
         <div className="nav-divider" />
-        {SECONDARY_ITEMS.map((item) => {
+        {SECONDARY_ITEMS.filter(isItemOffered).map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
@@ -558,11 +567,11 @@ export default function Sidebar() {
       {showUserChip ? (
         <div className="sidebar-footer">
           <Link
-            href="/wallet"
+            href={accountHref}
             prefetch={false}
             className="user-profile"
-            aria-label={`Connected account ${hasDisplayName ? `${displayName} (${truncatedAddress})` : truncatedAddress}. Open wallet.`}
-            aria-current={pathname === "/wallet" ? "page" : undefined}
+            aria-label={`Connected account ${hasDisplayName ? `${displayName} (${truncatedAddress})` : truncatedAddress}. ${surfaces.wallet ? "Open wallet." : "Open settings."}`}
+            aria-current={pathname === accountHref ? "page" : undefined}
           >
             <div className="user-avatar">{userInitial}</div>
             <div className="user-info">

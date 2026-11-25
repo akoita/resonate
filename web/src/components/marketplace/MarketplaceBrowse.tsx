@@ -27,6 +27,7 @@ import { artistProfileHref } from "../../lib/artistRoutes";
 import { PURCHASED_STEMS_HREF } from "../../lib/ownedStems";
 import { groupListingsByStem, groupTierOrder } from "../../lib/marketplaceStemGroups";
 import "../../styles/marketplace.css";
+import { useSurfaceEnabled } from "../../hooks/useProductSurfaces";
 import "../../styles/license-badges.css";
 
 /** Resolve a potentially-relative backend path to a full URL */
@@ -154,6 +155,8 @@ type MarketplaceBrowseProps = {
  * the buy flow. Rendered as the "Browse stems" tab of /crates (#2032).
  */
 export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps = {}) {
+    // Product surface switch (#2658): listings stay browsable, buying is hidden.
+    const stemPurchasesEnabled = useSurfaceEnabled("stemPurchases");
     const HeroHeading = headingLevel === 2 ? "h2" : "h1";
 
     // ---- State ----
@@ -874,7 +877,7 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                                                                 title={own
                                                                     ? `Your ${LICENSE_LABELS[tier]} listing · ${tierListing.amount} left`
                                                                     : `Buy the ${LICENSE_LABELS[tier]} license · ${tierListing.amount} left`}
-                                                                disabled={own || buyPending}
+                                                                disabled={own || buyPending || !stemPurchasesEnabled}
                                                                 onClick={() => openBuyModal(listing, { licenseType: tier, listingId: tierListing.listingId })}
                                                             >
                                                                 {LICENSE_LABELS[tier]} {price.amount} {price.symbol}
@@ -887,7 +890,7 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                                                             type="button"
                                                             className={`stem-card__tier stem-card__tier--${tier} stem-card__tier-chip`}
                                                             title={`Buy the ${LICENSE_LABELS[tier]} license`}
-                                                            disabled={buyPending || isOwn(listing.seller)}
+                                                            disabled={buyPending || isOwn(listing.seller) || !stemPurchasesEnabled}
                                                             onClick={() => openBuyModal(listing, { licenseType: tier, listingId: tierListingIds[tier]! })}
                                                         >
                                                             {LICENSE_LABELS[tier]}
@@ -921,7 +924,7 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
                                             )}
                                             {signerAddress && listing.seller.toLowerCase() === signerAddress ? (
                                                 <span className="stem-card__own-label">Your Listing</span>
-                                            ) : (
+                                            ) : !stemPurchasesEnabled ? null : (
                                                 <button
                                                     className="stem-card__buy"
                                                     onClick={() => openBuyModal(listing)}

@@ -51,6 +51,7 @@ import {
   type CrateTransitionPlayer,
 } from "../../../lib/crateTransitionPreview";
 import "../../../styles/crates.css";
+import { SurfaceGate } from "../../../components/system/SurfaceGate";
 
 function parseOptionalNumber(value: string): number | null {
   if (value.trim() === "") return null;
@@ -514,13 +515,15 @@ function CrateEditor({ crateId }: { crateId: string }) {
         onWatchChange={onWatchChange}
       />
 
-      <CrateQuotePanel
-        crateId={crate.id}
-        items={crate.items}
-        latestQuote={latestQuote}
-        hasUnsavedChanges={dirty}
-        onPurchaseFinished={() => void refreshAfterPurchase()}
-      />
+      <SurfaceGate surface="stemPurchases">
+        <CrateQuotePanel
+          crateId={crate.id}
+          items={crate.items}
+          latestQuote={latestQuote}
+          hasUnsavedChanges={dirty}
+          onPurchaseFinished={() => void refreshAfterPurchase()}
+        />
+      </SurfaceGate>
 
       <CrateExportPanel
         crateId={crate.id}

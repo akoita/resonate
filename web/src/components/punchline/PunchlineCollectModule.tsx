@@ -45,6 +45,7 @@ import {
   type PunchlineCollectSummary,
 } from "./punchlineCollectHelpers";
 import "../../styles/punchline.css";
+import { useSurfaceEnabled } from "../../hooks/useProductSurfaces";
 
 /**
  * Fan-facing "Collect moments" module (#486), rendered on the release page for
@@ -81,6 +82,7 @@ export type OwnedEdition = {
 };
 
 export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectModuleProps) {
+  const paidCollectsEnabled = useSurfaceEnabled("paidCollects");
   const {
     token,
     login,
@@ -629,6 +631,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                               state={state}
                               editionNumber={null}
                               priceCents={moment.priceCents}
+                              paidUnavailable={!paidCollectsEnabled}
                               busy={collectingId === moment.id}
                               phase={
                                 collectingId === moment.id ? paidPhase : null
@@ -816,6 +819,7 @@ export function CollectButton({
   busy,
   phase,
   onCollect,
+  paidUnavailable = false,
 }: {
   state: MomentCollectState;
   editionNumber: number | null;
@@ -823,6 +827,8 @@ export function CollectButton({
   busy: boolean;
   phase?: string | null;
   onCollect: () => void;
+  /** Paid collects are switched off on this deployment (#2658). */
+  paidUnavailable?: boolean;
 }) {
   switch (state) {
     case "owned":
@@ -843,6 +849,19 @@ export function CollectButton({
         </button>
       );
     case "collectable_paid":
+      if (paidUnavailable) {
+        return (
+          <button
+            type="button"
+            className="punchline-btn-secondary"
+            disabled
+            aria-disabled="true"
+            title="Paid editions are not offered in this version of Resonate."
+          >
+            Paid edition · not offered here
+          </button>
+        );
+      }
       return (
         <button
           type="button"

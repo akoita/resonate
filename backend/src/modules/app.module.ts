@@ -15,6 +15,7 @@ import { CatalogModule } from "./catalog/catalog.module";
 import { CommunityModule } from "./community/community.module";
 import { CurationModule } from "./curation/curation.module";
 import { HealthModule } from "./health/health.module";
+import { ProductSurfacesModule } from "./product_surfaces/product_surfaces.module";
 import { IdentityModule } from "./identity/identity.module";
 import { IngestionModule } from "./ingestion/ingestion.module";
 import { MaintenanceModule } from "./maintenance/maintenance.module";
@@ -74,6 +75,7 @@ import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
       throttlers: [GLOBAL_RATE_LIMIT],
     }),
     HealthModule,
+    ProductSurfacesModule,
     AuthModule,
     IdentityModule,
     AgentsModule,
