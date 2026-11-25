@@ -1,12 +1,34 @@
 # Vision Sprint 59: Clear for newcomers
 
 **Status:** 🟡 Approved by the owner on 2026-11-25. Second of three sprints to
-the invitation-only preview. Starts when
-[Sprint 58](2026-11-26-vision-sprint-58-safe-to-show.md) closes.
+the invitation-only preview. Follows
+[Sprint 58](2026-11-25-vision-sprint-58-safe-to-show.md), closed on
+2026-11-25.
 **Milestone:** [57](https://github.com/akoita/resonate/milestone/57), due
 2026-12-09.
 **Goal:** A person who has never used a wallet can sign up, listen, publish
 and ask for help, and only invited people can get in.
+
+## The road to the preview
+
+The owner decided on 2026-11-25 that the next stage is a free,
+invitation-only preview on the pre-production environment, and that work is
+frozen to it. Opening a production environment is a separate stage, planned
+and not scheduled (see "Production opening" below).
+
+| Sprint | Theme | Due |
+| --- | --- | --- |
+| [58](2026-11-25-vision-sprint-58-safe-to-show.md) | Safe to show (closed 2026-11-25) | 2026-12-02 |
+| 59 | Clear for newcomers (this sprint) | 2026-12-09 |
+| [60](2026-12-10-vision-sprint-60-ready-to-show.md) | Ready to show | 2026-12-16 |
+
+The dates are targets for the work, not a launch date.
+
+**Freeze rule.** Until the preview is open, work is admitted only if it is in
+one of these three sprints. The exceptions are security alerts, an incident,
+and the marking of generated audio due on 2026-12-02 (Sprints 54 and 56).
+Sprint 55 is paused. The purchase items of Sprint 56 (#2606 items 2 and 3)
+wait, because buying is off in the preview.
 
 ## Why this theme
 
@@ -29,7 +51,7 @@ and ask for help, and only invited people can get in.
 | 6 | P1 | Known issue | [#2667](https://github.com/akoita/resonate/issues/2667) | Support contact and a service status notice |
 | 7 | P2 | Business value | [#2668](https://github.com/akoita/resonate/issues/2668) | Stretch: Shows as an "I would come" signal with no money |
 
-**Dependencies.** #2663 needs #2658 (Sprint 58) merged. #2666 needs the
+**Dependencies.** #2663 builds on #2658 (Sprint 58, merged). #2666 needs the
 agreement text from the operator and ships with a marked placeholder until
 then; the placeholder says that the text has not had a legal review. #2665
 needs the email provider (deployment half). The others are
@@ -58,10 +80,32 @@ Tracked in `resonate-iac` (private):
 - The three service emails are sent once per event (tests).
 - The User Guide and the feature pages describe what is built.
 
+## Production opening (planned, not scheduled)
+
+The work that only makes sense with a production environment is kept as its
+own stage, with no date
+([milestone 59](https://github.com/akoita/resonate/milestone/59)):
+
+- [#2660](https://github.com/akoita/resonate/issues/2660): start-up guards
+  that refuse development defaults in a production deployment, and a
+  `config:check` script for the deploy pipeline. Deferred by the owner on
+  2026-11-25, because the guards only act in production.
+- [#1663](https://github.com/akoita/resonate/issues/1663): target
+  configuration and cutover smoke against the production deployment.
+- [#1667](https://github.com/akoita/resonate/issues/1667): the first
+  protected software release, with its evidence.
+- The deployment halves resonate-iac#339 (environment), resonate-iac#338
+  (secrets and keys) and resonate-iac#340 (operations).
+
+Nothing built in Sprints 58 to 60 is specific to the preview: the switches,
+the renditions and the storage rules apply unchanged to a production
+deployment.
+
 ## Not in this sprint
 
 - Translating the app. French public pages are a later item (#838).
 - Card pledges for Shows. #2668 involves no payment.
+- Creating a production environment.
 - Everything outside Sprints 58 to 60 (the freeze).
 
 ## Revenue line

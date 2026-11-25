@@ -55,7 +55,7 @@ Tracked in `resonate-iac` (private):
 ## After the preview opens
 
 The production opening is planned and not scheduled; its items are listed in
-[Sprint 58](2026-11-26-vision-sprint-58-safe-to-show.md#production-opening-planned-not-scheduled).
+[Sprint 59](2026-12-03-vision-sprint-59-clear-for-newcomers.md#production-opening-planned-not-scheduled).
 After it, the next work in order is: the split sheet per track, the artist
 statement export, card checkout with provider payouts, card pledges for Shows,
 and the paid switch for Artist Pro (#2409, #1421). Sprint 55 resumes when the
