@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleAuth } from 'google-auth-library';
-import { StorageProvider, StorageRangeResult, StorageResult } from './storage_provider';
+import { StorageProvider, StorageRangeResult, StorageResult, type StorageUploadOptions } from './storage_provider';
 import {
     BOUNDED_REMOTE_RESPONSE_CEILING_BYTES,
     fetchBoundedRemote,
@@ -83,8 +83,8 @@ export class GcsStorageProvider extends StorageProvider {
         return this.resolveStorageUri(uri).target;
     }
 
-    async upload(data: Buffer, filename: string, _mimeType: string): Promise<StorageResult> {
-        const gcsPath = `originals/${filename}`;
+    async upload(data: Buffer, filename: string, _mimeType: string, options?: StorageUploadOptions): Promise<StorageResult> {
+        const gcsPath = `${options?.prefix ?? 'originals'}/${filename}`;
         const uri = `https://storage.googleapis.com/${this.bucket}/${gcsPath}`;
 
         const uploadUrl = `https://storage.googleapis.com/upload/storage/v1/b/${this.bucket}/o?uploadType=media&name=${encodeURIComponent(gcsPath)}`;

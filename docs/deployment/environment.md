@@ -26,6 +26,9 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_SEARCH_INDEXING` | Frontend build-time | Optional, non-secret GitHub Actions environment variable. Only the exact value `true` lets search engines index public pages; anything else (including unset) makes public pages `noindex, follow, noimageindex` so staging and preview data stay out of search results. Set it only on the environment meant to appear in Google and Bing. See [SEO Metadata Management](../features/seo_metadata.md#search-indexing-per-deployment). |
 | `PUNCHLINE_SOURCE_LAYERS` | Backend | Optional comma-separated allowlist of Punchline/Golden Moment source layers (#1476): `vocals`, `drums`, `bass`, `guitar`, `piano`, `other`, `full` (the full mix). Unset means all of them; unknown names are dropped and a list that keeps nothing falls back to `vocals`. See [Punchline Drops](../features/punchline_drops_mvp.md). |
 | `PUNCHLINE_FULL_MIX_CLIP_MAX_MS` | Backend | Optional maximum length (ms) of a full-mix moment (#1476). Defaults to `10000`; never above `PUNCHLINE_CLIP_MAX_MS` (default `15000`) and ignored if at or below `PUNCHLINE_CLIP_MIN_MS`. |
+| `PUBLISH_DEPOSIT_MODE` | Backend | Optional (#2659). `none` makes every trust tier publish with no Content Protection deposit: the stake requirement reads zero and the upload page attests without staking. Anything else, or unset, keeps the deposit (`required`). Existing stakes are untouched. See [Publishing Without a Deposit, With Upload Limits](../features/publish_deposit_and_upload_limits.md). |
+| `UPLOAD_LIMIT_RELEASES_PER_DAY` / `UPLOAD_LIMIT_TRACKS_PER_DAY` | Backend | Optional (#2659). Releases (default `5`) and tracks (default `50`) an account that is not yet verified may upload in a rolling 24 hours. `unlimited`, `off` or `0` turns a limit off; an unreadable value keeps the default. Verified artists and accounts an admin lifted are not limited. |
+| `UPLOAD_LIMIT_RELEASES_TOTAL` / `UPLOAD_LIMIT_TRACKS_TOTAL` | Backend | Optional (#2659). Releases (default `50`) and tracks (default `500`) in total for an account that is not yet verified. Same values as the daily limits. |
 | `IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL` | Frontend build-time | Non-secret GitHub Actions environment variable in `akoita/resonate`, consumed while building the frontend. Optional Next image optimizer cache TTL in seconds; defaults to `0` and clamps to `0..86400`. Release covers and Shows campaign visuals use server-owned revision path segments, so a successful replacement produces a new optimizer key without waiting for expiry; legacy unversioned paths remain readable and resolve the current image. The post-fix [#1666 staging trial](../issue-1666-staging-validation-plan.md) passed the TTL `0` image budget, but the staging-only TTL `300` candidate produced zero warm optimizer hits and did not improve warm reuse, so it was rejected. The staging Actions variable was deleted and staging remains at the default/rollback value `0`; no production value is configured. Terraform in `resonate-iac` deploys the immutable image and did not require a separate source issue, PR, or change. |
 | `IMAGE_OPTIMIZER_SHARP_CONCURRENCY` | Frontend build-time | Optional Sharp image optimizer concurrency per process. Defaults to `1` and clamps to `1..4`; this is a per-process memory/CPU bound. |
 | `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode, `84532` for Base Sepolia staging |
@@ -225,9 +228,11 @@ When adding a new environment variable:
 | `TRUST_STAKE_USD_TRUSTED` | Backend | Optional canonical USD stake requirement for trusted creators; quoted into the selected stake asset |
 | `TRUST_STAKE_USD_MIN` | Backend | Optional protocol minimum canonical USD stake requirement per release track. Defaults to `5`, keeping USDC upload staking at 5 USDC per release track |
 | `AGENT_KEY_ENCRYPTION_KEY` | Backend | Generate with `./backend/scripts/generate-agent-encryption-key.sh` for local KMS mode |
+| `STREAM_RENDITION_SWEEP_INTERVAL_MS` | Backend | Interval of the streaming rendition sweep (#2661), which makes the listener copy of new uploads and backfills the catalog. Default `30000`. Runs in `combined` and `worker` modes only |
+| `STREAM_RENDITION_SWEEP_BATCH` | Backend | Stems transcoded per sweep pass (#2661). Default `4` |
 | `REMIX_GENERATION_ENABLED` | Backend | Optional opt-in flag (`true`) for AI remix draft generation through the `RemixGenerationProvider` boundary. Default off: `POST /remix/projects/:id/generate` returns a normalized `provider_disabled` error until a real provider rollout enables it |
 | `PROMPT_MODERATION_ENABLED` | Backend | Prompt-safety moderation for the self-hosted generation path (#1343). **Default `true` (on)** — the self-hosted Stable Audio worker has no vendor filter, so `PromptModerationService` screens generation prompts for PUP categories 2–4 (illegal/malicious incl. safety-bypass, deceptive voice-impersonation, sexually explicit, and zero-tolerance minor-sexualization) before dispatch; violations return HTTP 422 `prompt_rejected` and emit `remix.policy_rejected`. Set to `false` only to disable (not recommended in production) |
-| `REMIX_GENERATION_PROVIDER_KIND` | Backend | Selects the remix generation implementation: `stub` (default), `lyria` (#1162 — reuses the catalog Lyria stack: `GOOGLE_AI_API_KEY` or `LYRIA_PROJECT_ID`/`LYRIA_LOCATION`, plus the storage provider for draft output), or `audio-conditioned` (#1182 slice 4 — sends the mixed unmuted stems to the self-hosted Stable Audio 3 worker for a true audio-conditioned draft). `REMIX_GENERATION_ENABLED` remains the master gate regardless of kind |
+| `REMIX_GENERATION_PROVIDER_KIND` | Backend | Selects the remix generation implementation: `stub` (default), `lyria` (#1162 — reuses the catalog Lyria stack: `GOOGLE_AI_API_KEY` or `LYRIA_PROJECT_ID`/`LYRIA_LOCATION`, plus the storage provider for draft output), or `audio-conditioned` (#1182 slice 4 — sends the mixed unmuted stems to the self-hosted Stable Audio 3 worker for a true audio-conditioned draft). `REMIX_GENERATION_ENABLED` remains the master gate regardless of kind, together with `AI_GENERATION_ENABLED` (see Product Surface Switches) |
 | `REMIX_AUDIO_WORKER_URL` | Backend | Base URL of the Stable Audio 3 worker for `audio-conditioned` generation (`POST /generate`). Defaults to `http://localhost:8000` |
 | `REMIX_AUDIO_CFG_SCALE` | Backend | Prompt strength sent to the audio worker (default `7`, the #1193 spike sweet spot — higher steers harder but degrades the source) |
 | `REMIX_AUDIO_NOISE_LEVEL` | Backend | `init_noise_level` sent to the audio worker (default `0.2`; low = faithful to the source, high = free regeneration) |
@@ -423,6 +428,32 @@ bounded by `INGESTION_MULTIPART_MAX_ACTIVE_WRITERS × 65536` bytes (256 KiB at
 the default of four writers); no later chunks are accepted or written. The
 bound covers bytes already handed to a writer when the rejection is observed,
 not the bytes received before rejection.
+
+## Product Surface Switches
+
+One switch per surface where money moves or where generative AI runs (#2658).
+The backend refuses the matching routes with `403 { code: "surface_disabled", surface }`,
+and the web app reads `GET /config/surfaces` and hides the entry points, so hiding a
+button is never the only protection. Values are read per request: a new revision
+with a changed value takes effect without new code.
+
+Default: on everywhere, except when `RESONATE_ENVIRONMENT_ID` names a `prod`
+tier, where every switch is **off** unless set to `true`. `NODE_ENV` is not the
+signal (every image sets it to `production`). Accepted values: `true`/`false`
+(also `1`/`0`, `on`/`off`, `yes`/`no`); any other value counts as off.
+
+| Variable | Surface | Refused routes when off |
+|---|---|---|
+| `SHOWS_PLEDGING_ENABLED` | Shows pledging. Campaign pages, interest signals and refunds stay available | `POST /shows/campaigns/:id/pledges/intent` |
+| `PAID_COLLECTS_ENABLED` | Paid Punchline collects. Free collects stay available | `GET /punchline/moments/:id/collect/quote` |
+| `STEM_PURCHASES_ENABLED` | Stem and licence buying, the Crate quote and purchase path | `GET /api/stems/:id/x402`, `POST /crates/:id/quote`, `POST /purchase-consents`; MCP `stem.quote`/`stem.download` answer `X402_DISABLED` |
+| `WALLET_ENABLED` | The Wallet page, self-custody and budget-cap panels | `POST /wallet/fund`, `POST /wallet/budget`, `POST /wallet/provider` |
+| `AGENT_PAYMENTS_ENABLED` | Agent payments and the agent storefront purchase tools | `POST /wallet/agent/enable`, `POST /wallet/agent/session-key/activate`, `POST /wallet/agent/purchase`; MCP `stem.quote`/`stem.download` answer `X402_DISABLED` |
+| `AI_GENERATION_ENABLED` | AI generation and prompted remix drafts. Stem-mix renders (no AI) stay available | `POST /generation/create`, `/generation/complementary`, `/generation/artwork`; prompted remix drafts and AI parts answer `provider_disabled` (also requires `REMIX_GENERATION_ENABLED=true`) |
+
+Routes that complete something already paid (pledge confirm and refund, paid
+collect and x402 smart-account settlement, crate quote settle) stay open so an
+in-flight payment is never stranded when a switch is turned off.
 
 ## Release-Gated Deployment Workflows
 

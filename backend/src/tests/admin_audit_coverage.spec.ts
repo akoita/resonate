@@ -38,6 +38,7 @@ const NOT_AUDITED: Record<string, string> = {
   "AdminAccountsController.status": "Restriction state shown on the record page, whose open is already audited as user.detail_viewed.",
   "NoticeController.listSent": "Sent broadcasts are public to their audience; nothing about a person.",
   "MaintenanceController.getStemAudioFeatureBackfillStatus": "A count of stems, no person's data.",
+  "StreamRenditionAdminController.status": "A count of stems, no person's data.",
   "MaintenanceController.getAnalyticsPipelineHealth": "Pipeline health counters only.",
   "MaintenanceController.getCommunityCohortQuality": "Aggregate cohort quality, no member lists.",
   "ShowsController.listReconciliationMismatches": "Escrow drift facts by campaign, no person's data.",

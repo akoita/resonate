@@ -27,6 +27,7 @@ import { RightsRouteReassessmentService } from "../modules/rights/rights-route-r
 import { TrustedSourceService } from "../modules/rights/trusted-source.service";
 import { EventBus } from "../modules/shared/event_bus";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
+import { StreamRenditionService } from "../modules/catalog/stream_rendition.service";
 
 jest.mock("../modules/admin_audit/admin_audit_event", () => ({
   ...jest.requireActual("../modules/admin_audit/admin_audit_event"),
@@ -133,6 +134,7 @@ describe("catalog and artist admin actions (http)", () => {
       [
         { provide: CatalogService, useValue: catalog },
         { provide: DiscoveryPopularityService, useValue: {} },
+        { provide: StreamRenditionService, useValue: { sendRendition: jest.fn() } },
         { provide: ArtistService, useValue: artists },
       ],
     );

@@ -8,6 +8,7 @@ import { CampaignCommunityPanel } from "../../../components/shows/CampaignCommun
 import { CampaignMobilePledgeBar } from "../../../components/shows/CampaignMobilePledgeBar";
 import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperatorPanel";
 import { PledgeIntentPanel } from "../../../components/shows/PledgeIntentPanel";
+import { SurfaceGate } from "../../../components/system/SurfaceGate";
 import { CampaignTrustPanel } from "../../../components/shows/CampaignTrustPanel";
 import {
   campaignArtistHref,
@@ -115,7 +116,17 @@ export default async function CampaignDetailPage({ params }: Props) {
         <CampaignDraftOwnerBar campaign={campaign} />
 
         <CampaignDetailHero campaign={campaign}>
-          <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
+          <SurfaceGate
+            surface="showsPledging"
+            fallback={
+              <p className="show-detail__pledging-off" role="status">
+                Pledging is not offered in this version of Resonate. The campaign and its
+                community stay open to follow.
+              </p>
+            }
+          >
+            <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
+          </SurfaceGate>
         </CampaignDetailHero>
 
         <div className="show-detail__body">

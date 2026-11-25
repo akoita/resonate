@@ -6,6 +6,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { GenerationService } from './generation.service';
 import { CreateGenerationDto, CreateComplementaryDto, GenerateArtworkDto, PublishGenerationDto } from './generation.dto';
 import { getArtworkMaxBytes } from '../shared/artwork-validation';
+import { RequireSurface } from "../product_surfaces/product_surface.guard";
 
 @Controller('generation')
 export class GenerationController {
@@ -16,6 +17,7 @@ export class GenerationController {
    * Accepts a text prompt and returns a job ID for tracking.
    */
   @UseGuards(AuthGuard('jwt'))
+  @RequireSurface("aiGeneration")
   @Post('create')
   @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async create(
@@ -73,6 +75,7 @@ export class GenerationController {
    * Auto-derives prompt + negative prompt from existing stems.
    */
   @UseGuards(AuthGuard('jwt'))
+  @RequireSurface("aiGeneration")
   @Post('complementary')
   @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async generateComplementary(
@@ -117,6 +120,7 @@ export class GenerationController {
    * Returns base64-encoded image data.
    */
   @UseGuards(AuthGuard('jwt'))
+  @RequireSurface("aiGeneration")
   @Post('artwork')
   @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async generateArtwork(

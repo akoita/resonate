@@ -14,6 +14,7 @@ import { CatalogController } from '../modules/catalog/catalog.controller';
 import { CatalogService } from '../modules/catalog/catalog.service';
 import { DiscoveryPopularityService } from '../modules/catalog/discovery-popularity.service';
 import { createControllerTestApp, authToken } from './e2e-helpers';
+import { StreamRenditionService } from '../modules/catalog/stream_rendition.service';
 
 const mockCatalogService = {
   getReleaseArtwork: jest.fn(),
@@ -21,6 +22,9 @@ const mockCatalogService = {
   getStemBlob: jest.fn(),
   getTrackStream: jest.fn(),
   getStemPreview: jest.fn(),
+  resolvePublicStreamStem: jest.fn().mockResolvedValue(null),
+  resolveTrackStreamStem: jest.fn().mockResolvedValue(null),
+  resolveOwnerTrackRendition: jest.fn().mockResolvedValue(null),
   listByUserId: jest.fn().mockResolvedValue([]),
   getReleaseForUser: jest.fn(),
   createRelease: jest.fn().mockResolvedValue({ id: 'rel-1', title: 'Test' }),
@@ -53,6 +57,7 @@ describe('CatalogController (e2e)', () => {
     app = await createControllerTestApp(CatalogController, [
       { provide: CatalogService, useValue: mockCatalogService },
       { provide: DiscoveryPopularityService, useValue: mockDiscoveryPopularityService },
+      { provide: StreamRenditionService, useValue: { sendRendition: jest.fn() } },
     ]);
   });
 

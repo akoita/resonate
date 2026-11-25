@@ -26,6 +26,7 @@ import {
 import { Put } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { minutes } from "../shared/rate_limits";
+import { RequireSurface } from "../product_surfaces/product_surface.guard";
 
 /** A paid collect: generous for a person retrying, tight for a script (each call may verify a signature on-chain). */
 const SMART_ACCOUNT_COLLECT_RATE_LIMIT = { limit: 10, ttl: minutes(1) } as const;
@@ -272,6 +273,7 @@ export class PunchlineController {
    * take breakdown, USDC asset, and payout address the fan's passkey wallet
    * pays. Honest 4xx for free / sold-out / not-published moments.
    */
+  @RequireSurface("paidCollects")
   @Get("moments/:momentId/collect/quote")
   getCollectQuote(@Param("momentId") momentId: string) {
     return this.x402Service.buildMomentQuote(momentId);

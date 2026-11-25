@@ -21,6 +21,8 @@ Surface Content Protection stake information to **two audiences**:
 
 Staking is **atomic with publishing**. When an artist publishes a release, the `useAttestAndStake` hook batches `ContentProtection.attestRelease()` + `ContentProtection.stakeForRelease()` into a single UserOperation signed by the artist's passkey. This means **every published release has a stake deposited on-chain at the release root that tracks and stems inherit from**.
 
+> **No-deposit mode (#2659).** With `PUBLISH_DEPOSIT_MODE=none` the stake requirement reads zero and publishing attests without a stake, so a release may have no stake and no stake badge. Upload limits for accounts that are not yet verified take over the deposit's job. See [Publishing Without a Deposit, With Upload Limits](publish_deposit_and_upload_limits.md).
+
 ```
 Upload → Process (Demucs) → Publish → attestRelease() + stakeForRelease() (single UserOp) → Live
                                                         │

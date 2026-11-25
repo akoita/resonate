@@ -14,6 +14,7 @@ import { useAuth } from "../../../components/auth/AuthProvider";
 import {
   getArtistMe,
   getAiDisclosureValidationIssue,
+  getMyUploadLimits,
   submitReleaseRightsUpgradeRequest,
   uploadStems,
   waitForReleaseAvailability,
@@ -22,6 +23,7 @@ import {
   type AiDisclosureLevel,
   type ArtistProfile,
   type ArtistSearchResult,
+  type UploadAllowance,
   type RightsEvidenceKind,
   type RightsEvidenceStrength,
 } from "../../../lib/api";
@@ -39,6 +41,7 @@ import { useFundingOptions, usePaymentAssets, usePaymentQuote } from "../../../h
 import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
 import { FundingActions } from "../../../components/payments/FundingActions";
 import StakeDepositCard from "../../../components/upload/StakeDepositCard";
+import UploadLimitsNotice, { describeUploadAllowance } from "../../../components/upload/UploadLimitsNotice";
 import {
   formatPaymentAmountWithSymbol,
   paymentAssetSupportsSurface,
@@ -229,6 +232,25 @@ export default function ArtistUploadPage() {
       (stableStakeAmountUnits === undefined || stableStakeQuoteLoading)
   );
   const stakeReady = !stakeRequired || (!stableStakeLookupPending && stakeAcknowledged);
+  // Upload limits for accounts that are not yet verified (#2659). The server
+  // enforces them; this shows what is left and holds Publish when the upload
+  // would go over one.
+  const [uploadAllowance, setUploadAllowance] = useState<UploadAllowance | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    getMyUploadLimits(token)
+      .then((allowance) => {
+        if (!cancelled) setUploadAllowance(allowance ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setUploadAllowance(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+  const uploadLimitBlocked = Boolean(describeUploadAllowance(uploadAllowance, stems.length)?.blocking);
 
   useEffect(() => {
     setStakeAcknowledged(false);
@@ -1686,6 +1708,8 @@ export default function ArtistUploadPage() {
                 </div>
               )}
 
+              <UploadLimitsNotice allowance={uploadAllowance} trackCount={stems.length} />
+
               <StakeDepositCard
                 key={`${stakeAssetLabel ?? "native"}-${releaseTrackCountForStake}-${stakeRequired}`}
                 trustTier={trustTier}
@@ -1772,7 +1796,7 @@ export default function ArtistUploadPage() {
               <div style={{ marginTop: "1rem" }}>
                 <Button
                   variant={allReady && stakeReady ? "primary" : "ghost"}
-                  disabled={!allReady || isPublishing || !stakeReady || stakePending}
+                  disabled={!allReady || isPublishing || !stakeReady || stakePending || uploadLimitBlocked}
                   onClick={handlePublish}
                   className="w-full"
                 >
