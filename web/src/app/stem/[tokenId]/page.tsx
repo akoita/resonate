@@ -725,6 +725,19 @@ export default function StemDetailPage() {
                 />
             )}
 
+            {/* Report content (#2664): the plain notice form, no account or stake needed. */}
+            {releaseIdFromMeta && (
+                <div className="max-w-6xl mx-auto px-4 pb-12">
+                    <Link
+                        href={`/report?release=${encodeURIComponent(releaseIdFromMeta)}${catalogTrackId ? `&track=${encodeURIComponent(catalogTrackId)}` : ""}`}
+                        prefetch={false}
+                        className="text-sm text-zinc-400 underline underline-offset-4 hover:text-zinc-200"
+                    >
+                        Report this stem
+                    </Link>
+                </div>
+            )}
+
             <audio
                 ref={audioRef}
                 onEnded={() => setPreviewPlaying(false)}

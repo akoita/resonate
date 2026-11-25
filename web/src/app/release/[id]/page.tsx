@@ -3237,6 +3237,17 @@ function ReleaseDetailsContent() {
       {/* Content Protection — visible to ALL users */}
       <ReleaseContentProtection releaseId={release.id} />
 
+      {/* Report content (#2664): the plain notice form, no account or stake needed. */}
+      {!isOwner && (
+        <Link
+          href={`/report?release=${encodeURIComponent(release.id)}`}
+          prefetch={false}
+          style={{ display: 'inline-block', margin: '12px 0 0', color: 'var(--color-muted)', fontSize: '13px', textUnderlineOffset: '3px' }}
+        >
+          Report this release
+        </Link>
+      )}
+
       {/* Report Button — visible to non-owners only */}
       {!isOwner && (
         <>

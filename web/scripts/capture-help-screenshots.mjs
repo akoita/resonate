@@ -335,6 +335,12 @@ const AUTH_TARGETS = [
     },
   }],
   ["/disputes", "disputes.png"],
+  // #2664: the public report form, signed out (no account needed).
+  ["/report", "report-content.png", {
+    selectors: ["form[aria-label='Report content']"],
+    viewportHeight: 1500,
+    prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); },
+  }],
   ["/artist/management", "artist-management.png", {
     selectors: ["section[aria-labelledby='owned-heading']"],
     viewportHeight: 1900,

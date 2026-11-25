@@ -195,9 +195,20 @@ We may remove content and restrict features where these terms are breached.
 
 ## 10. Disputes about content
 
-Content disputes — ownership challenges, takedown requests, protection
-challenges — run through the platform's dispute process, described in the
-product. Decisions made there bind what happens on Resonate. They do not decide
+**Reporting content.** Anyone, with or without an account, can tell us about
+content that uses their work without permission, impersonates someone, or is
+unlawful, using the report form at [/report](/report) (linked from every page
+footer and from release and stem pages). This form is the notice channel for
+takedown requests. A notice states who is reporting and in what capacity, a
+contact email, the work concerned, where the content is, the reason, and a
+statement that it is made in good faith. We review every notice before
+removing anything. The person who uploaded the content is told that a notice
+was received and, once it is decided, the decision and our reasons; they never
+see the reporter's identity, contact details or explanation. They may answer
+with a counter-notice from their notices page.
+
+Other content disputes — ownership challenges, protection challenges — run
+through the platform's dispute process, described in the product. Decisions made there bind what happens on Resonate. They do not decide
 who owns anything as a matter of law, and nothing in that process prevents you
 from going to court.
 

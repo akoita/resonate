@@ -99,10 +99,6 @@ sv(
   "Handler checks presence and values inline; chain ids, block numbers, amounts and limits are coerced by BigInt()/Math.max() and accept numeric strings, so a strict type check would reject accepted input.",
 );
 sv(
-  ["DmcaController.fileReport", "DmcaController.fileCounter", "DmcaController.resolveReport"],
-  "DmcaService checks every field (isNonEmptyString, outcome allow-list) and owns the 400 messages.",
-);
-sv(
   ["ManagementController.createGrant", "ManagementController.updateGrant", "ManagementController.createTransfer", "ManagementController.createTransferRecoveryRequest", "ManagementController.reviewTransferRecoveryRequest"],
   "ManagementService reads each field through read* helpers (recipient email, scopes, expiry, resources, recovery evidence); controllers reject non-objects.",
 );

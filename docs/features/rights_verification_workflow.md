@@ -56,13 +56,43 @@ When an admin upholds a DMCA report (`PATCH /api/dmca/:id/resolve` with
 `upheld`), the track becomes `dmca_removed` and its stems are delisted. The
 creator also gets one in-app `moderation` notice: the release's management
 owner, else the artist's account; if neither resolves, the notice is logged and
-skipped. The notice names the track and release and gives the reason category,
-"copyright complaint". It never includes the complainant's name, email or
-written reason. It is keyed on the report (`dmca_report:<id>`), so resolving
-the report again sends nothing new. A rejected report sends nothing. A
-counter-notice cannot yet be filed from the app, and the notice says so. See
+skipped. The notice names the track and release, gives the reason category
+(copyright complaint, impersonation, illegal content, or another concern) and
+the reviewer's statement of reasons. It never includes the complainant's name,
+email or written reason. It is keyed on the report (`dmca_report:<id>`), so
+resolving the report again sends nothing new. See
 [Platform notices](platform_notices.md) and
 [#2146](https://github.com/akoita/resonate/issues/2146).
+
+### Report form and counter-notices (#2664)
+
+The public report form at `/report` is the notice channel named in the Terms.
+It needs no account and no stake, and it is linked from the global footer, the
+legal pages, release pages ("Report this release") and stem pages ("Report
+this stem"). There is no separate track page; the form loads the release and
+asks for the track. The form collects the reporter's name and capacity
+(rights holder, authorised agent, the artist being impersonated, or someone
+else), a contact email, the work concerned, where the content is, the reason
+category (`copyright`, `impersonation`, `illegal_content`, `other`), a written
+explanation and a good-faith statement. A hidden honeypot field drops automated
+submissions without storing them. A signed-in reporter's confirmed notice
+address is prefilled.
+
+On filing, the reporter sees the reference. When platform email is configured,
+the reporter also gets a receipt email with the reference and nothing else from
+the notice. An address gets at most three receipts in 24 hours, so the form
+cannot flood a stranger's inbox. The creator gets a `moderation` notice that a
+report was received (`dmca_report_received:<id>`), with a link to
+`/report/respond`, where they see every notice on their releases (category,
+status, decision, reasons, never the reporter's details) and can send one
+counter-notice per open notice. A rejected report sends a "no action" notice
+with the reasons (`dmca_report_rejected:<id>`).
+
+Operators review notices at `/admin/takedowns`: every field the reporter gave,
+any counter-notice, and a decision with a required statement of reasons.
+Upholding asks for a fresh passkey confirmation; opening the queue
+(`dmca.reports_viewed`) and each decision (`dmca.report_resolved`) are in the
+admin audit log, which records the outcome and never the reasons' text.
 
 ## How To Use
 
@@ -105,22 +135,25 @@ releases.
 
 ### DMCA Notice API
 
-`backend/src/modules/dmca/dmca.controller.ts`. No web client calls these
-routes yet.
+`backend/src/modules/dmca/dmca.controller.ts`. Bodies are class DTOs in
+`dmca.dto.ts`. The web report form, the creator's notices page and the
+operator queue call these routes.
 
 | Route | Access | Notes |
 | --- | --- | --- |
-| `POST /api/dmca/report` | Public, rate limited per IP (10 per hour) | Claimants may not have an account. Returns only the new report's `id`, `trackId`, `status` and `createdAt`. |
+| `POST /api/dmca/report` | Public, rate limited per IP (10 per hour) | Claimants may not have an account. Requires `goodFaith: true`. A filled `website` honeypot returns a look-alike answer and stores nothing. Returns only the new report's `id`, `trackId`, `status`, `createdAt` and `receiptSent`. |
+| `GET /api/dmca/mine` | Signed-in caller | Notices on releases the caller owns (management owner, else the artist account): category, status, statement of reasons, counter-notice, `canCounter`. Never the reporter's identity, contact or explanation. |
 | `POST /api/dmca/counter` | Signed-in caller who owns the reported track's release (release management owner, else the artist account) or holds an active catalog-metadata grant on it; admins and operators also allowed | `404` for an unknown report, `400` once the report is `countered` or `rejected`, `403` otherwise unauthorized. The response omits claimant contact details. |
-| `PATCH /api/dmca/:id/resolve` | `admin` or `operator` role | `upheld` marks the track `dmca_removed` and delists its stems. The resolver is the authenticated caller, recorded in the audit log; any resolver field in the body is ignored. |
-| `GET /api/dmca` | `admin` or `operator` role | Lists reports with claimant contact details; no other route returns them. |
+| `PATCH /api/dmca/:id/resolve` | `admin` or `operator` role, fresh step-up proof | `outcome` is `upheld` or `rejected`; optional `statementOfReasons` (up to 2000 characters) is stored and shown to the creator. `upheld` marks the track `dmca_removed` and delists its stems. The resolver is the authenticated caller, recorded in the audit log; any resolver field in the body is ignored. |
+| `GET /api/dmca` | `admin` or `operator` role | Lists reports with every field, including claimant contact details; no other route returns them. |
 
 ## Tests
 
 - `cd backend && npm run test -- upload-rights-policy.spec.ts`
 - `cd backend && npm run test:integration -- --testPathPattern='trusted-source.service.integration|upload-rights-routing.integration|rights-route-reassessment.integration'`
 - `cd backend && npm run test -- dmca.controller.http.spec.ts`
-- `cd backend && npm run test:integration -- --testPathPattern='dmca.service.integration'`
+- `cd backend && npm run test:integration -- --testPathPattern='dmca.service.integration|dmca_takedown_notice|dmca_report_form'`
+- `cd web && npx vitest run src/lib/takedownForm.test.ts`
 - `cd web && npx vitest run src/lib/api.test.ts src/lib/__tests__/rightsOnboarding.test.ts`
 
 ## Deposit mode and upload limits (#2659)
