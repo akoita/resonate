@@ -111,3 +111,25 @@ describe("queueRowDragPayload", () => {
     expect(payload).toEqual({ type: "track", id: "q1", catalogTrackId: "cat-1", title: "Track q1", artist: "Artist" });
   });
 });
+
+describe("queue row reordering", () => {
+  it("reports the dragged row only for a queue row drag started here", async () => {
+    const { draggedQueueRowIndex, startQueueRowDrag, markQueueDragStartedForTests, resetQueueDragForTests, QUEUE_ROW_DRAG_TYPE } = await import("./queueDrag");
+    resetQueueDragForTests();
+    const data = new Map<string, string>();
+    const transfer = { setData: (k: string, v: string) => data.set(k, v), effectAllowed: "" } as unknown as DataTransfer;
+    startQueueRowDrag(transfer, { id: "t1", title: "One" } as never, 3);
+    expect(draggedQueueRowIndex([QUEUE_ROW_DRAG_TYPE])).toBeNull(); // not marked as started here
+    markQueueDragStartedForTests();
+    expect(draggedQueueRowIndex([QUEUE_ROW_DRAG_TYPE])).toBe(3);
+    expect(draggedQueueRowIndex(["application/json"])).toBeNull();
+    expect(transfer.effectAllowed).toBe("copyMove");
+    resetQueueDragForTests();
+  });
+
+  it("maps the pointer to the gap before or after a row", async () => {
+    const { queueGapForPointer } = await import("./queueDrag");
+    expect(queueGapForPointer(2, 105, 100, 40)).toBe(2);
+    expect(queueGapForPointer(2, 125, 100, 40)).toBe(3);
+  });
+});

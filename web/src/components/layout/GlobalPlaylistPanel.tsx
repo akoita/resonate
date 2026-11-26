@@ -40,9 +40,17 @@ import { AddToQueueIcon, DeleteIcon, PlayNextIcon, RemoveIcon, RenameIcon } from
 interface GlobalPlaylistPanelProps {
     isOpen: boolean;
     onClose: () => void;
+    /**
+     * "drawer" (default) slides in from the right; "embedded" is the Session
+     * Dock's Playlists tab: same list and actions, laid out by the dock.
+     */
+    variant?: "drawer" | "embedded";
+    /** Drawer only: open when a drag lingers at the right edge of the window. */
+    autoOpenOnEdge?: boolean;
 }
 
-export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProps) {
+export function GlobalPlaylistPanel({ isOpen, onClose, variant = "drawer", autoOpenOnEdge = true }: GlobalPlaylistPanelProps) {
+    const embedded = variant === "embedded";
     const [playlists, setPlaylists] = useState<Playlist[]>([]);
     const [folders, setFolders] = useState<PlaylistFolder[]>([]);
     const playlistListRef = useRef<HTMLDivElement | null>(null);
@@ -58,8 +66,9 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
     const queueActions = useQueueActions();
     const [isSyncing, setIsSyncing] = useState(false);
 
-    // Keyboard shortcut: Ctrl+J / Cmd+J to toggle
+    // Keyboard shortcut: Ctrl+J / Cmd+J to toggle (owned by the drawer, which is always mounted)
     useEffect(() => {
+        if (embedded) return;
         const handleKeyDown = (e: KeyboardEvent) => {
             // Check for Ctrl+J or Cmd+J
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
@@ -70,11 +79,12 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [togglePlaylistPanel]);
+    }, [embedded, togglePlaylistPanel]);
 
     // Auto-open playlist panel when dragging near right edge
     const { openPlaylistPanel } = useUIStore();
     useEffect(() => {
+        if (embedded || !autoOpenOnEdge) return;
         let openTimeout: ReturnType<typeof setTimeout> | null = null;
         const handleGlobalDragOver = (e: DragEvent) => {
             if (e.clientX > window.innerWidth - 60 && !isOpen) {
@@ -94,7 +104,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             window.removeEventListener('dragover', handleGlobalDragOver);
             if (openTimeout) clearTimeout(openTimeout);
         };
-    }, [isOpen, openPlaylistPanel]);
+    }, [autoOpenOnEdge, embedded, isOpen, openPlaylistPanel]);
 
     // UX States
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
@@ -551,16 +561,17 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
         );
     };
 
+    const Root = embedded ? "div" : "aside";
     return (
-        <aside
-            id="global-playlist-panel"
-            className={`global-playlist-panel ${isOpen ? 'open' : ''}`}
-            aria-label="Playlist panel"
-            aria-hidden={!isOpen}
-            inert={!isOpen}
+        <Root
+            id={embedded ? "session-dock-playlists" : "global-playlist-panel"}
+            className={embedded ? "global-playlist-panel global-playlist-panel--embedded" : `global-playlist-panel ${isOpen ? 'open' : ''}`}
+            aria-label={embedded ? undefined : "Playlist panel"}
+            aria-hidden={embedded ? undefined : !isOpen}
+            inert={embedded ? undefined : !isOpen}
         >
             <div className="gpp-header">
-                <h3>Your Playlists</h3>
+                {embedded ? <span className="gpp-subtitle">Drop tracks on a playlist to add them</span> : <h3>Your Playlists</h3>}
                 <div className="gpp-actions">
                     <button
                         type="button"
@@ -601,7 +612,9 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                             <line x1="9" y1="14" x2="15" y2="14"></line>
                         </svg>
                     </button>
-                    <button type="button" className="gpp-close" onClick={onClose} aria-label="Close playlist panel">&times;</button>
+                    {embedded ? null : (
+                        <button type="button" className="gpp-close" onClick={onClose} aria-label="Close playlist panel">&times;</button>
+                    )}
                 </div>
             </div>
 
@@ -690,6 +703,6 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                 }}
                 onCancel={() => setModalState(prev => ({ ...prev, isOpen: false }))}
             />
-        </aside>
+        </Root>
     );
 }

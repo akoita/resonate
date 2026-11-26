@@ -28,7 +28,7 @@ export function useQueueDragActive(): boolean {
 }
 
 /** Read what was dropped: an in-memory offer first, then the JSON payload. */
-async function droppedTracks(dataTransfer: DataTransfer): Promise<LocalTrack[]> {
+export async function droppedTracks(dataTransfer: DataTransfer): Promise<LocalTrack[]> {
   const offer = currentQueueDragOffer();
   if (offer) return Array.from(await offer.resolve());
   const raw = dataTransfer.getData("application/json") || dataTransfer.getData("text/plain");

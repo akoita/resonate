@@ -295,3 +295,65 @@ function randomIndex(random: ShuffleRandom, length: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.min(length - 1, Math.max(0, Math.floor(value * length)));
 }
+
+export interface QueuePositionResult {
+  queue: LocalTrack[];
+  /** Where the track that was current now sits, or -1 when none was. */
+  currentIndex: number;
+}
+
+/**
+ * Move one queue row to a gap. `gap` counts the spaces between rows in the
+ * queue as it is now: 0 is before the first row, `queue.length` after the
+ * last. The current track keeps playing wherever it ends up.
+ */
+export function moveQueueTrack(
+  queue: readonly LocalTrack[],
+  currentIndex: number,
+  from: number,
+  gap: number,
+): QueuePositionResult {
+  const currentTrackId = queue[currentIndex]?.id ?? null;
+  if (from < 0 || from >= queue.length) return { queue: [...queue], currentIndex };
+  const clampedGap = Math.min(queue.length, Math.max(0, Math.trunc(gap)));
+  const target = clampedGap > from ? clampedGap - 1 : clampedGap;
+  if (target === from) return { queue: [...queue], currentIndex };
+  const next = [...queue];
+  const [moved] = next.splice(from, 1);
+  next.splice(target, 0, moved);
+  return {
+    queue: next,
+    currentIndex: currentTrackId ? next.findIndex((track) => track.id === currentTrackId) : -1,
+  };
+}
+
+/**
+ * Put tracks at a gap in the queue (see `moveQueueTrack`). A track that is
+ * already queued moves there instead of appearing twice; the current track
+ * stays where it is.
+ */
+export function insertQueueTracksAtGap(
+  queue: readonly LocalTrack[],
+  currentIndex: number,
+  tracks: readonly LocalTrack[],
+  gap: number,
+): QueueBatchResult & { currentIndex: number } {
+  const currentTrackId = queue[currentIndex]?.id ?? null;
+  const clampedGap = Math.min(queue.length, Math.max(0, Math.trunc(gap)));
+  const incoming = uniqueTracks(tracks).filter((track) => track.id !== currentTrackId);
+  const skipped = uniqueTracks(tracks).filter((track) => track.id === currentTrackId);
+  const requestedIds = new Set(incoming.map((track) => track.id));
+  const requested = incoming.map((track) => queue.find((queued) => queued.id === track.id) ?? track);
+  const removedBeforeGap = queue.slice(0, clampedGap).filter((track) => requestedIds.has(track.id)).length;
+  const withoutRequested = queue.filter((track) => !requestedIds.has(track.id));
+  const at = clampedGap - removedBeforeGap;
+  const nextQueue = [...withoutRequested.slice(0, at), ...requested, ...withoutRequested.slice(at)];
+  const unchanged = nextQueue.length === queue.length
+    && nextQueue.every((track, index) => track.id === queue[index]?.id);
+  return {
+    queue: nextQueue,
+    added: unchanged ? [] : requested,
+    skipped: [...skipped, ...(unchanged ? requested : [])],
+    currentIndex: currentTrackId ? nextQueue.findIndex((track) => track.id === currentTrackId) : -1,
+  };
+}

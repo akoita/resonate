@@ -5,7 +5,9 @@ import {
   canUndoQueueClear,
   clearQueueIndices,
   createShuffleCycleState,
+  insertQueueTracksAtGap,
   insertQueueTracksNext,
+  moveQueueTrack,
   reconcileShuffleCycle,
   removeQueueIndices,
   shuffleNext,
@@ -243,5 +245,64 @@ describe("Clear queue", () => {
     expect(canUndoQueueClear("c", [track("e")])).toBe(false);
     expect(canUndoQueueClear(null, [])).toBe(true);
     expect(canUndoQueueClear(null, [track("e")])).toBe(false);
+  });
+});
+
+describe("moveQueueTrack", () => {
+  const q = ["a", "b", "c", "d"].map(track);
+  const ids = (list: LocalTrack[]) => list.map((t) => t.id).join("");
+
+  it("moves a row down to a later gap", () => {
+    const result = moveQueueTrack(q, 1, 0, 3);
+    expect(ids(result.queue)).toBe("bcad");
+    expect(result.currentIndex).toBe(0); // "b" is still current
+  });
+
+  it("moves a row up to an earlier gap", () => {
+    const result = moveQueueTrack(q, 0, 3, 1);
+    expect(ids(result.queue)).toBe("adbc");
+    expect(result.currentIndex).toBe(0);
+  });
+
+  it("follows the current track when it is the one moved", () => {
+    const result = moveQueueTrack(q, 2, 2, 0);
+    expect(ids(result.queue)).toBe("cabd");
+    expect(result.currentIndex).toBe(0);
+  });
+
+  it("leaves the queue alone for a drop on its own gap or a bad index", () => {
+    expect(ids(moveQueueTrack(q, 0, 1, 1).queue)).toBe("abcd");
+    expect(ids(moveQueueTrack(q, 0, 1, 2).queue)).toBe("abcd");
+    expect(ids(moveQueueTrack(q, 0, 9, 0).queue)).toBe("abcd");
+  });
+});
+
+describe("insertQueueTracksAtGap", () => {
+  const q = ["a", "b", "c"].map(track);
+  const ids = (list: LocalTrack[]) => list.map((t) => t.id).join("");
+
+  it("inserts new tracks at the gap", () => {
+    const result = insertQueueTracksAtGap(q, 0, [track("x"), track("y")], 2);
+    expect(ids(result.queue)).toBe("abxyc");
+    expect(ids(result.added)).toBe("xy");
+    expect(result.currentIndex).toBe(0);
+  });
+
+  it("moves an already queued track instead of duplicating it", () => {
+    const result = insertQueueTracksAtGap(q, 1, [track("c")], 0);
+    expect(ids(result.queue)).toBe("cab");
+    expect(result.currentIndex).toBe(2);
+  });
+
+  it("never moves the current track and reports it skipped", () => {
+    const result = insertQueueTracksAtGap(q, 1, [track("b"), track("x")], 3);
+    expect(ids(result.queue)).toBe("abcx");
+    expect(ids(result.skipped)).toBe("b");
+  });
+
+  it("works on an empty queue", () => {
+    const result = insertQueueTracksAtGap([], -1, [track("x")], 0);
+    expect(ids(result.queue)).toBe("x");
+    expect(result.currentIndex).toBe(-1);
   });
 });

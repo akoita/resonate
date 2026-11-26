@@ -112,7 +112,9 @@ import {
 import {
     appendQueueTracks,
     createShuffleCycleState,
+    insertQueueTracksAtGap,
     insertQueueTracksNext,
+    moveQueueTrack,
     removeQueueIndices,
     reconcileShuffleCycle,
     shuffleNext,
@@ -167,6 +169,10 @@ interface PlayerContextType {
     addTracksToQueue: (tracks: LocalTrack[]) => QueueBatchResult;
     playTracksNext: (tracks: LocalTrack[]) => QueueBatchResult;
     removeFromQueue: (index: number) => void;
+    /** Move a queue row to a gap (0 = before the first row, length = after the last). */
+    moveInQueue: (from: number, gap: number) => void;
+    /** Put tracks at a gap in the queue; already queued tracks move there. */
+    insertTracksAt: (tracks: LocalTrack[], gap: number) => QueueBatchResult;
     /** Remove several queue positions in one step. */
     removeQueueTracks: (indices: number[]) => void;
     /**
@@ -1601,6 +1607,35 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         removeQueueTracks([index]);
     }, [removeQueueTracks]);
 
+    const applyQueueOrder = useCallback((nextQueue: LocalTrack[], nextIndex: number) => {
+        queueRef.current = nextQueue;
+        setQueue(nextQueue);
+        if (nextIndex !== currentIndexRef.current) {
+            currentIndexRef.current = nextIndex;
+            setCurrentIndex(nextIndex);
+        }
+        if (shuffleRef.current) {
+            shuffleCycleRef.current = reconcileShuffleCycle(
+                shuffleCycleRef.current,
+                nextQueue.map((track) => track.id),
+                nextQueue[nextIndex]?.id ?? null,
+            );
+        }
+    }, []);
+
+    const moveInQueue = useCallback((from: number, gap: number) => {
+        const result = moveQueueTrack(queueRef.current, currentIndexRef.current, from, gap);
+        applyQueueOrder(result.queue, result.currentIndex);
+    }, [applyQueueOrder]);
+
+    const insertTracksAt = useCallback((tracks: LocalTrack[], gap: number) => {
+        const wasEmpty = queueRef.current.length === 0;
+        const result = insertQueueTracksAtGap(queueRef.current, currentIndexRef.current, tracks, gap);
+        applyQueueOrder(result.queue, result.currentIndex);
+        if (wasEmpty && result.added.length > 0) void playQueue(result.queue, 0);
+        return { queue: result.queue, added: result.added, skipped: result.skipped };
+    }, [applyQueueOrder, playQueue]);
+
     const restoreQueue = useCallback((tracks: LocalTrack[], index: number, source: QueueSource) => {
         const nextQueue = [...tracks];
         const nextIndex = index >= 0 && index < nextQueue.length ? index : -1;
@@ -1710,6 +1745,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         addTracksToQueue,
         playTracksNext,
         removeFromQueue,
+        moveInQueue,
+        insertTracksAt,
         removeQueueTracks,
         restoreQueue,
         setRepeatMode: setRepeatModeTo,
@@ -1724,7 +1761,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         duration, artworkUrl, volume, muted, shuffle, repeatMode, playQueue, nextTrack,
         prevTrack, togglePlay, toggleShuffle, toggleRepeatMode, seek, setVolume, toggleMute,
         stop, addToQueue, playNextInQueue, addTracksToQueue, playTracksNext, removeFromQueue,
-        removeQueueTracks, restoreQueue, setRepeatModeTo, mixerMode, toggleMixerMode, mixerVolumes,
+        moveInQueue, insertTracksAt, removeQueueTracks, restoreQueue, setRepeatModeTo, mixerMode, toggleMixerMode, mixerVolumes,
         setMixerVolumes,
     ]);
 

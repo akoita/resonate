@@ -259,6 +259,12 @@ export function toggleConsoleMinimized(): void {
   saveConsoleLayout({ ...current, minimized: !current.minimized });
 }
 
+/** Fold or unfold the console or the Session Dock to a given state. */
+export function setConsoleMinimized(minimized: boolean): void {
+  const current = getStoredConsoleLayout();
+  if (current.minimized !== minimized) saveConsoleLayout({ ...current, minimized });
+}
+
 export function subscribeConsoleLayout(listener: () => void): () => void {
   listeners.add(listener);
   const onStorage = (event: StorageEvent) => {
