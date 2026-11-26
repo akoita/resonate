@@ -234,6 +234,14 @@
     }
   },
   {
+    "eventName": "marketplace.stem_previewed",
+    "payload": {
+      "stemId": "stem-1",
+      "trackId": "track-1",
+      "source": "marketplace"
+    }
+  },
+  {
     "eventName": "remix.published_shared",
     "payload": {
       "releaseId": "release-1",

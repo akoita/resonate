@@ -807,7 +807,18 @@ export function MarketplaceBrowse({ headingLevel = 1 }: MarketplaceBrowseProps =
 
                                     {/* Play overlay */}
                                     {listing.stem?.uri && (
-                                        <div className="stem-card__play-overlay" onClick={() => togglePlay(listing.listingId, `${API_BASE}/catalog/stems/${listing.stem!.id}/preview`)}>
+                                        <div className="stem-card__play-overlay" onClick={() => {
+                                            // #2689: a started preview counts on the preview measures page.
+                                            if (playingId !== listing.listingId) {
+                                                void recordProductAnalytics(token, "marketplace.stem_previewed", {
+                                                    subjectType: "stem",
+                                                    subjectId: listing.stem!.id,
+                                                    source: "marketplace",
+                                                    payload: { stemId: listing.stem!.id, source: "marketplace" },
+                                                });
+                                            }
+                                            togglePlay(listing.listingId, `${API_BASE}/catalog/stems/${listing.stem!.id}/preview`);
+                                        }}>
                                             <div className="stem-card__play-btn">
                                                 {playingId === listing.listingId ? "⏸" : "▶"}
                                             </div>
