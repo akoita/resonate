@@ -5,6 +5,10 @@ export type AiDisclosureBadgeProps = {
   disclosure?: AiDisclosure | null;
   /** Human-made declarations are normally omitted to keep labels focused. */
   showHumanMade?: boolean;
+  /** Only the AI-generated and AI-assisted labels (no "unavailable" label). */
+  aiOnly?: boolean;
+  /** A smaller pill for tight rows such as the player bar. */
+  compact?: boolean;
   className?: string;
 };
 
@@ -73,8 +77,11 @@ function getPresentation(
 export function AiDisclosureBadge({
   disclosure,
   showHumanMade = false,
+  aiOnly = false,
+  compact = false,
   className,
 }: AiDisclosureBadgeProps) {
+  if (aiOnly && disclosure?.level !== "partly" && disclosure?.level !== "all") return null;
   const presentation = getPresentation(disclosure, showHumanMade);
   if (!presentation) return null;
 
@@ -84,12 +91,13 @@ export function AiDisclosureBadge({
     width: "fit-content",
     border: `1px solid ${presentation.border}`,
     borderRadius: "999px",
-    padding: "3px 8px",
+    padding: compact ? "0 6px" : "3px 8px",
     color: presentation.color,
     background: presentation.background,
-    fontSize: "11px",
+    fontSize: compact ? "10px" : "11px",
     fontWeight: 700,
-    lineHeight: 1.3,
+    lineHeight: compact ? 1.5 : 1.3,
+    flex: "none",
     whiteSpace: "nowrap",
   };
 

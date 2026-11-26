@@ -249,6 +249,38 @@ export function aiGeneratedTagArgs(): string[] {
   ]);
 }
 
+/** {@link AI_GENERATED_AUDIO_TAGS} as one line, for a file comment (a WAV's INFO `ICMT`). */
+export function aiGeneratedInfoComment(): string {
+  return Object.entries(AI_GENERATED_AUDIO_TAGS)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("; ");
+}
+
+/** IPTC digital source type for media that mixes a trained model's output with other content. */
+export const IPTC_COMPOSITE_WITH_TRAINED_ALGORITHMIC_MEDIA =
+  "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia";
+
+/**
+ * The AI tags for a track's AI disclosure level, as ffmpeg `-metadata`
+ * arguments: fully generated audio gets {@link AI_GENERATED_AUDIO_TAGS},
+ * audio with an AI part the composite source type, anything else none.
+ */
+export function aiGeneratedTagsFor(level: string | null | undefined): string[] {
+  switch (level?.toUpperCase()) {
+    case "ALL":
+      return aiGeneratedTagArgs();
+    case "PARTLY":
+      return [
+        "-metadata",
+        `AI_GENERATED=${AI_GENERATED_AUDIO_TAGS.AI_GENERATED}`,
+        "-metadata",
+        `DIGITAL_SOURCE_TYPE=${IPTC_COMPOSITE_WITH_TRAINED_ALGORITHMIC_MEDIA}`,
+      ];
+    default:
+      return [];
+  }
+}
+
 /**
  * #2602: how a completed draft stands on marking.
  * - `not_generated`: no generated audio in it, nothing to mark.

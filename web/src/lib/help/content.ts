@@ -957,6 +957,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
+            text: "The AI-assisted and AI-generated labels also appear in the player bar, before the artist name, on every page. The audio you stream from such a track carries the same information in its file tags, and audio made with Resonate's creation tools also carries an inaudible mark.",
+          },
+          {
+            kind: "paragraph",
             text: "Some older catalog recordings carry a Resonate attestation instead of an uploader declaration. For well-known releases whose human origin is publicly established, Resonate itself records them as human-made, and those tracks no longer show \"AI disclosure unavailable\". It is a catalog attestation, not something the artist declared, and Resonate does not attest recordings whose origin it cannot establish from public knowledge. Artists who claim a track can still correct its declaration.",
           },
           {

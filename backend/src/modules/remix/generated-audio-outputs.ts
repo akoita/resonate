@@ -4,9 +4,10 @@
  *
  * Generated audio must be marked in a machine-readable way. This list is the
  * single place that says, for each path, whether generated audio can be in
- * it and how it is marked. `generated-audio-outputs.spec.ts` fails when a
- * source file in the remix or generation modules stores audio, or a remix
- * route sends audio, without being listed here, and when the table in
+ * it and how it is marked. `remix-generated-audio-marking.spec.ts` fails when
+ * a source file in the remix or generation modules (or the streaming
+ * rendition service) stores audio, or a remix route sends audio, without
+ * being listed here, and when the table in
  * `docs/features/remix_studio.md` misses an entry. A new path cannot ship
  * unlisted.
  *
@@ -24,7 +25,9 @@ export type GeneratedAudioMarking =
   /** A byte copy or re-encode of a draft, refused when that draft is unmarked. */
   | "inherits_draft_mark"
   /** Playback, never a download, of audio covered by another row: the studio owner, or the source artist approving it (#2682). */
-  | "studio_playback";
+  | "studio_playback"
+  /** A listener re-encode: the audio mark survives it and the AI tags are written again. */
+  | "rendition_retags";
 
 export type GeneratedAudioOutputPath = {
   id: string;
@@ -139,6 +142,15 @@ export const GENERATED_AUDIO_OUTPUT_PATHS: readonly GeneratedAudioOutputPath[] =
     uploads: 1,
     routes: [],
     marking: "provider_mark",
-    how: "The provider embeds its own mark; the track records `synthIdPresent` and its AI disclosure.",
+    how: "The provider embeds its own mark; a WAV also carries the AI tags in its INFO comment, and the track records `synthIdPresent` and its AI disclosure.",
+  },
+  {
+    id: "stream-rendition",
+    what: "Streaming rendition listeners hear (published remixes and generated tracks included)",
+    source: "catalog/stream_rendition.service.ts",
+    uploads: 1,
+    routes: [],
+    marking: "rendition_retags",
+    how: "A 192 kbit/s MP3 of the archive. The remix mark and provider marks are in the audio and survive the encode; the archive's tags are dropped and, for a track disclosed as AI, `AI_GENERATED` and the IPTC digital source type are written again (`.ai.mp3` renditions).",
   },
 ];
