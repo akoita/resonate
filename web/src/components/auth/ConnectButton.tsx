@@ -180,12 +180,8 @@ export default function ConnectButton() {
       </div>
 
       <p className="wallet-legal-links">
-        <span>By creating an account, you agree to the</span>
-        <Link href="/terms">Terms</Link>
-        <span>and acknowledge the</span>
-        <Link href="/privacy">Privacy Policy</Link>
-        <span>and</span>
-        <Link href="/refunds">Refund Policy</Link>
+        By creating an account, you agree to the <Link href="/terms">Terms</Link> and acknowledge
+        the <Link href="/privacy">Privacy Policy</Link> and <Link href="/refunds">Refund Policy</Link>.
       </p>
 
       {status === "error" && error ? (

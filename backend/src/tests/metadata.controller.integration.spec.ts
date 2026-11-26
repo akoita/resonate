@@ -892,6 +892,8 @@ describe('MetadataController (integration)', () => {
       expect(result!.attested).toBe(true);
       expect(result!.staked).toBe(true);
       expect(result!.stakeAmount).toBe('10000000000000000');
+      // #2659: the release page reads this to explain an unstaked release.
+      expect(result!.depositWaived).toBe(false);
     });
 
     it('returns the recorded native stake asset with its decimals', async () => {

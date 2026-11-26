@@ -166,6 +166,10 @@
 .home-ng .ng-shelf .ng-popularity-empty {
   margin: 0;
   max-width: 60ch;
+  /* A sentence, not a card caption: let it wrap instead of cutting it off. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .home-ng .ng-popularity-empty__why {

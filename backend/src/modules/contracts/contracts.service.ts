@@ -2466,6 +2466,9 @@ export class ContractsService implements OnModuleInit {
       depositedAt: stake?.depositedAt?.toISOString() || "",
       active: stake?.active ?? false,
       escrowDays,
+      // #2659: publishing currently needs no deposit, so an unstaked release
+      // is the normal state rather than a missing protection.
+      depositWaived: trust.depositWaived === true,
       trustTier: tier,
       economicTrustTier: tier,
       humanVerificationStatus: creatorVerification.humanVerificationStatus,

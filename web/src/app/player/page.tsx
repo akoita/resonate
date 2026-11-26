@@ -579,7 +579,7 @@ function PlayerContent() {
         </div>
 
         <h1 className="hero-title">{displayTrack.title}</h1>
-        <AiDisclosureBadge disclosure={currentTrack?.aiDisclosure} />
+        {currentTrack ? <AiDisclosureBadge disclosure={currentTrack.aiDisclosure} /> : null}
         <TrackCredits
           className="hero-artist"
           artist={displayTrack.artist}

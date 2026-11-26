@@ -2378,6 +2378,8 @@ export type ReleaseContentProtectionData = {
   depositedAt: string;
   active: boolean;
   escrowDays: number;
+  /** Publishing needs no deposit right now (#2659), so "not staked" is expected. */
+  depositWaived?: boolean;
   trustTier: string;
   economicTrustTier?: string;
   humanVerificationStatus?: HumanVerificationState;
@@ -8306,15 +8308,17 @@ export function reviewManagementRecovery(
   ).then(() => undefined);
 }
 
+// A visitor who does not manage the artist or release gets 403. That is an
+// answer, not an error worth logging on every public page view.
 export function getArtistManagementAccess(token: string, artistId: string) {
   return apiRequest<ResourceManagementAccess>(
-    `/management/artists/${encodeURIComponent(artistId)}/access`, {}, token,
+    `/management/artists/${encodeURIComponent(artistId)}/access`, { silentErrorCodes: [403] }, token,
   );
 }
 
 export function getReleaseManagementAccess(token: string, releaseId: string) {
   return apiRequest<ResourceManagementAccess>(
-    `/management/releases/${encodeURIComponent(releaseId)}/access`, {}, token,
+    `/management/releases/${encodeURIComponent(releaseId)}/access`, { silentErrorCodes: [403] }, token,
   );
 }
 

@@ -133,6 +133,10 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
     : { status: "none" as const, daysRemaining: 0 };
 
   const stakeLabel = formatReleaseStake(data);
+  // #2659: with the publish deposit switched off, an unstaked release is the
+  // normal state. Show that plainly instead of a stake, escrow and a
+  // "Not staked" warning that read as if something were missing.
+  const noDeposit = Boolean(data.depositWaived) && !data.staked;
 
   const economicTier = data.economicTrustTier || data.trustTier;
   const tierLabel = TIER_LABELS[economicTier] || economicTier;
@@ -182,7 +186,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           </p>
         </div>
         {/* Status pill */}
-        <div style={{
+        {noDeposit ? null : <div style={{
           marginLeft: "auto",
           display: "inline-flex",
           alignItems: "center",
@@ -196,15 +200,15 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           color: STAKE_STATUS_COLORS[stakeStatus],
         }}>
           {STAKE_STATUS_LABELS[stakeStatus]}
-        </div>
+        </div>}
       </div>
 
       {/* Top row: Economic signals */}
       <div style={gridStyle}>
         <div style={statStyle}>
-          <span style={statLabelStyle}>Stake</span>
+          <span style={statLabelStyle}>{noDeposit ? "Deposit" : "Stake"}</span>
           <span style={{ fontWeight: 600, fontSize: "15px" }}>
-            {stakeLabel}
+            {noDeposit ? "None needed" : stakeLabel}
           </span>
         </div>
 
@@ -215,7 +219,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           </span>
         </div>
 
-        <div style={statStyle}>
+        {noDeposit ? null : <div style={statStyle}>
           <span style={statLabelStyle}>Escrow</span>
           <span style={{ fontWeight: 500, fontSize: "15px" }}>
             {data.staked ? (
@@ -231,7 +235,7 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
               <>{data.escrowDays}d policy</>
             )}
           </span>
-        </div>
+        </div>}
       </div>
 
       {/* Divider */}
@@ -297,7 +301,9 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
           color: "rgba(255,255,255,0.48)",
         }}
       >
-        These signals are tracked independently. Human verification is anti-sybil/personhood only, self-attestation is a creator wallet statement, and economic trust controls stake and escrow. Only Rights Verified means reviewed evidence supports likely ownership or publishing authority.
+        {noDeposit
+          ? "These signals are tracked independently. Publishing needs no deposit at the moment. Human verification only shows a real person is behind the account, and self-attestation is the creator's own statement. Only Rights Verified means reviewed evidence supports likely ownership or publishing authority."
+          : "These signals are tracked independently. Human verification only shows a real person is behind the account, self-attestation is the creator's own statement, and economic trust sets the stake and escrow. Only Rights Verified means reviewed evidence supports likely ownership or publishing authority."}
       </div>
     </section>
   );

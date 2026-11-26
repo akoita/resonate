@@ -53,9 +53,9 @@ export default async function ShowsExplorerPage({
           <span className="shows-home-section__kicker">Resonate Shows</span>
           <h1 className="shows-page__title">Fans bring the&nbsp;show.</h1>
           <p className="shows-page__lede">
-            Pick an artist and a city, lock funds in a smart-contract escrow,
-            and if enough fans commit, the artist&apos;s team gets a demand
-            signal backed by money&nbsp;— not likes. If they don&apos;t
+            Pick an artist and a city and pledge toward the show. Pledges are
+            held in escrow, and if enough fans commit, the artist&apos;s team
+            gets a demand signal backed by real commitment&nbsp;— not likes. If they don&apos;t
             confirm, refunds open automatically and every backer can claim
             their pledge back.
           </p>
