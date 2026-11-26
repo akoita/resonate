@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
@@ -10,6 +10,7 @@ import { getEnvironment, isProduction } from "../../lib/buildInfo";
 import { AboutModal } from "../ui/AboutModal";
 import { BrandLogo } from "../brand/BrandLogo";
 import { useProductSurfaces } from "../../hooks/useProductSurfaces";
+import { SidebarFoldButton, SidebarResizeEdge, useRailTooltips, useSidebarLayout } from "./SidebarEdge";
 import type { ProductSurface } from "../../lib/productSurfaces";
 
 const subscribe = () => () => {};
@@ -196,6 +197,10 @@ function isPrimaryItemActive(pathname: string, href: string): boolean {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const sidebarRef = useRef<HTMLElement>(null);
+  // Width and fold, remembered per device (wide screens only).
+  const sidebarLayout = useSidebarLayout();
+  useRailTooltips(sidebarRef, sidebarLayout.rail);
   const { role, status, address, smartAccountAddress, token } = useAuth();
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
   const { isSidebarOpen, closeSidebar } = useUIStore();
@@ -284,12 +289,14 @@ export default function Sidebar() {
         />
       ) : null}
       <aside
+        ref={sidebarRef}
         id="primary-navigation"
         className={`app-sidebar ${isSidebarOpen ? "open" : ""}`}
         aria-label="Application navigation"
       >
       <div className="sidebar-logo">
         <BrandLogo size={34} wordmarkAs="h2" />
+        {sidebarLayout.media === "wide" ? <SidebarFoldButton layout={sidebarLayout.layout} /> : null}
         {showEnvBadge ? (
           <button
             type="button"
@@ -653,6 +660,7 @@ export default function Sidebar() {
         </div>
       ) : null}
       </aside>
+      {sidebarLayout.media === "wide" ? <SidebarResizeEdge sidebarRef={sidebarRef} layout={sidebarLayout.layout} /> : null}
     </>
   );
 }

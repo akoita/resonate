@@ -9,6 +9,26 @@ import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
 import { MixerConsole } from "../player/MixerConsole";
 import { VolumeIcon } from "../player/VolumeIcon";
+import { useSyncExternalStore } from "react";
+import {
+  getServerConsoleLayout,
+  getStoredConsoleLayout,
+  subscribeConsoleLayout,
+  toggleConsoleMinimized,
+} from "../../lib/playerConsoleLayout";
+
+const WIDE_QUERY = "(min-width: 768px)";
+
+function subscribeWide(listener: () => void): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const query = window.matchMedia(WIDE_QUERY);
+  query.addEventListener("change", listener);
+  return () => query.removeEventListener("change", listener);
+}
+
+function isWide(): boolean {
+  return typeof window === "undefined" || !window.matchMedia || window.matchMedia(WIDE_QUERY).matches;
+}
 
 export default function PlayerBar() {
   const router = useRouter();
@@ -22,8 +42,13 @@ export default function PlayerBar() {
   } = usePlayer();
   const { addToast } = useToast();
   const { setTracksToAddToPlaylist } = useUIStore();
+  const setSessionSheetOpen = useUIStore((state) => state.setSessionSheetOpen);
 
   const isPlayerPage = pathname === '/player';
+  // An open Session Dock carries Loop and Repeat itself (wide screens).
+  const consoleLayout = useSyncExternalStore(subscribeConsoleLayout, getStoredConsoleLayout, getServerConsoleLayout);
+  const wideScreen = useSyncExternalStore(subscribeWide, isWide, () => true);
+  const dockShowsListening = wideScreen && !consoleLayout.minimized;
   const isReleasePage = pathname?.startsWith('/release/');
 
   const handleToggleRepeat = () => {
@@ -59,7 +84,7 @@ export default function PlayerBar() {
       title="Double-click to open player"
     >
       {/* The full player console owns these controls; a second copy there would float over it. */}
-      {!isPlayerPage && <div className="player-listening-menu" onDoubleClick={e => e.stopPropagation()}><ListeningControls key={currentTrack?.id} /></div>}
+      {!isPlayerPage && !dockShowsListening && <div className="player-listening-menu" onDoubleClick={e => e.stopPropagation()}><ListeningControls key={currentTrack?.id} /></div>}
       {/* Progress Line */}
       <div
         className="player-progress-container"
@@ -81,10 +106,23 @@ export default function PlayerBar() {
         />
 
         {/* Floating Queue Indicator */}
-        <div className="queue-indicator">
-          <span className="queue-icon">📋</span>
+        <button
+          type="button"
+          className="queue-indicator"
+          onClick={(event) => {
+            event.stopPropagation();
+            // Phones slide up the Session sheet; wider screens fold or
+            // unfold the dock (the console, on /player).
+            if (window.matchMedia?.("(max-width: 767px)").matches) setSessionSheetOpen(true);
+            else toggleConsoleMinimized();
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+          aria-label={`Queue, track ${currentIndex + 1} of ${queue.length}. Show or hide the session.`}
+          title="Show or hide the queue"
+        >
+          <span className="queue-icon" aria-hidden="true">📋</span>
           <span className="queue-count">N° {currentIndex + 1} / {queue.length}</span>
-        </div>
+        </button>
       </div>
 
       <div className="player-track-info">

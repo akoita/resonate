@@ -38,6 +38,8 @@ import { FeatureTip } from "../../components/ui/FeatureTip";
 import { useListSelection } from "../../lib/useListSelection";
 import { useUIStore } from "../../lib/uiStore";
 import { usePlayerConsoleLayout } from "../../components/player/usePlayerConsoleLayout";
+import { QueueDropLanes } from "../../components/player/QueueDropLanes";
+import { startQueueRowDrag } from "../../lib/queueDrag";
 import {
   PlayerConsoleDockPreview,
   PlayerConsoleLayoutButtons,
@@ -745,6 +747,7 @@ function PlayerContent() {
             items={getSelectionItems(queueSelection.selected)}
             onClear={queueSelection.clear}
           />
+          <QueueDropLanes />
           <FeatureTip
             tipId="select-several-tracks"
             anchorRef={queueListRef}
@@ -765,6 +768,9 @@ function PlayerContent() {
                   className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""} ${queueSelection.isSelected(idx) ? "is-selected" : ""} ${queueSelection.isFocused(idx) ? "is-focused" : ""}`}
                   {...queueSelection.rowProps(idx)}
                   onContextMenu={(e) => handleContextMenu(e, idx)}
+                  // Drag a queue row onto a playlist in the playlists panel.
+                  draggable
+                  onDragStart={(e) => startQueueRowDrag(e.dataTransfer, track)}
                 >
                   <div className="queue-item-left">
                     <div className="queue-item-name">{track.title}</div>

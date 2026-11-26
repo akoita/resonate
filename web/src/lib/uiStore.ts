@@ -6,6 +6,9 @@ interface UIState {
     openPlaylistPanel: () => void;
     closePlaylistPanel: () => void;
     togglePlaylistPanel: () => void;
+    /** Phone only: the Session sheet (now playing and the queue) slid up from the player bar. */
+    isSessionSheetOpen: boolean;
+    setSessionSheetOpen: (open: boolean) => void;
     isSidebarOpen: boolean;
     openSidebar: () => void;
     closeSidebar: () => void;
@@ -30,6 +33,8 @@ export const useUIStore = create<UIState>((set) => ({
     openPlaylistPanel: () => set({ isPlaylistPanelOpen: true }),
     closePlaylistPanel: () => set({ isPlaylistPanelOpen: false }),
     togglePlaylistPanel: () => set((state) => ({ isPlaylistPanelOpen: !state.isPlaylistPanelOpen })),
+    isSessionSheetOpen: false,
+    setSessionSheetOpen: (open) => set({ isSessionSheetOpen: open }),
     isSidebarOpen: false,
     openSidebar: () => set({ isSidebarOpen: true }),
     closeSidebar: () => set({ isSidebarOpen: false }),
