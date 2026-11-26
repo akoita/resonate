@@ -7,7 +7,7 @@ import { clearEmbeddedAccount } from "../../lib/embedded_wallet";
 import { syncPlaylists } from "../../lib/playlistStore";
 import { useZeroDev } from "./ZeroDevProviderClient";
 import { getKernelAccountConfig } from "../../lib/accountAbstraction";
-import { getNetworkLabel } from "../../lib/explorer";
+import { welcomeMoneyMessage } from "../../lib/walletPlainWords";
 import { markFundingAnnouncementSeen } from "../../lib/fundingAnnouncement";
 import { getPasskeyRpId, getPasskeyServerUrl } from "../../lib/passkeyConfig";
 import {
@@ -429,7 +429,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       });
 
       if (result.signupFaucet?.status === "sent") {
-        const { amountEth, chainId: fundedChainId } = result.signupFaucet;
+        const { amountEth, amountUsdc, chainId: fundedChainId } = result.signupFaucet;
         void recordProductAnalytics(result.accessToken, "wallet.faucet_requested", {
           source: "auth",
           payload: {
@@ -437,14 +437,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             status: "sent",
             chainId: fundedChainId,
             amountEth,
+            amountUsdc,
           },
         });
         markFundingAnnouncementSeen(saAddress, fundedChainId);
         addToast({
           type: "success",
           visual: "funding",
-          title: "Wallet funded for staging",
-          message: `Happy news: your wallet was exceptionally funded with ${amountEth} ETH on ${getNetworkLabel(fundedChainId)} for this environment. This is test funding, not normal production onboarding.`,
+          title: "Welcome! We added test money to your wallet",
+          message: welcomeMoneyMessage({ amountUsdc, amountEth }),
           duration: 9000,
         });
       }

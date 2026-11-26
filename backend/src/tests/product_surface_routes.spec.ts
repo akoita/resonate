@@ -8,6 +8,7 @@ import { X402Controller } from "../modules/x402/x402.controller";
 import { PurchaseConsentController } from "../modules/purchase_consent/purchase_consent.controller";
 import { WalletController } from "../modules/identity/wallet.controller";
 import { GenerationController } from "../modules/generation/generation.controller";
+import { WelcomeFundsController } from "../modules/auth/welcome_funds.controller";
 
 /**
  * Pins every route that a product surface switch refuses (#2658). Removing a
@@ -39,5 +40,15 @@ describe("product surface route gates (#2658)", () => {
       .filter((guard): guard is ProductSurfaceGuard => guard instanceof ProductSurfaceGuard)
       .map((guard) => guard.surface);
     expect(surfaces).toEqual([surface]);
+  });
+});
+
+describe("welcome test money follows the wallet switch", () => {
+  it("gates the whole /welcome-funds controller on the wallet surface", () => {
+    const guards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, WelcomeFundsController) ?? [];
+    const surfaces = guards
+      .filter((guard): guard is ProductSurfaceGuard => guard instanceof ProductSurfaceGuard)
+      .map((guard) => guard.surface);
+    expect(surfaces).toEqual(["wallet"]);
   });
 });

@@ -1,14 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { WalletRecord } from "../../lib/api";
-import { getExplorerAddressUrl, getNetworkLabel } from "../../lib/explorer";
 import {
     hasSeenFundingAnnouncement,
     markFundingAnnouncementSeen,
     shouldAnnounceExceptionalFunding,
 } from "../../lib/fundingAnnouncement";
+import { isPaymasterEnabled } from "../../lib/bundlerConfig";
+import {
+    dollarBalance,
+    feesLine,
+    formatDollars,
+    isTestMoneyChain,
+    welcomeMoneyMessage,
+} from "../../lib/walletPlainWords";
 import { useOnChainBalance } from "../../hooks/useOnChainBalance";
+import { usePaymentAssetBalances, usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { useToast } from "../ui/Toast";
 
@@ -18,24 +26,35 @@ type VaultHeroProps = {
     address: string | null;
     isDeployed: boolean;
     onRefresh: () => void;
+    /** Bumped after welcome money arrives so the balance reads again. */
+    refreshKey?: number;
 };
 
-const ETH_PRICE_APPROX = 3000; // Approximate USD/ETH for display
-
-export default function VaultHero({ wallet, status, address, isDeployed, onRefresh }: VaultHeroProps) {
+/**
+ * The Wallet page's first screen in plain words: one balance in dollars, a
+ * "Test money" badge on test networks, and a line about fees. Addresses and
+ * account technicalities live under "Technical details" further down.
+ */
+export default function VaultHero({ address, onRefresh, refreshKey = 0 }: VaultHeroProps) {
     const { addToast } = useToast();
     const { chainId } = useZeroDev();
-    const isSmartAccount = wallet?.accountType === "erc4337" || wallet?.accountType === "kernel";
-    const { balance, balanceEth, loading: balanceLoading } = useOnChainBalance(address);
-    const [copied, setCopied] = useState(false);
+    const { balance, balanceEth, loading: ethLoading } = useOnChainBalance(address);
+    const { assets } = usePaymentAssets(chainId);
+    const stablecoins = assets.filter((asset) => asset.kind === "stablecoin" && asset.enabled);
+    const { balances, loading: dollarsLoading } = usePaymentAssetBalances({
+        wallet: address,
+        assets: stablecoins,
+        refreshKey,
+    });
 
-    const ethValue = balanceEth ? Number(balanceEth) : 0;
-    const usdValue = (ethValue * ETH_PRICE_APPROX).toFixed(2);
-    const shortAddress = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
-    const explorerAddressUrl = getExplorerAddressUrl(address);
+    const testMoney = isTestMoneyChain(chainId);
+    const ethValue = balanceEth ? Number(balanceEth) : null;
+    const dollars = dollarBalance(balances);
+    const fees = feesLine({ sponsored: isPaymasterEnabled(chainId), ethBalance: ethValue });
+    const loading = dollarsLoading || (stablecoins.length === 0 && ethLoading);
 
     useEffect(() => {
-        if (!address || !chainId || balanceLoading) return;
+        if (!address || !chainId || ethLoading) return;
         if (!shouldAnnounceExceptionalFunding(chainId, balance)) return;
         if (hasSeenFundingAnnouncement(address, chainId)) return;
 
@@ -43,33 +62,26 @@ export default function VaultHero({ wallet, status, address, isDeployed, onRefre
         addToast({
             type: "success",
             visual: "funding",
-            title: "Wallet funded for this environment",
-            message: `Happy news: your wallet was exceptionally funded with ${ethValue.toFixed(6)} ETH on ${getNetworkLabel(chainId)} for this environment. This is test funding, not normal production onboarding.`,
+            title: "Test money arrived",
+            message: welcomeMoneyMessage({ amountEth: balanceEth }),
             duration: 9000,
         });
-    }, [addToast, address, balance, balanceLoading, chainId, ethValue]);
-
-    const copyAddress = async () => {
-        if (!address) return;
-        await navigator.clipboard.writeText(address);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
+    }, [addToast, address, balance, balanceEth, ethLoading, chainId]);
 
     return (
         <div className="vault-hero">
-            {/* Animated mesh background */}
             <div className="vault-hero-mesh" />
 
             <div className="vault-hero-content">
-                {/* Network Badge */}
                 <div className="vault-hero-top-row">
-                    <div className="vault-network-badge">
-                        <span className="vault-network-dot" />
-                        {getNetworkLabel(chainId)}
-                    </div>
+                    {testMoney ? (
+                        <div className="vault-network-badge vault-test-money-badge" data-testid="wallet-test-money-badge">
+                            <span className="vault-network-dot" />
+                            Test money
+                        </div>
+                    ) : <span />}
                     <button className="vault-btn vault-btn--ghost vault-btn--sm" onClick={onRefresh}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <polyline points="23 4 23 10 17 10" />
                             <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
                         </svg>
@@ -77,79 +89,23 @@ export default function VaultHero({ wallet, status, address, isDeployed, onRefre
                     </button>
                 </div>
 
-                {/* Balance Display */}
                 <div className="vault-balance-group">
-                    <div className="vault-balance-label">Smart Account Balance</div>
-                    <div className="vault-balance">
-                        {balanceLoading ? (
+                    <h1 className="vault-balance-label">Your balance</h1>
+                    <div className="vault-balance" data-testid="wallet-dollar-balance">
+                        {loading ? (
                             <span className="vault-balance-skeleton">Loading…</span>
                         ) : (
-                            <>
-                                {ethValue.toFixed(6)}
-                                <span className="vault-balance-currency"> ETH</span>
-                            </>
+                            formatDollars(dollars)
                         )}
                     </div>
-                    <div className="vault-balance-usd">
-                        ≈ ${usdValue} USD
-                    </div>
+                    {fees ? <div className="vault-balance-usd">{fees}</div> : null}
+                    {testMoney ? (
+                        <p className="vault-hero-note">
+                            This is test money on a practice network. It has no real value, so try anything:
+                            back a show, then get it back if the show doesn&apos;t happen.
+                        </p>
+                    ) : null}
                 </div>
-
-                {/* Address Pill */}
-                {shortAddress && (
-                    <div className="vault-hero-footer">
-                        <button className="vault-address-pill" onClick={copyAddress} title="Copy address">
-                            <span className="vault-address-pill-text">{shortAddress}</span>
-                            {copied ? (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                            ) : (
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                                </svg>
-                            )}
-                        </button>
-                        {explorerAddressUrl && (
-                            <a
-                                href={explorerAddressUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="vault-explorer-btn"
-                                title={`View on ${getNetworkLabel(chainId)} explorer`}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                                    <polyline points="15 3 21 3 21 9" />
-                                    <line x1="10" y1="14" x2="21" y2="3" />
-                                </svg>
-                            </a>
-                        )}
-
-                        {/* Status Badges */}
-                        <span
-                            className={`vault-status-badge ${status === "authenticated"
-                                ? "vault-status-badge--active"
-                                : status === "loading"
-                                    ? "vault-status-badge--inactive"
-                                    : "vault-status-badge--locked"
-                                }`}
-                        >
-                            <span className="vault-status-dot" />
-                            {status === "authenticated" ? "Connected" : status === "loading" ? "Connecting…" : "Disconnected"}
-                        </span>
-
-                        {isSmartAccount && (
-                            <span
-                                className={`vault-status-badge ${isDeployed ? "vault-status-badge--active" : "vault-status-badge--inactive"}`}
-                            >
-                                <span className="vault-status-dot" />
-                                {isDeployed ? "Deployed" : "Pending"}
-                            </span>
-                        )}
-                    </div>
-                )}
             </div>
         </div>
     );

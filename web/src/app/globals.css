@@ -644,6 +644,16 @@ a {
   transition: all 0.3s ease;
 }
 
+button.user-profile {
+  width: 100%;
+  font: inherit;
+  text-align: start;
+}
+
+.user-profile[aria-expanded="true"] {
+  border-color: rgba(124, 92, 255, 0.45);
+}
+
 .user-profile:hover {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.1);
@@ -3839,6 +3849,72 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
 }
 
 /* ---- Vault Cards ---- */
+/* Wallet newcomer pass: test-money badge, welcome card, folded details. */
+.vault-test-money-badge {
+  color: #ffd9cf;
+  border-color: rgba(255, 107, 74, 0.45);
+  background: rgba(255, 107, 74, 0.12);
+}
+
+.vault-hero-note {
+  margin: var(--space-3) 0 0;
+  max-width: 46ch;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.72));
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.vault-welcome-card {
+  margin-top: var(--space-6);
+  gap: var(--space-3);
+}
+
+.vault-welcome-lead {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.vault-welcome-steps {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  display: grid;
+  gap: var(--space-2);
+  line-height: 1.5;
+}
+
+.vault-welcome-steps a {
+  color: #b9a8ff;
+}
+
+.vault-welcome-claim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.vault-welcome-note {
+  margin: 0;
+  font-size: 14px;
+}
+
+.vault-details {
+  margin-top: var(--space-6);
+}
+
+.vault-details-summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: var(--space-3) 0;
+}
+
+.vault-details-copy {
+  margin: 0 0 var(--space-4);
+  font-size: 14px;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.72));
+}
+
 .vault-card {
   background: var(--studio-surface);
   backdrop-filter: var(--glass-blur) var(--glass-saturate);

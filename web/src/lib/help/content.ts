@@ -684,12 +684,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: "smart-wallet",
     surfaces: ["wallet"],
-    title: "Your wallet & smart account",
+    title: "Your wallet",
     summary:
-      "Every account comes with a built-in 'smart account' wallet for payouts, purchases, and stakes — funded with stablecoins and protected by your passkey.",
+      "Every account comes with a wallet, opened with your passkey. It shows your balance in dollars and holds the money you use to back shows, buy stems, receive payouts and place stakes.",
     category: "account",
     audiences: ["everyone", "listener", "artist"],
-    keywords: ["wallet", "smart account", "balance", "usdc", "stablecoin", "gas", "funding", "deposit", "recovery", "passkey", "budget cap", "erc-4337", "stake", "claim stake", "withdraw stake"],
+    keywords: ["wallet", "smart account", "balance", "test money", "welcome money", "get my test money", "account menu", "sign out", "usdc", "stablecoin", "gas", "funding", "deposit", "recovery", "passkey", "budget cap", "erc-4337", "stake", "claim stake", "withdraw stake"],
     sections: [
       {
         id: "overview",
@@ -697,18 +697,34 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Your smart account is the wallet Resonate created with your passkey. It holds your balance, receives artist payouts, pays for stems and pledges, and tracks any stakes you have placed. You approve each action with your passkey — there are no separate keys to back up. Open it by clicking your account chip at the bottom of the sidebar.",
+            text: "Your wallet is the account Resonate created with your passkey. It holds your balance, receives artist payouts, pays for stems and pledges, and tracks any stakes you have placed. You approve each action with your passkey, so there are no separate keys to back up. Open it from your name at the bottom of the sidebar: the menu there offers Profile, Wallet, Settings and Sign out. The top of the page shows one balance in dollars; the account's technical side (its address and how it is secured) is folded under Technical details.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/wallet.png`,
-              alt: "The Wallet page showing a Smart Account Balance of 0.000000, account details, and a Security & Recovery panel listing Passkey Signer, Kernel Account, and Gas Sponsorship.",
-              caption: "The Wallet page: balance at the top, account details on the left, and Security & Recovery on the right.",
+              alt: "The Wallet page showing a Test money badge, Your balance in dollars, and a Start here card with three steps and a Get my test money button.",
+              caption: "The Wallet page: your balance in dollars at the top, then what to do with your test money.",
               width: 1440,
               height: 900,
               source: STAGING,
             },
+          },
+        ],
+      },
+      {
+        id: "test-money",
+        heading: "Test money on the preview",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "On the preview, the wallet holds test money, marked with a Test money badge. It has no real value, so you can try everything: back a show, and get it back if the show doesn't happen. Every new account receives a welcome amount once, and a Start here card on the Wallet page explains what to do with it.",
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "No welcome money yet?",
+            text: "Press Get my test money on the Wallet page. If the day's welcome money has all been handed out, try again the next day.",
           },
         ],
       },
@@ -769,7 +785,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "Open your wallet", href: "/wallet", description: "Balance, funding, security, and stakes." },
+      { label: "Open your wallet", href: "/wallet", description: "Balance, test money, stakes, and technical details." },
     ],
     related: ["getting-started", "marketplace-buy", "shows-back", "rights-protection"],
   },

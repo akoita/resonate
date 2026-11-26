@@ -13,7 +13,7 @@ import { seconds } from "../shared/rate_limits";
 import { recoverMessageAddress, type PublicClient } from "viem";
 import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
-import { SignupFaucetService, type AuthMode } from "./signup_faucet.service";
+import { SignupFaucetService, type AuthMode, type SignupFaucetSent } from "./signup_faucet.service";
 import { AuthNonceDto, AuthVerifyDto } from "./auth.dto";
 import { EventBus } from "../shared/event_bus";
 import { AccountClosureService } from "../privacy/account_closure.service";
@@ -347,9 +347,7 @@ export class AuthController {
     await this.userActivity?.recordSignIn(canonicalUserId);
 
     const result = this.authService.issueTokenForAddress(canonicalUserId, input.role ?? "listener");
-    let signupFaucet:
-      | { status: "sent"; txHash: `0x${string}`; chainId: number; amountEth: string }
-      | undefined;
+    let signupFaucet: SignupFaucetSent | undefined;
     if (this.signupFaucetService) {
       try {
         const faucetResult = await this.signupFaucetService.maybeFundOnSignup({
@@ -368,6 +366,7 @@ export class AuthController {
             userId: canonicalUserId,
             chainId: faucetResult.chainId,
             amountEth: faucetResult.amountEth,
+            amountUsdc: faucetResult.amountUsdc,
             status: "sent",
           });
         }
