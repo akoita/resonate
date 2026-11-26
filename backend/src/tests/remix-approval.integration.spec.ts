@@ -21,6 +21,10 @@ import { prisma } from "../db/prisma";
 import { RemixApprovalService } from "../modules/remix/remix-approval.service";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
 import { REMIX_POLICY_VERSION } from "../modules/remix/remix-eligibility.policy";
+import {
+  PrismaArtistRemixApprovalSource,
+  remixApprovalCards,
+} from "../modules/analytics/analytics_remix_approvals";
 
 const TEST_PREFIX = `remix_approval_${Date.now()}_`;
 const CREATOR_ID = `${TEST_PREFIX}creator`;
@@ -252,8 +256,22 @@ describe("Remix approval (integration)", () => {
 
   it("a decline keeps the draft private, tells the creator, and the same version cannot be asked again", async () => {
     const project = await createProject(TRACK_ID, STEM_ID, `${TEST_PREFIX}job_decline`);
+    const pendingSource = new PrismaArtistRemixApprovalSource();
+    const pendingBefore = await pendingSource.countPendingApprovals(ARTIST_ID);
     const asked = await approvals.requestApproval(CREATOR_ID, project.id);
     const requestId = asked.current[0].id;
+
+    // #1121: the artist's analytics shows a next-step card while a version waits.
+    const pendingWhileAsked = await pendingSource.countPendingApprovals(ARTIST_ID);
+    expect(pendingWhileAsked).toBe(pendingBefore + 1);
+    expect(remixApprovalCards(pendingWhileAsked)).toEqual([
+      expect.objectContaining({
+        type: "review_remix_approvals",
+        cta: expect.objectContaining({ href: "/artist/remix-approvals" }),
+        sourceSignal: expect.objectContaining({ count: pendingWhileAsked }),
+      }),
+    ]);
+    expect(remixApprovalCards(0)).toEqual([]);
 
     await expect(
       approvals.decide(ARTIST_USER_ID, requestId, { decision: "maybe" }),
@@ -273,6 +291,7 @@ describe("Remix approval (integration)", () => {
       expect.anything(),
     );
 
+    expect(await pendingSource.countPendingApprovals(ARTIST_ID)).toBe(pendingBefore);
     expect((await eligibilityFor(project)).allowedActions).toEqual(["private_draft"]);
     await expect(approvals.requestApproval(CREATOR_ID, project.id)).rejects.toMatchObject({
       response: expect.objectContaining({ code: "version_declined" }),

@@ -839,6 +839,7 @@ export type ArtistActionCard = {
     | "prepare_remix_challenge"
     | "review_remix_supply_pricing"
     | "triage_fan_questions"
+    | "review_remix_approvals"
     | "relist_expired_inventory"
     | "improve_marketplace_conversion"
     | "review_marketplace_pricing";

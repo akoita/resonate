@@ -3934,7 +3934,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Alongside the numbers, the dashboard suggests concrete next steps — for example promoting a top track, listing marketplace-ready stems, activating a community room, reviewing city demand for a show, or posting a campaign update. Each card links straight to where you'd act.",
+            text: "Alongside the numbers, the dashboard suggests concrete next steps — for example promoting a top track, listing marketplace-ready stems, activating a community room, reviewing city demand for a show, posting a campaign update, or answering remixes waiting for your approval. Each card links straight to where you'd act.",
           },
         ],
       },
