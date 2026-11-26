@@ -317,6 +317,23 @@
   position: relative;
 }
 
+/* Phones: the strip's items wrap instead of running past the screen edge. */
+@media (max-width: 640px) {
+  .create-analytics-strip {
+    flex-wrap: wrap;
+    gap: 12px 0;
+    padding: 16px 8px;
+  }
+  .create-analytics-strip .create-analytics-item {
+    flex: 1 1 40%;
+    min-width: 0;
+    padding: 2px 8px;
+  }
+  .create-analytics-strip .create-analytics-divider {
+    display: none;
+  }
+}
+
 .create-analytics-strip::after {
   content: "";
   position: absolute;

@@ -621,6 +621,9 @@
 }
 
 .shows-create__visual-preview {
+  /* An explicit width stops min-height from widening the box through its
+     aspect ratio (260px tall at 21:9 is 607px wide, wider than a phone). */
+  width: 100%;
   min-height: 260px;
   aspect-ratio: 21 / 9;
   border-radius: 16px;

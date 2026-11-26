@@ -6887,7 +6887,7 @@ a.listener-cohort-detail__action:focus-visible {
 }
 
 .community-profile-page {
-  width: min(1040px, calc(100vw - 48px));
+  width: min(1040px, 100%);
   margin: 0 auto;
   padding: var(--space-6) 0 calc(var(--space-6) + 96px);
 }
@@ -7660,7 +7660,9 @@ a.listener-cohort-detail__action:focus-visible {
 
 .settings-workspace,
 .community-workspace {
-  width: min(1180px, calc(100vw - 48px));
+  /* Sized from the page column, not the viewport: 100vw ignored the sidebar
+     and the dock, so on a laptop the right edge ran under the window edge. */
+  width: min(1180px, 100%);
   margin: 0 auto;
   padding: var(--space-6) 0 calc(var(--space-6) + 96px);
 }
@@ -15517,6 +15519,10 @@ tr[draggable="true"]:hover {
 
 .analytics-container {
   display: grid;
+  /* One column that never grows past the page: an implicit `auto` track took
+     the header's widest row as its minimum and pushed the catalog actions past
+     the right edge on tablets and phones. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-6);
   animation: analytics-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }

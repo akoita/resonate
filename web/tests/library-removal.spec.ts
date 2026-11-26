@@ -103,7 +103,7 @@ test("owned stems explain why they stay in the library", async ({ authenticatedP
     await route.fulfill({ status: 500 });
   });
   await page.goto("/library?tab=tracks", { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Show Stems").check();
+  await page.getByLabel("Show stems").check();
 
   const row = page.locator(".library-item").filter({ hasText: "Owned mix" });
   await expect(row.getByRole("checkbox")).toBeDisabled();
