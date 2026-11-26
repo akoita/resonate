@@ -185,55 +185,57 @@ export default async function CampaignDetailPage({ params }: Props) {
             <article className="show-detail__brief">
               <div>
                 <span className="shows-home-section__kicker">Why this matters</span>
-                <h2 className="shows-home-section__title">A booking signal with weight.</h2>
+                <h2 className="shows-home-section__title">Real fans, not likes.</h2>
                 <p>
-                  This campaign turns fan demand into a measurable escrow signal.
-                  Instead of likes, comments, or vague interest, promoters see
-                  committed money, backer count, deadline, and refund rules up front.
+                  Artists and venues book shows where they know people will come.
+                  A pledge here says more than a like or a comment: it shows how
+                  many fans in {campaign.city} are ready to buy a ticket, with the
+                  deadline and refund rules out in the open.
                 </p>
               </div>
-              <div className="show-detail__brief-points">
-                <span>Verifiable demand</span>
-                <span>Refund-first escrow</span>
-                <span>Public contract trail</span>
-              </div>
+              <ul className="show-detail__brief-points" aria-label="What a pledge gives you">
+                <li>Demand anyone can check</li>
+                <li>Refund if it isn&apos;t booked</li>
+                <li>Every pledge on public record</li>
+              </ul>
             </article>
 
             <section>
               <div className="shows-home-section__header" style={{ marginBottom: 20 }}>
                 <span className="shows-home-section__kicker">How it works</span>
                 <h2 className="shows-home-section__title">
-                  Three steps. Enforced by code.
+                  Three steps, all out in the open.
                 </h2>
               </div>
-              <div className="show-detail__how">
-                <article className="show-detail__step">
-                  <span className="show-detail__step-num">Step 1 — Pledge</span>
-                  <h3 className="show-detail__step-title">You lock funds in escrow</h3>
+              <ol className="show-detail__how">
+                <li className="show-detail__step">
+                  <span className="show-detail__step-num">Step 1 · Pledge</span>
+                  <h3 className="show-detail__step-title">Choose an amount</h3>
                   <p className="show-detail__step-body">
-                    You pick a tier and pledge. The money goes into a public
-                    smart contract — not a company&apos;s bank account.
+                    Pick a tier and pledge. Your money is held in a secure public
+                    account that nobody can touch before the show is booked,
+                    Resonate included.
                   </p>
-                </article>
-                <article className="show-detail__step">
-                  <span className="show-detail__step-num">Step 2 — Threshold</span>
-                  <h3 className="show-detail__step-title">Enough fans commit</h3>
+                </li>
+                <li className="show-detail__step">
+                  <span className="show-detail__step-num">Step 2 · Goal</span>
+                  <h3 className="show-detail__step-title">Enough fans join in</h3>
                   <p className="show-detail__step-body">
-                    If the funding threshold is met before the deadline, the
-                    artist&apos;s team gets a verifiable demand signal and reviews
-                    the booking.
+                    If the goal is reached before the deadline, the artist&apos;s
+                    team sees real demand in {campaign.city} and works on the
+                    booking.
                   </p>
-                </article>
-                <article className="show-detail__step">
-                  <span className="show-detail__step-num">Step 3 — Confirm or refund</span>
-                  <h3 className="show-detail__step-title">Code decides the outcome</h3>
+                </li>
+                <li className="show-detail__step">
+                  <span className="show-detail__step-num">Step 3 · Show or refund</span>
+                  <h3 className="show-detail__step-title">The show happens, or you get it back</h3>
                   <p className="show-detail__step-body">
-                    If the artist confirms, funds release to production and fans
-                    get tickets plus a Soulbound Token. If not, the contract
-                    refunds every pledge automatically.
+                    If the show is booked, the money goes to making it happen and
+                    backers get what their tier promises. If not, every backer
+                    can claim their pledge back.
                   </p>
-                </article>
-              </div>
+                </li>
+              </ol>
             </section>
 
             <CampaignCommunityPanel campaign={campaign} />
@@ -272,7 +274,11 @@ export default async function CampaignDetailPage({ params }: Props) {
         </div>
 
         <CampaignOperatorPanel campaign={campaign} />
-        {interestMode ? null : <CampaignMobilePledgeBar campaign={campaign} />}
+        {interestMode ? null : (
+          <SurfaceGate surface="showsPledging">
+            <CampaignMobilePledgeBar campaign={campaign} />
+          </SurfaceGate>
+        )}
       </div>
     </main>
   );
@@ -286,7 +292,7 @@ function defaultTiers(currency: "EUR" | "USD"): CampaignTier[] {
       amountCents: 2_500,
       currency,
       paymentAssetSymbol: "USDC",
-      description: "Refundable support signal and campaign receipt.",
+      description: "Refundable support and a campaign receipt.",
     },
     {
       id: "ticket-intent",

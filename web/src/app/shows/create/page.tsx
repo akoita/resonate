@@ -19,8 +19,9 @@ export default async function CreateShowCampaignPage({ searchParams }: {
           <span className="shows-home-section__kicker">Campaign desk</span>
           <h1>Create a draft show campaign</h1>
           <p>
-            Drafts stay off the active escrow path until artist authority is
-            approved and an operator links the deployed escrow campaign.
+            Start with a draft. Fans can follow it, but pledging opens only once
+            Resonate confirms the artist approves the campaign and its pledge
+            account is set up.
           </p>
         </header>
 

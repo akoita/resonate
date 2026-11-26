@@ -19,7 +19,7 @@ export function CampaignMobilePledgeBar({ campaign }: Props) {
       </div>
       <CampaignPledgeAnchor
         className="show-detail__mobile-pledge-action"
-        aria-label="Pledge with wallet, jump to pledge tiers"
+        aria-label="Pledge: jump to the pledge tiers"
       >
         Pledge
       </CampaignPledgeAnchor>

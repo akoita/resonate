@@ -388,19 +388,19 @@ export function campaignTrustState(
   if (authority === "revoked" || authority === "expired" || authority === "rejected") {
     return {
       key: "authority_revoked",
-      label: "Authority revoked",
+      label: "Artist approval withdrawn",
       tone: "danger",
       description:
-        "Artist authorization is no longer valid, so this campaign cannot take pledges.",
+        "The artist's approval is no longer valid, so this campaign can't take pledges.",
     };
   }
   if (level === "signal") {
     return {
       key: "demand_signal",
-      label: "Demand signal",
+      label: "Fan request",
       tone: "neutral",
       description:
-        "An open, fan-proposed demand signal. No funds are escrowed and no show is booked yet.",
+        "Fans are asking for this show. No money is collected and nothing is booked yet.",
     };
   }
   if (
@@ -409,18 +409,18 @@ export function campaignTrustState(
   ) {
     return {
       key: "authorized_escrow",
-      label: "Artist-authorized escrow",
+      label: "Artist approved",
       tone: "positive",
       description:
-        "An artist-authorized campaign with funds held in escrow. Release depends on booking and fulfillment.",
+        "The artist approved this campaign. Pledges are held safely and only paid out once the show is booked and played.",
     };
   }
   return {
     key: "provisional",
-    label: "Provisional campaign",
+    label: "Awaiting artist approval",
     tone: "info",
     description:
-      "A provisional campaign awaiting verified artist authority before escrow activation.",
+      "Pledging opens once Resonate confirms that the artist or their team approves this campaign.",
   };
 }
 
@@ -494,16 +494,16 @@ export function campaignPledgeAvailability(
       key: "not_authorized",
       title: "Not open for pledging",
       message:
-        "Artist authorization isn't valid for this campaign, so it can't take escrow pledges.",
+        "The artist's approval isn't valid for this campaign, so it can't take pledges.",
     };
   }
   if (level === "signal") {
     return {
       open: false,
       key: "signal",
-      title: "Open demand signal",
+      title: "Fans are asking for this show",
       message:
-        "This is a fan-proposed demand signal — no funds are escrowed yet. Backing opens only if it's authorized as an escrow campaign.",
+        "No money is collected yet. Pledging opens only if the artist approves the campaign.",
     };
   }
   if (
@@ -515,18 +515,18 @@ export function campaignPledgeAvailability(
     return {
       open: false,
       key: "pending_authority",
-      title: "Awaiting artist authority",
+      title: "Awaiting artist approval",
       message:
-        "This campaign is provisional. Pledging opens once an operator verifies the artist's authority and the escrow terms are locked.",
+        "Pledging opens once Resonate confirms the artist approves this campaign and its terms are fixed.",
     };
   }
   if (!campaign.contractAddress || !campaign.contractCampaignId) {
     return {
       open: false,
       key: "escrow_unavailable",
-      title: "Escrow not ready",
+      title: "Not taking pledges yet",
       message:
-        "This campaign is not accepting pledges until its on-chain escrow is linked and verified.",
+        "Pledging opens once the secure account that holds this campaign's pledges is set up and checked.",
     };
   }
   if (status !== "active") {
@@ -608,13 +608,13 @@ export function validateCampaignDeadlines(
 export function releasePolicyLabel(policy?: string | null): string {
   switch (policy) {
     case "refund_only_until_booking":
-      return "Refund-only until booking is confirmed";
+      return "Refundable until the booking is confirmed";
     case "staged_release":
-      return "Staged release (deposit on booking, remainder on fulfillment)";
+      return "Part paid at booking, the rest after the show";
     case "manual_ops_release":
-      return "Manual operator release";
+      return "Paid out by Resonate after review";
     default:
-      return "Refund-first";
+      return "Refunded if the show isn't booked";
   }
 }
 
@@ -679,7 +679,8 @@ export function campaignTerms(campaign: Campaign): CampaignTerm[] {
   const fmtDate = (iso?: string | null) => {
     if (!iso) return "—";
     const date = new Date(iso);
-    return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
+    if (Number.isNaN(date.getTime())) return iso;
+    return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   };
   const depositPct =
     campaign.depositReleaseBps != null
@@ -694,7 +695,9 @@ export function campaignTerms(campaign: Campaign): CampaignTerm[] {
     },
     {
       label: "Payment",
-      value: `${campaign.paymentAssetSymbol ?? "USDC"} on ${chainName(campaign.chainId)}`,
+      value: campaign.chainId
+        ? `${campaign.paymentAssetSymbol ?? "USDC"} on ${chainName(campaign.chainId)}`
+        : campaign.paymentAssetSymbol ?? "USDC",
     },
     { label: "Booking deadline", value: fmtDate(campaign.bookingDeadline) },
     { label: "Deposit released on booking", value: depositPct },
@@ -741,7 +744,7 @@ export function pledgeConfirmSummary(
   }
   lines.push("");
   lines.push(
-    "Funds are held in escrow. Funding never guarantees a ticket — if the show isn't confirmed, refunds open automatically and you claim your pledge back.",
+    "Your money is held safely until the show is booked. Funding never guarantees a ticket: if the show isn't confirmed, refunds open automatically and you claim your pledge back.",
   );
   return lines.join("\n");
 }
@@ -795,10 +798,10 @@ export function pledgeStateLabel(
       return "Pledge started";
     case "submitted":
       return confirmationStatus === "pending"
-        ? "Submitted — awaiting on-chain confirmation"
+        ? "Sent, waiting for confirmation"
         : "Submitted";
     case "confirmed":
-      return "Confirmed on-chain";
+      return "Confirmed";
     case "refund_available":
       return "Refund available";
     case "refunded":

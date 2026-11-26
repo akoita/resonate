@@ -15,7 +15,7 @@ describe("CampaignTrustBadge (#949)", () => {
     );
     expect(html).toContain('data-trust="authorized_escrow"');
     expect(html).toContain("campaign-trust-badge--positive");
-    expect(html).toContain("Artist-authorized escrow");
+    expect(html).toContain("Artist approved");
   });
 
   it("reflects terminal/refund states and merges a custom className", () => {
@@ -35,6 +35,6 @@ describe("CampaignTrustBadge (#949)", () => {
       />,
     );
     expect(signal).toContain('data-trust="demand_signal"');
-    expect(signal).toContain("Demand signal");
+    expect(signal).toContain("Fan request");
   });
 });
