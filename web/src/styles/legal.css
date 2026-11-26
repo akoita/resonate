@@ -26,3 +26,9 @@
 .report-page h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); line-height: 1.1; margin: 0 0 16px; }
 .report-page__lead { max-width: 640px; margin: 0 0 16px; line-height: 1.6; color: var(--color-muted); }
 .report-page__lead a { color: var(--color-accent); text-underline-offset: 3px; }
+
+/* Invitation-only sign-up: the invitation dialog shows this note beside the
+   button that creates the account, so phones drop it from the top bar. */
+@media (max-width: 640px) {
+  .wallet-legal-links--in-dialog { display: none; }
+}

@@ -120,7 +120,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "The sidebar keeps to what you use most: Home, Player, Library (your playlists are inside it), Shows, Drops, Crates & Stems, then Settings and this User Guide. Artist accounts also see their tools under For artists: Upload, Catalog, Listings and Analytics, with creating music with AI last. Your account chip at the bottom of the sidebar opens your account. On a wide screen, drag the sidebar's right edge to make it narrower or wider, or past the edge to fold it to icons; double-click the edge, or use the button beside the logo, to fold or open it. Hover an icon to see its name. Your choice is remembered on this device.",
+            text: "The sidebar keeps to what you use most: Home, Player, Library (your playlists are inside it), Shows, Drops, Crates & Stems, then Settings and this User Guide. Artist accounts also see their tools under For artists: Upload, Catalog, Listings and Analytics, with creating music with AI last. Your account chip, in the top bar and at the bottom of the sidebar, shows your artist or profile name (or Your account until you set one) and opens your account; the sign-out button sits beside it in the top bar. On a wide screen, drag the sidebar's right edge to make it narrower or wider, or past the edge to fold it to icons; double-click the edge, or use the button beside the logo, to fold or open it. Hover an icon to see its name. Your choice is remembered on this device.",
           },
         ],
       },

@@ -162,3 +162,10 @@
   line-height: 1.5;
   color: var(--color-muted);
 }
+
+/* The same note as the top bar, which phones drop while sign-up is by invitation. */
+.legal {
+  margin: 4px 0 0;
+  max-width: none;
+  text-align: left;
+}

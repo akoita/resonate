@@ -75,9 +75,9 @@ export function HomeHeroEmpty() {
         <span className="ng-kicker ng-kicker--primary">Resonate Shows</span>
         <h2 className="ng-hero__title">Fans bring the show.</h2>
         <p className="ng-hero__body">
-          No campaigns are open for pledges right now. Fans can propose a
-          show for an artist in their city — pledges are held in escrow and
-          backers can claim them back if the show doesn&apos;t happen.
+          No shows are open right now. Propose one for an artist you love, in
+          your city. Pledges are held safely, and every backer can claim theirs
+          back if the show doesn&apos;t happen.
         </p>
         <div className="ng-hero__actions">
           <Link href="/shows/create" className="ng-btn ng-btn--primary">

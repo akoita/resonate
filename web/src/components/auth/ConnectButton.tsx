@@ -7,6 +7,7 @@ import { AUTH_COPY } from "../../lib/authCopy";
 import InviteSignupDialog from "./InviteSignupDialog";
 import { getRegistrationStatus } from "../../lib/api";
 import { readRememberedInvite, rememberInviteFromUrl } from "../../lib/invitationCopy";
+import SignedInChip, { ACCOUNT_CHIP_FALLBACK } from "./SignedInChip";
 
 function sessionStorageOrNull(): Storage | null {
   try {
@@ -20,7 +21,6 @@ const subscribe = () => () => { };
 
 export default function ConnectButton() {
   const { status, sessionChecked, address, login, signup, disconnect, error, errorCode } = useAuth();
-  const [copied, setCopied] = useState(false);
   const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
   // #2662: invitation-only sign-up. The dialog opens from Create account when the
   // server is in invitation mode, from an `?invite=` link, or after a sign-in
@@ -36,6 +36,20 @@ export default function ConnectButton() {
       setInviteCode(fromUrl);
       setInviteOpen(true);
     }
+  }, [sessionChecked, status]);
+
+  // #2663 follow-up: on phones the three-line legal note made the signed-out top
+  // bar 150px tall. When sign-up goes through the invitation dialog, the dialog
+  // carries the same note next to the button that creates the account, so the
+  // bar can drop it on small screens.
+  const [registrationMode, setRegistrationMode] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sessionChecked || status === "authenticated") return;
+    let cancelled = false;
+    getRegistrationStatus()
+      .then((registration) => { if (!cancelled) setRegistrationMode(registration.mode); })
+      .catch(() => { /* keep the note in the bar */ });
+    return () => { cancelled = true; };
   }, [sessionChecked, status]);
 
   const startSignup = async () => {
@@ -57,60 +71,8 @@ export default function ConnectButton() {
     void signup(code);
   };
 
-  const copyAddress = async () => {
-    if (!address) return;
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      console.warn("[Auth] Clipboard permission denied while copying wallet address.");
-    }
-  };
-
   if (hasMounted && status === "authenticated" && address) {
-    return (
-      <div className="wallet-connected">
-        <div className="wallet-connected-info">
-          <div className="wallet-avatar">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2z" />
-              <path d="M16 11.37a4 4 0 1 1-4.73-4.73 4 4 0 0 1 4.73 4.73z" />
-            </svg>
-          </div>
-          <button className="wallet-address" onClick={copyAddress} title="Click to copy">
-            <span className="wallet-address-text">
-              {address.slice(0, 6)}…{address.slice(-4)}
-            </span>
-            <span className="wallet-copy-icon">
-              {copied ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              )}
-            </span>
-          </button>
-        </div>
-        <button
-          type="button"
-          className="wallet-disconnect"
-          onClick={disconnect}
-          aria-label={AUTH_COPY.signOut}
-          title={AUTH_COPY.signOut}
-        >
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-        </button>
-      </div>
-    );
+    return <SignedInChip onSignOut={disconnect} />;
   }
 
   // Until the stored session has been read (server render, and the first
@@ -129,13 +91,10 @@ export default function ConnectButton() {
       {sessionPending ? (
         <div className="wallet-connected wallet-connected--pending" aria-hidden="true">
           <div className="wallet-connected-info">
-            <div className="wallet-avatar" />
-            <button type="button" className="wallet-address" tabIndex={-1}>
-              <span className="wallet-address-text">0x0000…0000</span>
-              <span className="wallet-copy-icon">
-                <svg width="14" height="14" viewBox="0 0 24 24" />
-              </span>
-            </button>
+            <span className="wallet-avatar" />
+            <span className="wallet-address">
+              <span className="wallet-address-text">{ACCOUNT_CHIP_FALLBACK}</span>
+            </span>
           </div>
           <button type="button" className="wallet-disconnect" tabIndex={-1}>
             <svg width="16" height="16" viewBox="0 0 24 24" />
@@ -143,7 +102,6 @@ export default function ConnectButton() {
         </div>
       ) : null}
     <div className="wallet-connect" data-session-pending={sessionPending ? "" : undefined}>
-      <div className="wallet-connect-label">Secure Access</div>
       <div className="wallet-connect-actions">
         <button
           className="wallet-connect-btn login"
@@ -179,7 +137,7 @@ export default function ConnectButton() {
         </button>
       </div>
 
-      <p className="wallet-legal-links">
+      <p className={`wallet-legal-links${registrationMode === "invite" ? " wallet-legal-links--in-dialog" : ""}`}>
         By creating an account, you agree to the <Link href="/terms">Terms</Link> and acknowledge
         the <Link href="/privacy">Privacy Policy</Link> and <Link href="/refunds">Refund Policy</Link>.
       </p>

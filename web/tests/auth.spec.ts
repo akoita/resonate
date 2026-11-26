@@ -22,7 +22,7 @@ test("hides privy login when disabled", async ({ page }) => {
 test("shows self-custody actions panel", async ({ page }) => {
   await page.goto("/wallet");
   // Wallet page has AuthGate if not logged in
-  await expect(page.getByText("Secure Access")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in" }).first()).toBeVisible();
 });
 
 test("sidebar navigation works", async ({ page }) => {

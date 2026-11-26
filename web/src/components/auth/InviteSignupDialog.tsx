@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { checkInvitationCode, joinWaitlist, type InvitationCheck, type InvitationRole } from "../../lib/api";
 import { describeInvitationCheck } from "../../lib/invitationCopy";
@@ -117,6 +118,10 @@ export default function InviteSignupDialog({ open, initialCode = "", notice, onC
         </div>
         <p id={`${ids}-code-status`} className={`${styles.message} ${valid ? styles.ok : styles.problem}`} role="status">
           {check ? describeInvitationCheck(check) : codeError ?? ""}
+        </p>
+        <p className={`wallet-legal-links ${styles.legal}`}>
+          By creating an account, you agree to the <Link href="/terms">Terms</Link> and acknowledge
+          the <Link href="/privacy">Privacy Policy</Link> and <Link href="/refunds">Refund Policy</Link>.
         </p>
       </form>
 

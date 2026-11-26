@@ -3285,10 +3285,29 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
   display: none;
 }
 
+.wallet-account-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-md);
+}
+
+.wallet-account-link:hover .wallet-address {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.wallet-account-link:focus-visible {
+  outline: 2px solid var(--r-primary-soft, var(--color-accent));
+  outline-offset: 2px;
+}
+
 .wallet-avatar {
   width: 32px;
   height: 32px;
+  flex: none;
   border-radius: var(--radius-md);
+  font-family: var(--font-display, var(--font-sans));
+  font-weight: 700;
+  font-size: 14px;
   background: linear-gradient(
     135deg,
     var(--color-accent),
@@ -3320,8 +3339,11 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
 }
 
 .wallet-address-text {
-  font-family: "SF Mono", "Fira Code", monospace;
-  letter-spacing: 0.02em;
+  display: block;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wallet-copy-icon {
@@ -16618,7 +16640,12 @@ tr[draggable="true"]:hover {
   width: 100%;
   max-width: min(94vw, 34rem);
   max-height: min(60vh, 32rem);
-  overflow-y: auto;
+  /* The title and the two answers always stay in view; only the explanation
+     scrolls. On a phone the full text is taller than the banner, and the
+     answers used to sit below the fold of an inner scroll nobody noticed. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: var(--space-4) var(--space-5);
   border-radius: 20px;
   border: 1px solid var(--color-border);
@@ -16642,6 +16669,32 @@ tr[draggable="true"]:hover {
   border: 1px solid rgba(167, 139, 250, 0.4);
   background: rgba(124, 92, 255, 0.12);
   font-size: 0.82rem;
+}
+
+.analytics-consent-banner > .analytics-consent-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* A soft edge tells the reader there is more text below. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
+  padding-bottom: 1rem;
+}
+
+.analytics-consent-banner > .analytics-consent-actions {
+  flex: none;
+}
+
+@media (max-width: 640px) {
+  .analytics-consent-banner {
+    max-height: min(52vh, 28rem);
+    padding: var(--space-4);
+  }
+
+  .analytics-consent-banner .analytics-consent-action {
+    min-width: 0;
+    flex-basis: 0;
+  }
 }
 
 .analytics-consent-body p {

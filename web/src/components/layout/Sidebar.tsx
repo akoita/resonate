@@ -10,6 +10,7 @@ import { getEnvironment, isProduction } from "../../lib/buildInfo";
 import { AboutModal } from "../ui/AboutModal";
 import { BrandLogo } from "../brand/BrandLogo";
 import { useProductSurfaces } from "../../hooks/useProductSurfaces";
+import { useAccountName } from "../../hooks/useAccountName";
 import { SidebarFoldButton, SidebarResizeEdge, useRailTooltips, useSidebarLayout } from "./SidebarEdge";
 import type { ProductSurface } from "../../lib/productSurfaces";
 
@@ -222,10 +223,8 @@ export default function Sidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // Opportunistic artist-profile fetch: when authenticated, upgrade the
-  // chip to show a `displayName` + name-derived initial instead of the
-  // raw address. Most users aren't artists; getArtistMe returns null in
-  // that case and we fall back to address-derived values.
+  // Artist-profile fetch: decides whether the "For artists" links show. Most
+  // users aren't artists; getArtistMe returns null in that case.
   useEffect(() => {
     if (status !== "authenticated" || !token) {
       setArtistProfile(null);
@@ -242,26 +241,12 @@ export default function Sidebar() {
   const isArtist = mounted && status === "authenticated" && artistProfile !== null;
   const destinations = sidebarDestinations({ isArtist, surfaces });
   const showManagementRecoveryLink = mounted && (role === "admin" || role === "operator");
-  const accountAddress = smartAccountAddress ?? address;
-  const showUserChip = mounted && status === "authenticated" && !!accountAddress;
+  const showUserChip = mounted && status === "authenticated" && !!(smartAccountAddress ?? address);
 
-  const displayName = artistProfile?.displayName?.trim() || "";
-  const hasDisplayName = displayName.length > 0;
-
-  const truncatedAddress = accountAddress
-    ? `${accountAddress.slice(0, 6)}…${accountAddress.slice(-4)}`
-    : "";
-  const primaryLabel = hasDisplayName ? displayName : truncatedAddress;
-  const secondaryLabel = hasDisplayName ? truncatedAddress : null;
-  const userInitial = hasDisplayName
-    ? displayName[0]!.toUpperCase()
-    : accountAddress
-      ? accountAddress.slice(2, 3).toUpperCase()
-      : "";
-  // Drop the redundant "Connected" — the green status dot already conveys
-  // connection state. Keeps the status line short enough to avoid
-  // clipping at narrow drawer widths (#549).
-  const userStatusLabel = smartAccountAddress ? "Smart Account" : "Wallet";
+  // Name the person, never the address behind their passkey account.
+  const accountName = useAccountName(token, showUserChip);
+  const primaryLabel = accountName ?? "Your account";
+  const userInitial = accountName ? accountName[0]!.toUpperCase() : "";
 
   const renderLink = (item: NavItem) => {
     const isActive = pathname === item.href;
@@ -642,18 +627,22 @@ export default function Sidebar() {
             href={accountHref}
             prefetch={false}
             className="user-profile"
-            aria-label={`Connected account ${hasDisplayName ? `${displayName} (${truncatedAddress})` : truncatedAddress}. ${surfaces.wallet ? "Open wallet." : "Open settings."}`}
+            aria-label={`${accountName ? `Signed in as ${accountName}` : "Signed in"}. Open your account.`}
             aria-current={pathname === accountHref ? "page" : undefined}
           >
-            <div className="user-avatar">{userInitial}</div>
+            <div className="user-avatar" aria-hidden="true">
+              {userInitial || (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
+                </svg>
+              )}
+            </div>
             <div className="user-info">
               <div className="user-name" title={primaryLabel}>{primaryLabel}</div>
-              {secondaryLabel ? (
-                <div className="user-subtext" title={secondaryLabel}>{secondaryLabel}</div>
-              ) : null}
               <div className="user-status">
                 <span className="status-dot" />
-                {userStatusLabel}
+                Signed in
               </div>
             </div>
           </Link>

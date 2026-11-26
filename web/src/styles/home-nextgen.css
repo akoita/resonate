@@ -1306,6 +1306,9 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+  /* Without the card's padding its hairline border ran straight through the
+     text on phones. The card is gone here, so its border goes too. */
+  .home-ng .ng-hero .ng-hero__card::before { display: none; }
   .home-ng .ng-hero.ng-hero--campaign-image::after {
     background:
       linear-gradient(180deg, rgba(8, 8, 15, 0.62) 0%, rgba(8, 8, 15, 0.84) 40%, rgba(8, 8, 15, 0.96) 100%),
