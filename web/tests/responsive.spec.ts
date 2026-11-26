@@ -334,10 +334,14 @@ test("tablet collapses sidebar labels (icon-only rail)", async ({ page }, testIn
   test.skip(testInfo.project.name !== "chromium-tablet", "tablet-only check");
 
   await page.goto("/");
-  // Sidebar renders, but the label text is hidden by the tablet media query.
+  // Sidebar renders as an icon rail: the label is visually hidden (kept for
+  // screen readers) and named on the icon by a tooltip.
   const homeLabel = page.locator(".app-sidebar .link-text", { hasText: "Home" });
   await expect(homeLabel).toBeAttached();
-  await expect(homeLabel).toBeHidden();
+  await expect
+    .poll(async () => (await homeLabel.boundingBox())?.width ?? 0)
+    .toBeLessThanOrEqual(1);
+  await expect(page.locator(".app-sidebar .sidebar-link", { has: homeLabel })).toHaveAttribute("title", "Home");
 });
 
 test("phone backdrop click closes the drawer", async ({ page }, testInfo) => {
