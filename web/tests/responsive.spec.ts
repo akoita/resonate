@@ -341,7 +341,8 @@ test("tablet collapses sidebar labels (icon-only rail)", async ({ page }, testIn
   await expect
     .poll(async () => (await homeLabel.boundingBox())?.width ?? 0)
     .toBeLessThanOrEqual(1);
-  await expect(page.locator(".app-sidebar .sidebar-link", { has: homeLabel })).toHaveAttribute("title", "Home");
+  const homeLink = page.locator(".app-sidebar .sidebar-link", { has: page.locator(".link-text", { hasText: "Home" }) }).first();
+  await expect(homeLink).toHaveAttribute("title", "Home");
 });
 
 test("phone backdrop click closes the drawer", async ({ page }, testInfo) => {
