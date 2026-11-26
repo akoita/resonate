@@ -110,7 +110,7 @@ function initialTiers(campaign?: Campaign): TierForm[] {
     }));
   }
   return [
-    { title: "Fan Signal", description: "Refundable support signal and campaign receipt.", amount: "25" },
+    { title: "Fan Signal", description: "Refundable support and a campaign receipt.", amount: "25" },
     { title: "Ticket Intent", description: "Priority allocation if the show is booked.", amount: "75" },
     { title: "Patron Circle", description: "Premium campaign receipt and patron allocation.", amount: "250" },
   ];
@@ -604,7 +604,7 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
     return (
       <section className="shows-create__panel">
         <h2>Sign in</h2>
-        <p>Campaign drafting requires an artist, admin, or operator account.</p>
+        <p>Sign in with your artist account to draft a show campaign.</p>
         <button type="button" onClick={connect}>Sign in</button>
       </section>
     );
@@ -624,7 +624,7 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
     return (
       <section className="shows-create__panel">
         <h2>Catalog release required</h2>
-        <p>Escrow campaigns can only open for an artist profile with at least one ready or published release on Resonate.</p>
+        <p>Show campaigns open for artists with at least one ready or published release on Resonate.</p>
         <Link href="/artist/upload">Upload a release</Link>
       </section>
     );
@@ -824,7 +824,7 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
       </div>
 
       <div className="shows-create__panel">
-        <h2>Escrow terms</h2>
+        <h2>Funding terms</h2>
         <div className="shows-create__split">
           <label>
             Goal ({PAYMENT_SYMBOL})
@@ -874,7 +874,7 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
       </div>
 
       <div className="shows-create__panel">
-        <h2>Authority</h2>
+        <h2>Payout and approval</h2>
         {!isPrivileged && payoutEligibility ? (
           <PayoutEligibilityNotice
             eligibility={payoutEligibility}
@@ -882,7 +882,7 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
           />
         ) : null}
         <label>
-          Beneficiary wallet {!isPrivileged ? "(from your payout profile)" : ""}
+          Payout wallet {!isPrivileged ? "(from your payout profile)" : ""}
           <input
             value={beneficiaryAddress}
             onChange={(event) => setBeneficiaryAddress(event.target.value)}
@@ -892,12 +892,12 @@ export function CampaignDraftForm({ campaign, demandPrefill }: {
           />
         </label>
         <label>
-          Authority evidence bundle
+          Approval evidence reference (optional)
           <input value={authorityEvidenceBundleId} onChange={(event) => setAuthorityEvidenceBundleId(event.target.value)} />
         </label>
         <p>
-          This records the artist-provided beneficiary and evidence reference.
-          An operator still needs to approve authority before activation.
+          This records where the money goes and any proof of the artist&apos;s
+          approval. Resonate checks the approval before fans can pledge.
         </p>
       </div>
 

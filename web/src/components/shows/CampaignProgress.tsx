@@ -42,19 +42,16 @@ export function CampaignProgress({ campaign, daysLeft, compact = false }: Props)
 
       <div className="campaign-progress__stats tabular">
         <span>
-          <strong>{campaign.backerCount.toLocaleString("en-US")}</strong> backers
+          <strong>{campaign.backerCount.toLocaleString("en-US")}</strong>
+          {campaign.thresholdBackers > 0
+            ? ` of ${campaign.thresholdBackers.toLocaleString("en-US")} backers`
+            : campaign.backerCount === 1 ? " backer" : " backers"}
         </span>
         <span className="campaign-stat-sep" aria-hidden>
           ·
         </span>
         <span>
           <strong>{daysLeft}</strong> {daysLeft === 1 ? "day" : "days"} left
-        </span>
-        <span className="campaign-stat-sep" aria-hidden>
-          ·
-        </span>
-        <span>
-          threshold <strong>{campaign.thresholdBackers.toLocaleString("en-US")}</strong>
         </span>
       </div>
     </div>

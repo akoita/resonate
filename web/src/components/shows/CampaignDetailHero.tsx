@@ -130,7 +130,7 @@ export function CampaignDetailHero({ campaign, children }: Props) {
               <dt>Backers</dt>
               <dd>
                 <strong>{campaign.backerCount.toLocaleString("en-US")}</strong>
-                <small>{backersNeeded.toLocaleString("en-US")} more to threshold</small>
+                <small>{backersNeeded > 0 ? `${backersNeeded.toLocaleString("en-US")} more needed` : "Enough backers"}</small>
               </dd>
             </div>
             <div className="campaign-detail-hero__stat">
@@ -151,10 +151,10 @@ export function CampaignDetailHero({ campaign, children }: Props) {
 
           <p className="campaign-detail-hero__trust-line">
             {campaign.isSample
-              ? "Fictional fan-created sample — no artist endorsement, venue hold, or live escrow is implied."
+              ? "A sample campaign made up for this preview. The artist has not endorsed it, no venue is held, and no money is collected."
               : hasLinkedEscrow
-                ? "Funds held in a smart contract, not a company bank account. Miss the threshold and every pledge refunds automatically — enforced by code."
-                : "Escrow is not linked yet, so this campaign is not accepting pledges."}
+                ? "Pledges are held in a secure public account, not a company bank account. If the goal isn't met, every backer can claim their pledge back."
+                : "This campaign isn't taking pledges yet: its secure pledge account is still being set up."}
             {hasLinkedEscrow && campaign.etherscanUrl ? (
               <>
                 {" "}
@@ -162,9 +162,9 @@ export function CampaignDetailHero({ campaign, children }: Props) {
                   href={campaign.etherscanUrl}
                   target="_blank"
                   rel="noreferrer noopener"
-                  aria-label="View the verified escrow contract on the block explorer"
+                  aria-label="Check the pledge account on the public ledger"
                 >
-                  View verified contract ↗
+                  Check it on the public ledger ↗
                 </a>
               </>
             ) : null}

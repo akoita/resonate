@@ -564,8 +564,8 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
     expect(byLabel["Payment"]).toBe("USDC on Base Sepolia");
     expect(byLabel["Deposit released on booking"]).toBe("10%");
     expect(byLabel["Dispute window"]).toBe("7 days");
-    expect(byLabel["Refund policy"]).toContain("Staged release");
-    expect(byLabel["Funding deadline"]).toBe("2026-07-01");
+    expect(byLabel["Refund policy"]).toContain("Part paid at booking");
+    expect(byLabel["Funding deadline"]).toBe("1 Jul 2026");
     expect(byLabel["Platform fee"]).toBe("6% success-only; refunds fee-free");
   });
 
@@ -617,15 +617,15 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
   });
 
   it("labels every pledge state and masks addresses", () => {
-    expect(pledgeStateLabel("submitted", "pending")).toContain("awaiting on-chain");
-    expect(pledgeStateLabel("confirmed")).toBe("Confirmed on-chain");
+    expect(pledgeStateLabel("submitted", "pending")).toContain("waiting for confirmation");
+    expect(pledgeStateLabel("confirmed")).toBe("Confirmed");
     expect(pledgeStateLabel("refund_available")).toBe("Refund available");
     expect(pledgeStateLabel("released")).toBe("Funds released to artist");
     expect(pledgeStateLabel("weird_state")).toBe("weird state");
     expect(maskAddress("0x1234567890abcdef1234567890abcdef12345678")).toBe("0x1234…5678");
     expect(maskAddress(null)).toBe("—");
     expect(chainName(11155111)).toBe("Sepolia");
-    expect(releasePolicyLabel("refund_only_until_booking")).toContain("Refund-only");
+    expect(releasePolicyLabel("refund_only_until_booking")).toContain("Refundable until");
   });
 });
 
@@ -665,7 +665,7 @@ describe("campaignPledgeAvailability empty states (#949)", () => {
     } as unknown as Campaign);
     expect(result.open).toBe(false);
     expect(result.key).toBe("pending_authority");
-    expect(result.message.toLowerCase()).toContain("operator");
+    expect(result.message.toLowerCase()).toContain("confirms the artist approves");
   });
 
   it("treats an unbound beneficiary as still pending even when authorized", () => {
@@ -685,7 +685,7 @@ describe("campaignPledgeAvailability empty states (#949)", () => {
     } as unknown as Campaign);
     expect(result.open).toBe(false);
     expect(result.key).toBe("escrow_unavailable");
-    expect(result.message).toContain("on-chain escrow");
+    expect(result.message).toContain("secure account that holds this campaign's pledges");
   });
 
   it("flags revoked / rejected / expired authority as not authorized", () => {
@@ -705,7 +705,7 @@ describe("campaignPledgeAvailability empty states (#949)", () => {
       campaignLevel: "signal",
     } as unknown as Campaign);
     expect(result.key).toBe("signal");
-    expect(result.message.toLowerCase()).toContain("demand signal");
+    expect(result.message.toLowerCase()).toContain("no money is collected");
   });
 
   it("closes pledging for terminal/refund states ahead of authority checks", () => {
@@ -759,7 +759,7 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
     expect(summary).toContain("Payment: USDC on Base Sepolia");
     expect(summary).toContain("Deposit released on booking: 10%");
     expect(summary).toContain("Dispute window: 7 days");
-    expect(summary).toContain("Refund policy: Staged release");
+    expect(summary).toContain("Refund policy: Part paid at booking");
     expect(summary).toContain("Platform fee: A 6% platform fee applies only if the campaign is funded");
     expect(summary).toContain("If the campaign fails, you are refunded 100%.");
   });

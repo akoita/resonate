@@ -53,34 +53,39 @@ export default async function ShowsExplorerPage({
           <span className="shows-home-section__kicker">Resonate Shows</span>
           <h1 className="shows-page__title">Fans bring the&nbsp;show.</h1>
           <p className="shows-page__lede">
-            Pick an artist and a city and pledge toward the show. Pledges are
-            held in escrow, and if enough fans commit, the artist&apos;s team
-            gets a demand signal backed by real commitment&nbsp;— not likes. If they don&apos;t
-            confirm, refunds open automatically and every backer can claim
-            their pledge back.
+            Pick an artist and a city, and pledge toward the show. Your pledge
+            is held safely until the show is booked. When enough fans join in,
+            the artist&apos;s team sees real demand, not just likes. If the show
+            doesn&apos;t happen, every backer can claim their pledge back.
           </p>
         </div>
 
-        <div className="shows-page__intro-art">
-          <div className="shows-page__intro-stat" aria-label="Campaigns shown">
-            <span className="shows-page__intro-stat-num tabular">
-              {campaigns.length}
-            </span>
-            <span className="shows-page__intro-stat-label">
-              Campaigns shown
-            </span>
+        {/* A stat with nothing to count yet is left out, not shown as 0. */}
+        {campaigns.length > 0 ? (
+          <div className="shows-page__intro-art">
+            <div className="shows-page__intro-stat">
+              <span className="shows-page__intro-stat-num tabular">
+                {campaigns.length.toLocaleString("en-US")}
+              </span>
+              <span className="shows-page__intro-stat-label">
+                {campaigns.length === 1 ? "Campaign" : "Campaigns"}
+              </span>
+            </div>
+            {totalBackers > 0 ? (
+              <div
+                className="shows-page__intro-stat"
+                style={{ animationDelay: "1s" }}
+              >
+                <span className="shows-page__intro-stat-num tabular">
+                  {totalBackers.toLocaleString("en-US")}
+                </span>
+                <span className="shows-page__intro-stat-label">
+                  {totalBackers === 1 ? "Fan backing" : "Fans backing"}
+                </span>
+              </div>
+            ) : null}
           </div>
-          <div
-            className="shows-page__intro-stat"
-            aria-label="Total backers"
-            style={{ animationDelay: "1s" }}
-          >
-            <span className="shows-page__intro-stat-num tabular">
-              {totalBackers}
-            </span>
-            <span className="shows-page__intro-stat-label">Fans signalled</span>
-          </div>
-        </div>
+        ) : null}
       </header>
 
       {/* ── Campaign grid ── */}
@@ -106,8 +111,8 @@ export default async function ShowsExplorerPage({
                 : "No campaigns match this filter."}
             </strong>
             <p>
-              Propose a show for an artist in your city. Pledges are held in
-              escrow, and backers can claim them back if the show doesn&apos;t
+              Propose a show for an artist in your city. Pledges are held
+              safely, and backers can claim them back if the show doesn&apos;t
               happen.
             </p>
             <Link href="/shows/create" className="shows-page__create-link">

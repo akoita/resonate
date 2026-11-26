@@ -179,7 +179,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
     try {
       const result = await joinShowCampaignCityDemand({ campaign, token });
       setCityDemandRoom(result.room);
-      setNotice({ type: "success", message: `${campaign.city} demand group joined.` });
+      setNotice({ type: "success", message: `You're in the ${campaign.city} group.` });
       setCityJustJoined(true);
     } catch (err) {
       setNotice({ type: "error", message: err instanceof Error ? err.message : "Could not join city demand." });
@@ -217,7 +217,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
       <div className="show-community__header">
         <div>
           <span className="shows-home-section__kicker">Campaign community</span>
-          <h2 className="shows-home-section__title">Demand starts in {campaign.city}.</h2>
+          <h2 className="shows-home-section__title">Fans in {campaign.city}</h2>
         </div>
         {/* Refresh only matters once there is a room to read. */}
         {supporterRoom && (joined || updateAllowed) ? (
@@ -240,8 +240,8 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
 
       {status !== "authenticated" ? (
         <div className="show-community__locked">
-          <strong>Connect to join the demand signal</strong>
-          <p>Fans can join the city group first. Confirmed campaign support unlocks the private backer room without exposing pledge or wallet details publicly.</p>
+          <strong>Sign in to say you&apos;d be there</strong>
+          <p>Join the {campaign.city} group to show you want this show, no pledge needed. Backers also get a private room with the artist&apos;s updates. Your pledge and wallet stay private.</p>
           <button type="button" onClick={() => void connect()}>
             Sign in
           </button>
@@ -255,21 +255,21 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
               eyebrow="City demand"
               title={cityDemandRoom?.title ?? `${campaign.city} demand group`}
               // The button carries the action; the meta only confirms a join.
-              meta={cityJoined ? <span>Demand joined</span> : undefined}
+              meta={cityJoined ? <span>You&apos;re in</span> : undefined}
               actions={!cityJoined ? (
                 <button
                   type="button"
                   onClick={() => void joinCityDemand()}
                   disabled={joiningCity || !cityDemandRoom?.access?.joinable}
                 >
-                  {joiningCity ? "Joining..." : `Join ${campaign.city}`}
+                  {joiningCity ? "Joining..." : `I'd come in ${campaign.city}`}
                 </button>
               ) : null}
             >
               <p>
                 {loading
                   ? "Checking your city demand state..."
-                  : "Signal interest in this city without making a pledge yet."}
+                  : `Tell the artist you'd come to a show in ${campaign.city}. No pledge needed.`}
               </p>
               {cityJustJoined && cityJoined ? (
                 <CampaignShare

@@ -43,8 +43,9 @@ export default async function EditShowCampaignPage({ params }: Props) {
           <span className="shows-home-section__kicker">Campaign desk</span>
           <h1>Edit draft campaign</h1>
           <p>
-            Draft terms and pledge tiers can change before activation. Once the
-            escrow is active, edits should move through explicit lifecycle actions.
+            Terms and pledge tiers can change until the campaign is approved.
+            After that, the funding terms are fixed so backers know what they
+            signed up for.
           </p>
         </header>
 

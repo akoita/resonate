@@ -17,7 +17,11 @@ export type CampaignGalleryVisual = {
  * thumbnail filmstrip, and a counter) so a promo page can actually immerse
  * the visitor.
  */
-export function CampaignGallery({ visuals }: { visuals: CampaignGalleryVisual[] }) {
+export function CampaignGallery({ visuals: allVisuals }: { visuals: CampaignGalleryVisual[] }) {
+  // A visual whose file fails to load leaves the wall instead of showing a
+  // broken-image frame.
+  const [failedIds, setFailedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const visuals = allVisuals.filter((visual) => !failedIds.has(visual.id));
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const isOpen = openIndex !== null;
 
@@ -66,7 +70,18 @@ export function CampaignGallery({ visuals }: { visuals: CampaignGalleryVisual[] 
               aria-label={visual.caption ? `Open: ${visual.caption}` : `Open image ${index + 1}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- campaign visuals are dynamic backend media. */}
-              <img src={visual.url} alt="" loading="lazy" />
+              <img
+                src={visual.url}
+                alt=""
+                loading="lazy"
+                onError={() => setFailedIds((current) => new Set(current).add(visual.id))}
+                // An image that failed before hydration never fires onError.
+                ref={(img) => {
+                  if (img && img.complete && img.naturalWidth === 0 && img.currentSrc) {
+                    setFailedIds((current) => (current.has(visual.id) ? current : new Set(current).add(visual.id)));
+                  }
+                }}
+              />
               <span className="show-detail__visual-zoom" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M15 3h6v6" />

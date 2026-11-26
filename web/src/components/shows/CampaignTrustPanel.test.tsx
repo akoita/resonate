@@ -51,8 +51,8 @@ describe("CampaignTrustPanel (#949)", () => {
   it("renders the trust state, immutable terms, and masked beneficiary", () => {
     const html = renderToStaticMarkup(<CampaignTrustPanel campaign={baseCampaign} />);
     expect(html).toContain('data-trust="authorized_escrow"');
-    expect(html).toContain("Artist-authorized escrow");
-    expect(html).toContain("Artist authorized");
+    expect(html).toContain("Artist approved");
+    expect(html).toContain("Approved by the artist");
     expect(html).toContain("0x1234…5678"); // masked beneficiary
     expect(html).toContain("USDC on Base Sepolia");
     expect(html).toContain("10%"); // deposit release

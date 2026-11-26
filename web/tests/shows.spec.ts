@@ -87,7 +87,7 @@ test("/shows/sennarin-paris detail renders pledge-module hero + how-it-works + e
   await expect(hero).toBeVisible();
   // The live pledge module (tiers panel) sits inside the hero, above the fold.
   await expect(hero.locator(".show-detail__pledge-panel")).toBeVisible();
-  await expect(hero.getByText(/signal tiers/i)).toBeVisible();
+  await expect(hero.getByText(/back this show/i)).toBeVisible();
   await expect(page.getByRole("heading", { name: /Three steps/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /How pledging works/i })).toBeVisible();
 });

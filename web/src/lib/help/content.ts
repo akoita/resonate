@@ -4333,7 +4333,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Pick an artist and a city, lock funds in a smart contract, and if enough fans commit, the artist's team gets a demand signal backed by money — not just likes. If the show isn't confirmed, refunds open automatically and every backer can claim their pledge back.",
+            text: "Pick an artist and a city and pledge toward the show. Your pledge is held in a secure public account until the show is booked. When enough fans join in, the artist's team sees real demand, not just likes. If the show isn't confirmed, refunds open automatically and every backer can claim their pledge back.",
           },
           {
             kind: "paragraph",
@@ -4371,7 +4371,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Pledging only opens once a campaign is artist-authorized and its on-chain escrow has been linked. Until then — while it's still a demand signal, awaiting artist authority, or awaiting its escrow link — the campaign page explains why backing isn't open yet instead of showing a pledge form. If a campaign was cancelled or didn't meet its goal, the page shows that and lets any existing backers claim a refund.",
+            text: "Pledging only opens once the artist has approved a campaign and its pledge account is set up. Until then, while fans are still asking for it, it awaits the artist's approval, or its pledge account is being set up, the campaign page explains why backing isn't open yet instead of showing a pledge form. If a campaign was cancelled or didn't meet its goal, the page shows that and lets any existing backers claim a refund.",
           },
           {
             kind: "paragraph",
@@ -4385,8 +4385,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/show-campaign.png`,
-              alt: "The 'Nadia Okoro in Paris' campaign page, open for pledges. A banner shows the show title, date and venue. Below are the campaign story, the amount raised against the goal with backers, days left and threshold, and a Signal tiers card with three tiers to pick from, a note on what a refund returns if a deposit was already paid, a Connect wallet to pledge button, and the platform fee note.",
-              caption: "A campaign that is open for pledges: the show, its story, funding progress, the signal tiers, the refund and fee terms, and the pledge button. Sample campaign.",
+              alt: "The 'Nadia Okoro in Paris' campaign page, open for pledges. A banner shows the show title, date and venue. Below are the campaign story, the amount raised against the goal with backers, days left and threshold, and a Back this show card with three tiers to pick from, a note on what a refund returns if a deposit was already paid, a Connect wallet to pledge button, and the platform fee note.",
+              caption: "A campaign that is open for pledges: the show, its story, funding progress, the pledge tiers, the refund and fee terms, and the pledge button. Sample campaign.",
               width: 1440,
               height: 1500,
               source: LOCAL_PUBLIC,
@@ -4425,10 +4425,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "The fan-risk terms are approved by the artist and then locked — they can't be quietly changed after you pledge.",
               "The campaign page shows any success-only platform fee up front, including that it comes from the artist payout and never from failed-campaign refunds.",
-              "You can open the escrow contract in a block explorer to see its verified code, transactions, and events.",
+              "Check it on the public ledger opens the account that holds the pledges, so anyone can see its code, payments and events.",
               "If the goal isn't met or the show isn't confirmed, refunds open automatically and you claim yours from the campaign page — no fee.",
               "If a campaign has a booking deposit and the show is cancelled after the deposit was paid to the artist, your refund is your share of what remains — the campaign page states the percentage before you pledge.",
-              "A campaign page shows a trust badge (demand signal, provisional, or artist-authorized escrow) so you always know what stage you're backing.",
+              "A campaign page shows a badge (Fan request, Awaiting artist approval, or Artist approved) so you always know what stage you're backing.",
               "After a show is marked fulfilled, funds release only once a dispute window closes; while a dispute is under review, release stays paused. The campaign page shows the dispute status and the window's close date.",
             ],
           },

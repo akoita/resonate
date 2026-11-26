@@ -109,17 +109,17 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
   );
 
   const buttonLabel = useMemo(() => {
-    if (loading) return "Preparing receipt...";
-    if (phase === "checking") return "Checking allowance...";
-    if (phase === "signing") return "Awaiting wallet signature...";
-    if (phase === "confirming") return "Confirming pledge...";
+    if (loading) return "Getting your pledge ready...";
+    if (phase === "checking") return "Checking your balance...";
+    if (phase === "signing") return "Confirm in your wallet...";
+    if (phase === "confirming") return "Confirming your pledge...";
     if (status !== "authenticated") return "Sign in to pledge";
-    return "Pledge with wallet";
-  }, [loading, phase, status]);
+    return selectedTier ? `Pledge ${formatMoney(selectedTier.amountCents, selectedTier.currency)}` : "Pledge";
+  }, [loading, phase, status, selectedTier]);
 
   const refundButtonLabel = useMemo(() => {
     if (refundPhase === "checking") return "Checking refund...";
-    if (refundPhase === "signing") return "Awaiting refund signature...";
+    if (refundPhase === "signing") return "Confirm the refund in your wallet...";
     if (refundPhase === "confirming") return "Confirming refund...";
     return "Claim refund";
   }, [refundPhase]);
@@ -227,8 +227,8 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
   return (
     <article className="show-detail__pledge-panel" aria-label="Pledge tiers">
       <div className="show-detail__pledge-header">
-        <span className="shows-home-section__kicker">Signal tiers</span>
-        <span className="show-detail__soon-pill">{pledgingOpen ? "Receipt-ready" : "Preview"}</span>
+        <span className="shows-home-section__kicker">Back this show</span>
+        <span className="show-detail__soon-pill">{pledgingOpen ? "Open" : "Not open yet"}</span>
       </div>
 
       {pledgingOpen ? (
@@ -279,7 +279,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
               <small>{pledgeStateLabel(latestPledge.status, latestPledge.confirmationStatus)}</small>
               {latestPledgeTxUrl ? (
                 <a href={latestPledgeTxUrl} target="_blank" rel="noreferrer noopener">
-                  View transaction
+                  See it on the public ledger
                 </a>
               ) : null}
               {refundAvailable ? (
@@ -294,7 +294,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
               ) : null}
             </>
           ) : (
-            <small>Loading receipts...</small>
+            <small>Loading your pledge...</small>
           )}
         </div>
       ) : null}
@@ -320,22 +320,16 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
 
       {intent ? (
         <div className="show-detail__pledge-result" role="status">
-          <strong>{execution ? "Pledge confirmed" : "Receipt created"}</strong>
+          <strong>{execution ? "Pledge confirmed. Thank you!" : "Pledge saved"}</strong>
           <span>Receipt {intent.pledge.receiptId ?? intent.pledge.id}</span>
           {execution ? (
             explorerTxUrl ? (
               <a href={explorerTxUrl} target="_blank" rel="noreferrer noopener">
-                View transaction
+                See it on the public ledger
               </a>
-            ) : (
-              <code>{execution.transactionHash}</code>
-            )
-          ) : intent.contractCall ? (
-            <code>
-              {intent.contractCall.functionName}({intent.contractCall.args.join(", ")})
-            </code>
-          ) : (
-            <span>Contract call will appear once escrow deployment is linked.</span>
+            ) : null
+          ) : intent.contractCall ? null : (
+            <span>This campaign isn&apos;t taking payments yet, so nothing was charged.</span>
           )}
         </div>
       ) : null}
@@ -366,7 +360,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
           isOpen={confirmOpen}
           title="Confirm your pledge"
           message={pledgeConfirmSummary(campaign, selectedTier)}
-          confirmLabel="Pledge with wallet"
+          confirmLabel="Confirm pledge"
           cancelLabel="Cancel"
           onCancel={() => setConfirmOpen(false)}
           onConfirm={async () => {

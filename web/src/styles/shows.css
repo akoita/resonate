@@ -2628,7 +2628,7 @@
   margin-top: 28px;
 }
 
-.show-detail__brief-points span {
+.show-detail__brief-points li {
   padding: 8px 16px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--color-signal) 24%, transparent);
@@ -4628,4 +4628,56 @@
   .show-community__grid {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * SHOWS PASS (Nov 2026): lists, step layout, empty columns
+ * ══════════════════════════════════════════════════════════════════ */
+
+.show-detail__brief-points,
+.show-detail__how {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Three steps read as a row when there is room for all three, and as a
+ * single column otherwise: never two cards and an orphan below them. */
+.show-detail__how {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@container show-narrative (max-width: 720px) {
+  .show-detail__how {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .show-detail__step {
+    padding: 26px 28px;
+    gap: 10px;
+  }
+}
+
+/* The pledge column holds nothing until the product switches load (or when
+ * pledging is off with no fallback): the campaign copy then takes the row. */
+.campaign-detail-hero__pledge:empty {
+  display: none;
+}
+
+.campaign-detail-hero__lede:has(> .campaign-detail-hero__pledge:empty) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Shows explorer: with no campaign to count, the stats column is left out
+ * and the intro copy takes the full banner. */
+.shows-page__intro:not(:has(.shows-page__intro-art)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Gallery cells keep their 4:5 shape at every width. Fixed row heights
+ * from the narrow-window rules made each cell taller than its row, so the
+ * photos ran over each other and over the next section on phones. */
+.show-detail__visual-story {
+  grid-auto-rows: auto;
 }

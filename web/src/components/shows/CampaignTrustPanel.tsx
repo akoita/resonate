@@ -16,21 +16,21 @@ interface Props {
 function humanizeAuthority(status: string): string {
   switch (status) {
     case "artist_authorized":
-      return "Artist authorized";
+      return "Approved by the artist";
     case "trusted_source_authorized":
-      return "Trusted source authorized";
+      return "Approved by the artist's team";
     case "artist_acknowledged":
-      return "Artist acknowledged";
+      return "Seen by the artist";
     case "human_verified":
-      return "Human verified";
+      return "Checked by Resonate";
     case "rejected":
-      return "Rejected";
+      return "Declined";
     case "revoked":
-      return "Revoked";
+      return "Withdrawn";
     case "expired":
       return "Expired";
     case "none":
-      return "Not yet reviewed";
+      return "Not reviewed yet";
     default:
       return status.replaceAll("_", " ");
   }
@@ -41,11 +41,11 @@ function humanizeBeneficiaryType(type?: string | null): string {
     case "wallet":
       return "Wallet";
     case "split_contract":
-      return "Split contract";
+      return "Shared payout";
     case "multisig":
-      return "Multisig";
+      return "Shared wallet";
     default:
-      return "—";
+      return "Wallet";
   }
 }
 
@@ -64,6 +64,8 @@ export function CampaignTrustPanel({ campaign }: Props) {
   // Only surface the dispute row when there's something to say: an active or
   // resolved dispute, or an open post-fulfillment dispute window.
   const showDispute = dispute.status !== "none" || dispute.windowOpen;
+  // A term the campaign has not set yet reads as missing, not as a dash.
+  const knownTerms = terms.filter((term) => term.value && term.value !== "—");
 
   return (
     <section
@@ -77,20 +79,24 @@ export function CampaignTrustPanel({ campaign }: Props) {
       </div>
 
       <div className="campaign-trust__authority">
-        <span className="campaign-trust__authority-label">Artist authority</span>
+        <span className="campaign-trust__authority-label">Artist approval</span>
         <span className="campaign-trust__authority-value">
           {humanizeAuthority(campaign.artistAuthorityStatus)}
         </span>
-        <span className="campaign-trust__authority-label">Beneficiary</span>
-        <span className="campaign-trust__authority-value tabular">
-          {humanizeBeneficiaryType(campaign.beneficiaryType)} · {maskAddress(campaign.beneficiaryAddress)}
-        </span>
+        {campaign.beneficiaryAddress ? (
+          <>
+            <span className="campaign-trust__authority-label">Paid out to</span>
+            <span className="campaign-trust__authority-value tabular">
+              {humanizeBeneficiaryType(campaign.beneficiaryType)} · {maskAddress(campaign.beneficiaryAddress)}
+            </span>
+          </>
+        ) : null}
       </div>
 
       <div className="campaign-trust__terms">
         <h3 className="campaign-trust__terms-title">Campaign terms</h3>
         <dl className="campaign-trust__terms-grid">
-          {terms.map((term) => (
+          {knownTerms.map((term) => (
             <div className="campaign-trust__term" key={term.label}>
               <dt>{term.label}</dt>
               <dd className="tabular">{term.value}</dd>
@@ -98,8 +104,9 @@ export function CampaignTrustPanel({ campaign }: Props) {
           ))}
         </dl>
         <p className="campaign-trust__terms-note">
-          Funding proves demand; it does not guarantee a ticket. Funds release only
-          after booking and fulfillment under the campaign&apos;s published policy.
+          A pledge shows the artist there is real demand; it does not guarantee a
+          ticket. The money is only paid out once the show is booked and played,
+          under the terms above.
         </p>
         {feeNotice ? (
           <p className="campaign-trust__fee-note">{feeNotice}</p>
