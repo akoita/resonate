@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { formatDuration } from "../../lib/metadataExtractor";
-import { startQueueRowDrag } from "../../lib/queueDrag";
+import { canQueueDrag, draggedQueueRowIndex, startQueueRowDrag } from "../../lib/queueDrag";
 import { useUIStore } from "../../lib/uiStore";
+import { setConsoleMinimized } from "../../lib/playerConsoleLayout";
+import { GlobalPlaylistPanel } from "../layout/GlobalPlaylistPanel";
 import { usePlayerConsoleLayout } from "./usePlayerConsoleLayout";
 import { PlayerConsoleDockPreview, PlayerConsoleLayoutButtons, PlayerConsoleMoveHandle } from "./PlayerConsoleLayoutControls";
 import { QueueDropLanes, useQueueDragActive } from "./QueueDropLanes";
+import { useQueueGapDrop } from "./useQueueGapDrop";
 import { ListeningControls } from "./ListeningControls";
 import type { LocalTrack } from "../../lib/localLibrary";
 
@@ -40,10 +43,17 @@ function RemoveIcon() {
   );
 }
 
-/** The queue as compact rows: play on click, remove, drag onto a playlist. */
+/**
+ * The queue as compact rows: play on click, remove, drag onto a playlist,
+ * drag up or down to reorder (Alt + arrow keys do the same), and drop
+ * anything queueable between two rows to put it exactly there.
+ */
 export function SessionQueueList({ onPlayed }: { onPlayed?: () => void }) {
-  const { queue, currentIndex, playQueue, removeFromQueue } = usePlayer();
+  const { queue, currentIndex, playQueue, removeFromQueue, moveInQueue } = usePlayer();
   const listRef = useRef<HTMLOListElement>(null);
+  const [announcement, setAnnouncement] = useState("");
+  const focusTrackId = useRef<string | null>(null);
+  const { dropGap, listProps, rowProps, rowDropClass } = useQueueGapDrop(queue.length);
 
   // Keep the playing row in view as the queue advances.
   useEffect(() => {
@@ -51,48 +61,88 @@ export function SessionQueueList({ onPlayed }: { onPlayed?: () => void }) {
     row?.scrollIntoView({ block: "nearest" });
   }, [currentIndex]);
 
+  // After a keyboard move, keep focus on the row that moved.
+  useEffect(() => {
+    const id = focusTrackId.current;
+    if (!id) return;
+    focusTrackId.current = null;
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-track-id="${CSS.escape(id)}"] .session-queue__play`)
+      ?.focus();
+  }, [queue]);
+
+  const moveByKey = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number, track: LocalTrack) => {
+    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    event.preventDefault();
+    const up = event.key === "ArrowUp";
+    if ((up && index === 0) || (!up && index === queue.length - 1)) return;
+    focusTrackId.current = track.id;
+    moveInQueue(index, up ? index - 1 : index + 2);
+    setAnnouncement(`${track.title} moved to position ${up ? index : index + 2} of ${queue.length}`);
+  };
+
   if (queue.length === 0) {
     return <p className="session-queue-empty">Drag a track, a release or a playlist here, or press play anywhere, to start a session.</p>;
   }
 
   return (
-    <ol ref={listRef} className="session-queue" aria-label="Queue">
-      {queue.map((track, index) => {
-        const current = index === currentIndex;
-        return (
-          <li
-            key={`${track.id}-${index}`}
-            className={`session-queue__row ${current ? "is-current" : ""} ${index < currentIndex ? "is-played" : ""}`}
-            aria-current={current ? "true" : undefined}
-            draggable
-            onDragStart={(event) => startQueueRowDrag(event.dataTransfer, track)}
-          >
-            <button
-              type="button"
-              className="session-queue__play"
-              onClick={() => {
-                void playQueue(queue, index, { navigation: true });
-                onPlayed?.();
-              }}
-              aria-label={`${current ? "Playing" : "Play"} ${track.title}${track.artist ? ` by ${track.artist}` : ""}`}
+    <>
+      <ol
+        ref={listRef}
+        className={`session-queue ${dropGap !== null ? "is-drop-target" : ""}`}
+        aria-label="Queue"
+        aria-describedby="session-queue-help"
+        {...listProps}
+      >
+        {queue.map((track, index) => {
+          const current = index === currentIndex;
+          return (
+            <li
+              key={`${track.id}-${index}`}
+              data-track-id={track.id}
+              className={[
+                "session-queue__row",
+                current ? "is-current" : "",
+                index < currentIndex ? "is-played" : "",
+                rowDropClass(index),
+              ].filter(Boolean).join(" ")}
+              aria-current={current ? "true" : undefined}
+              draggable
+              onDragStart={(event) => startQueueRowDrag(event.dataTransfer, track, index)}
+              {...rowProps(index)}
             >
-              <span className="session-queue__title">{track.title}</span>
-              <span className="session-queue__artist">{track.artist || "Unknown artist"}</span>
-            </button>
-            <span className="session-queue__time">{formatDuration(track.duration)}</span>
-            <button
-              type="button"
-              className="session-queue__remove"
-              onClick={() => removeFromQueue(index)}
-              aria-label={`Remove ${track.title} from queue`}
-              title="Remove from queue"
-            >
-              <RemoveIcon />
-            </button>
-          </li>
-        );
-      })}
-    </ol>
+              <button
+                type="button"
+                className="session-queue__play"
+                onClick={() => {
+                  void playQueue(queue, index, { navigation: true });
+                  onPlayed?.();
+                }}
+                onKeyDown={(event) => moveByKey(event, index, track)}
+                aria-label={`${current ? "Playing" : "Play"} ${track.title}${track.artist ? ` by ${track.artist}` : ""}`}
+              >
+                <span className="session-queue__title">{track.title}</span>
+                <span className="session-queue__artist">{track.artist || "Unknown artist"}</span>
+              </button>
+              <span className="session-queue__time">{formatDuration(track.duration)}</span>
+              <button
+                type="button"
+                className="session-queue__remove"
+                onClick={() => removeFromQueue(index)}
+                aria-label={`Remove ${track.title} from queue`}
+                title="Remove from queue"
+              >
+                <RemoveIcon />
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <span id="session-queue-help" className="visually-hidden">
+        Drag a row to reorder, or press Alt with the up or down arrow on a track to move it.
+      </span>
+      <span className="visually-hidden" role="status" aria-live="polite">{announcement}</span>
+    </>
   );
 }
 
@@ -142,12 +192,29 @@ export function SessionDock({ stageRef }: { stageRef: RefObject<HTMLElement | nu
   const { currentTrack, queue } = usePlayer();
   const dragging = useQueueDragActive();
   const layout = usePlayerConsoleLayout({ stageRef, consoleRef: dockRef, immersive: false });
+  const playlistsOpen = useUIStore((state) => state.isPlaylistPanelOpen);
+  const openPlaylists = useUIStore((state) => state.openPlaylistPanel);
+  const closePlaylists = useUIStore((state) => state.closePlaylistPanel);
+  const setDockAvailable = useUIStore((state) => state.setDockAvailable);
 
   const onPlayerPage = pathname === "/player";
+  const available = !onPlayerPage && !layout.compact;
   const hasSession = Boolean(currentTrack) || queue.length > 0;
-  if (onPlayerPage || layout.compact || (!hasSession && !dragging)) return null;
+
+  useEffect(() => {
+    setDockAvailable(available);
+  }, [available, setDockAvailable]);
+  useEffect(() => () => setDockAvailable(false), [setDockAvailable]);
+
+  // Opening the playlists (top bar, Ctrl+J) unfolds a folded dock.
+  useEffect(() => {
+    if (available && playlistsOpen) setConsoleMinimized(false);
+  }, [available, playlistsOpen]);
+
+  if (!available || (!hasSession && !dragging && !playlistsOpen)) return null;
 
   const minimized = layout.minimized;
+  const tab: "session" | "playlists" = playlistsOpen ? "playlists" : "session";
   // A folded dock is a capsule: it keeps its floating spot but not its size.
   const style =
     layout.dock === "floating" && layout.style
@@ -175,7 +242,43 @@ export function SessionDock({ stageRef }: { stageRef: RefObject<HTMLElement | nu
       >
         <div className="session-dock__head" onPointerDown={layout.onHeaderPointerDown}>
           <PlayerConsoleMoveHandle layout={layout} />
-          {minimized ? <NowPlaying compact /> : <span className="session-dock__label">Session</span>}
+          {minimized ? (
+            <NowPlaying compact />
+          ) : (
+            <div className="session-dock__tabs" role="tablist" aria-label="Dock">
+              <button
+                type="button"
+                role="tab"
+                id="session-dock-tab-session"
+                aria-selected={tab === "session"}
+                aria-controls={DOCK_BODY_ID}
+                className="session-dock__tab"
+                onClick={closePlaylists}
+                // Spring-loaded: dragging a track over the tab opens the queue
+                // so it can be dropped at an exact spot.
+                onDragEnter={(event) => {
+                  if (canQueueDrag(event.dataTransfer.types)) closePlaylists();
+                }}
+              >
+                Session
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="session-dock-tab-playlists"
+                aria-selected={tab === "playlists"}
+                aria-controls={DOCK_BODY_ID}
+                className="session-dock__tab"
+                onClick={openPlaylists}
+                // Dragging something over the tab opens the playlists to drop it on one.
+                onDragEnter={(event) => {
+                  if (draggedQueueRowIndex(event.dataTransfer.types) !== null || canQueueDrag(event.dataTransfer.types)) openPlaylists();
+                }}
+              >
+                Playlists
+              </button>
+            </div>
+          )}
           {minimized ? <QueuePlace /> : null}
           <span className="session-dock__actions">
             {!minimized ? (
@@ -189,17 +292,30 @@ export function SessionDock({ stageRef }: { stageRef: RefObject<HTMLElement | nu
         {minimized ? (
           <QueueDropLanes className="queue-drop-lanes--capsule" />
         ) : (
-          <div className="session-dock__body" id={DOCK_BODY_ID}>
-            <NowPlaying />
+          <div
+            className={`session-dock__body session-dock__body--${tab}`}
+            id={DOCK_BODY_ID}
+            role="tabpanel"
+            aria-labelledby={tab === "session" ? "session-dock-tab-session" : "session-dock-tab-playlists"}
+          >
             <QueueDropLanes />
-            <div className="session-dock__queue-head">
-              <span>Up next</span>
-              <QueuePlace />
-            </div>
-            <SessionQueueList />
-            <div className="session-dock__listening">
-              <ListeningControls key={currentTrack?.id} />
-            </div>
+            {tab === "session" ? (
+              <>
+                <NowPlaying />
+                <div className="session-dock__queue-head">
+                  <span>Up next</span>
+                  <QueuePlace />
+                </div>
+                <SessionQueueList />
+                {hasSession ? (
+                  <div className="session-dock__listening">
+                    <ListeningControls key={currentTrack?.id} />
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <GlobalPlaylistPanel variant="embedded" isOpen onClose={closePlaylists} />
+            )}
           </div>
         )}
         {layout.dock === "floating" && !minimized ? (

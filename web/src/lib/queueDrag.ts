@@ -26,6 +26,8 @@ export interface QueueDragOffer {
 
 let offer: QueueDragOffer | null = null;
 let dragStartedHere = false;
+/** Position of the queue row being dragged, for reordering. */
+let draggedRowIndex: number | null = null;
 const listeners = new Set<(active: boolean) => void>();
 
 function notify(active: boolean) {
@@ -89,6 +91,7 @@ function onDragStart() {
   // Capture phase: runs before the source's own handler, which may then make
   // an offer. Sources may stop the event there, so nothing is decided here.
   offer = null;
+  draggedRowIndex = null;
   dragStartedHere = true;
   decided = false;
 }
@@ -107,12 +110,14 @@ function onDragEnd() {
   dragStartedHere = false;
   decided = false;
   offer = null;
+  draggedRowIndex = null;
   notify(false);
 }
 
 /** Test seam: forget any drag state. */
 export function resetQueueDragForTests(): void {
   offer = null;
+  draggedRowIndex = null;
   dragStartedHere = false;
   decided = false;
 }
@@ -216,11 +221,30 @@ export function queueRowDragPayload(track: LocalTrack): string {
   });
 }
 
-/** Start dragging a queue row: a copy onto a playlist, never back into the queue. */
-export function startQueueRowDrag(dataTransfer: DataTransfer, track: LocalTrack): void {
+/**
+ * Start dragging a queue row: a copy onto a playlist, or, when `index` is
+ * given, a move to another spot in the same queue. It is never offered to the
+ * drop lanes, which would only add it twice.
+ */
+export function startQueueRowDrag(dataTransfer: DataTransfer, track: LocalTrack, index?: number): void {
   const payload = queueRowDragPayload(track);
   dataTransfer.setData("application/json", payload);
   dataTransfer.setData("text/plain", payload);
   dataTransfer.setData(QUEUE_ROW_DRAG_TYPE, track.id);
-  dataTransfer.effectAllowed = "copy";
+  dataTransfer.effectAllowed = index === undefined ? "copy" : "copyMove";
+  draggedRowIndex = index ?? null;
+}
+
+/** The queue position being dragged for a reorder, if a queue row drag is in progress. */
+export function draggedQueueRowIndex(types: readonly string[] | DOMStringList | null | undefined): number | null {
+  if (!dragStartedHere || draggedRowIndex === null || !types) return null;
+  return Array.from(types as ArrayLike<string>).includes(QUEUE_ROW_DRAG_TYPE) ? draggedRowIndex : null;
+}
+
+/**
+ * Which gap a pointer over a row points at: the gap before the row in its
+ * top half, after it in its bottom half.
+ */
+export function queueGapForPointer(rowIndex: number, pointerY: number, rowTop: number, rowHeight: number): number {
+  return pointerY - rowTop < rowHeight / 2 ? rowIndex : rowIndex + 1;
 }

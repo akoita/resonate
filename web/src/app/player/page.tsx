@@ -40,6 +40,7 @@ import { useUIStore } from "../../lib/uiStore";
 import { usePlayerConsoleLayout } from "../../components/player/usePlayerConsoleLayout";
 import { QueueDropLanes } from "../../components/player/QueueDropLanes";
 import { startQueueRowDrag } from "../../lib/queueDrag";
+import { useQueueGapDrop } from "../../components/player/useQueueGapDrop";
 import {
   PlayerConsoleDockPreview,
   PlayerConsoleLayoutButtons,
@@ -111,6 +112,7 @@ function PlayerContent() {
     addToast({ type: "info", title: indices.length === 1 ? "Removed from queue" : `${indices.length} tracks removed from queue` });
   }, [removeQueueTracks, addToast]);
   // Shift/Ctrl/Cmd+click and the keyboard select rows; a plain click still plays.
+  const queueGapDrop = useQueueGapDrop(queue.length);
   const queueSelection = useListSelection({
     count: queue.length,
     resetKey: queue.map((track) => track.id).join("\u0000"),
@@ -760,17 +762,19 @@ function PlayerContent() {
             tabIndex={0}
             aria-label="Playback queue. Shift or Ctrl-click to select several tracks."
             {...(queue.length > 0 ? queueSelection.listProps : {})}
+            {...queueGapDrop.listProps}
           >
             {queue.length > 0 ? (
               queue.map((track, idx) => (
                 <div
                   key={`${track.id}-${idx}`}
-                  className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""} ${queueSelection.isSelected(idx) ? "is-selected" : ""} ${queueSelection.isFocused(idx) ? "is-focused" : ""}`}
+                  className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""} ${queueSelection.isSelected(idx) ? "is-selected" : ""} ${queueSelection.isFocused(idx) ? "is-focused" : ""} ${queueGapDrop.rowDropClass(idx)}`}
                   {...queueSelection.rowProps(idx)}
+                  {...queueGapDrop.rowProps(idx)}
                   onContextMenu={(e) => handleContextMenu(e, idx)}
-                  // Drag a queue row onto a playlist in the playlists panel.
+                  // Drag a queue row to reorder it, or onto a playlist in the playlists panel.
                   draggable
-                  onDragStart={(e) => startQueueRowDrag(e.dataTransfer, track)}
+                  onDragStart={(e) => startQueueRowDrag(e.dataTransfer, track, idx)}
                 >
                   <div className="queue-item-left">
                     <div className="queue-item-name">{track.title}</div>

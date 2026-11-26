@@ -508,6 +508,45 @@ html.is-resizing-sidebar .app-sidebar {
   background: var(--r-chrome-hover);
 }
 
+.session-queue__row {
+  position: relative;
+  cursor: grab;
+}
+
+.session-queue__row:active {
+  cursor: grabbing;
+}
+
+/* Where a drop lands: a coral line in the gap between two rows. */
+.queue-item {
+  position: relative;
+}
+
+.session-queue__row.is-drop-before::before,
+.session-queue__row.is-drop-after::after,
+.queue-item.is-drop-before::before,
+.queue-item.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--r-play, #ff6b4a);
+  box-shadow: 0 0 0 3px rgba(255, 107, 74, 0.18);
+  pointer-events: none;
+}
+
+.session-queue__row.is-drop-before::before,
+.queue-item.is-drop-before::before {
+  top: -2px;
+}
+
+.session-queue__row.is-drop-after::after,
+.queue-item.is-drop-after::after {
+  bottom: -2px;
+}
+
 .session-queue__row.is-current {
   background: rgba(124, 92, 255, 0.16);
 }
@@ -804,4 +843,75 @@ html.is-resizing-sidebar .app-sidebar {
 .session-dock__listening details[open] {
   max-height: 40vh;
   overflow: auto;
+}
+
+/* ---- Dock tabs: Session | Playlists ----------------------------------- */
+
+.session-dock__tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-radius-full, 999px);
+  background: rgba(255, 255, 255, 0.05);
+  min-width: 0;
+}
+
+.session-dock__tab {
+  border: 0;
+  background: none;
+  padding: 5px 12px;
+  border-radius: var(--r-radius-full, 999px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--r-on-surface-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.session-dock__tab:hover {
+  color: var(--r-on-surface);
+}
+
+.session-dock__tab[aria-selected="true"] {
+  background: rgba(124, 92, 255, 0.22);
+  color: var(--r-on-surface);
+}
+
+.session-dock__tab:focus-visible {
+  outline: 2px solid var(--r-primary, #7c5cff);
+  outline-offset: 1px;
+}
+
+/* The playlists, laid out by the dock instead of sliding in as a drawer. */
+.global-playlist-panel.global-playlist-panel--embedded {
+  position: static;
+  inset: auto;
+  width: auto !important;
+  max-width: none !important;
+  flex: 1;
+  min-height: 0;
+  transform: none;
+  transition: none;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+  z-index: auto;
+}
+
+.global-playlist-panel--embedded .gpp-header {
+  padding: 4px 6px 8px 8px;
+  gap: 8px;
+}
+
+.global-playlist-panel--embedded .gpp-subtitle {
+  font-size: 11px;
+  color: var(--r-on-surface-muted);
+  min-width: 0;
+}
+
+.global-playlist-panel--embedded .gpp-content {
+  padding: 6px 2px;
 }

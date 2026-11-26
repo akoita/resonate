@@ -28,6 +28,7 @@ export default function AppShell({
   const {
     isPlaylistPanelOpen,
     closePlaylistPanel,
+    isDockAvailable,
     tracksToAddToPlaylist,
     setTracksToAddToPlaylist,
     resaleModal,
@@ -35,12 +36,15 @@ export default function AppShell({
     trackForRepeats,
     setTrackForRepeats,
   } = useUIStore();
+  // Where the Session Dock can show, playlists open as its Playlists tab;
+  // elsewhere (the full player, narrow screens) they keep the side drawer.
+  const drawerOpen = isPlaylistPanelOpen && !isDockAvailable;
   // The area under the top bar that the Session Dock docks beside or floats over.
   const stageRef = useRef<HTMLDivElement>(null);
 
   return (
     <PlayerProvider>
-      <div className={`app-shell ${isPlaylistPanelOpen ? 'has-sidebar' : ''}`}>
+      <div className={`app-shell ${drawerOpen ? 'has-sidebar' : ''}`}>
         <a className="skip-link" href="#main-content">
           Skip to main content
         </a>
@@ -75,7 +79,7 @@ export default function AppShell({
           <PlayerBar />
           <SessionSheet />
         </div>
-        <GlobalPlaylistPanel isOpen={isPlaylistPanelOpen} onClose={closePlaylistPanel} />
+        <GlobalPlaylistPanel isOpen={drawerOpen} onClose={closePlaylistPanel} autoOpenOnEdge={!isDockAvailable} />
         <AddToPlaylistModal
           tracks={tracksToAddToPlaylist}
           onClose={() => setTracksToAddToPlaylist(null)}

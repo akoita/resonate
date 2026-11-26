@@ -407,7 +407,7 @@ playing track) and offers Remove from queue. The library track list keeps its
 earlier checkbox selection; moving it to the shared model is a follow-up.
 
 
-### Session Dock on every page (#2699, `partial`)
+### Session Dock on every page (#2699)
 
 Off `/player`, the same console layout carries a compact **Session Dock**
 (`web/src/components/player/SessionDock.tsx`): now playing with its artwork,
@@ -436,8 +436,20 @@ offered back to the queue.
 Phones get no floating panel: the queue chip opens a Session sheet (native
 `<dialog>`) with now playing and the queue.
 
-Remaining (slice 2): playlists as a tab of the dock, dropping at an exact queue
-position, and reordering the queue by dragging.
+Slice 2 (#2699): the dock has **Session** and **Playlists** tabs. Where the
+dock can show (off `/player`, wide enough for it), the top bar's playlists
+button and Ctrl/Cmd+J open the Playlists tab (`GlobalPlaylistPanel` with
+`variant="embedded"`) instead of the side drawer; `uiStore.isDockAvailable`
+decides, and the drawer stays for `/player` and narrow screens. The tabs are
+spring-loaded: a queueable drag over Session switches to the queue, a drag over
+Playlists to the playlists. In the queue, rows drag to reorder
+(`moveQueueTrack`), anything queueable dropped between two rows lands exactly
+there (`insertQueueTracksAtGap`, which moves an already queued track rather
+than duplicating it and never moves the current one), and a coral line marks
+the gap. Alt+Up/Down on a focused row moves it and announces the new position.
+The `/player` console's queue takes the same row reordering and between-row
+drops (`useQueueGapDrop`, shared with the dock); its keyboard keeps the
+existing selection keys.
 
 ### Sidebar width and icon rail (#2699)
 

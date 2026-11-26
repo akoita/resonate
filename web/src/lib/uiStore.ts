@@ -9,6 +9,12 @@ interface UIState {
     /** Phone only: the Session sheet (now playing and the queue) slid up from the player bar. */
     isSessionSheetOpen: boolean;
     setSessionSheetOpen: (open: boolean) => void;
+    /**
+     * The Session Dock can show here (wide enough, not on /player). Then the
+     * playlists open as the dock's Playlists tab instead of the side drawer.
+     */
+    isDockAvailable: boolean;
+    setDockAvailable: (available: boolean) => void;
     isSidebarOpen: boolean;
     openSidebar: () => void;
     closeSidebar: () => void;
@@ -35,6 +41,8 @@ export const useUIStore = create<UIState>((set) => ({
     togglePlaylistPanel: () => set((state) => ({ isPlaylistPanelOpen: !state.isPlaylistPanelOpen })),
     isSessionSheetOpen: false,
     setSessionSheetOpen: (open) => set({ isSessionSheetOpen: open }),
+    isDockAvailable: false,
+    setDockAvailable: (available) => set({ isDockAvailable: available }),
     isSidebarOpen: false,
     openSidebar: () => set({ isSidebarOpen: true }),
     closeSidebar: () => set({ isSidebarOpen: false }),

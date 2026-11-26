@@ -111,13 +111,20 @@ test.describe("keyboard accessibility smoke", () => {
     await toggle.focus();
     await expect(toggle).toBeFocused();
     await toggle.press("Space");
-    await expect(page.locator("button[aria-controls='global-playlist-panel']")).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    const panel = page.locator("#global-playlist-panel");
-    await expect(panel).toHaveAttribute("aria-hidden", "false");
-    await expect(panel).not.toHaveAttribute("inert", "");
+    // On a wide screen away from /player the playlists open as the Session
+    // Dock's Playlists tab; elsewhere they open as the side drawer.
+    await expect(page.locator(".topbar-playlist-btn")).toHaveAttribute("aria-expanded", "true");
+    const controls = await page.locator(".topbar-playlist-btn").getAttribute("aria-controls");
+    let panel;
+    if (controls === "session-dock") {
+      await expect(page.locator("#session-dock-tab-playlists")).toHaveAttribute("aria-selected", "true");
+      panel = page.locator("#session-dock-playlists");
+      await expect(panel).toBeVisible();
+    } else {
+      panel = page.locator("#global-playlist-panel");
+      await expect(panel).toHaveAttribute("aria-hidden", "false");
+      await expect(panel).not.toHaveAttribute("inert", "");
+    }
 
     const newPlaylist = panel.getByRole("button", { name: "New playlist" });
     await newPlaylist.click();
