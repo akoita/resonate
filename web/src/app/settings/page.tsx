@@ -467,7 +467,7 @@ export default function SettingsPage() {
                                                 {sourceNames.map((name, index) => (
                                                     <li key={`${index}-${name}`} className="settings-source-item">
                                                         <div className="settings-source-info">
-                                                            <div className="settings-source-path">{name}</div>
+                                                            <div className="settings-source-path" title={name}>{name}</div>
                                                         </div>
                                                         <div className="settings-source-item-actions">
                                                             <Button
@@ -627,7 +627,7 @@ export default function SettingsPage() {
                                         <span className="settings-kicker">Alerts</span>
                                         <h2 className="settings-section-title">Notifications</h2>
                                         <p className="settings-copy">
-                                            Choose which dispute and marketplace events should reach your connected wallet.
+                                            Choose which dispute and marketplace events you want to hear about.
                                         </p>
                                     </div>
                                 </div>

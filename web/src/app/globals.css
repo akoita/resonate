@@ -8365,11 +8365,34 @@ a.listener-cohort-detail__action:focus-visible {
   transform: translateX(18px);
 }
 
+/* The Settings page sits beside the sidebar and, often, the session dock, so
+   its own width (not the window's) decides when columns stack. */
+.settings-workspace {
+  container: settings-page / inline-size;
+}
+
+.settings-panel {
+  container: settings-panel / inline-size;
+}
+
+.settings-source {
+  container: settings-sources / inline-size;
+}
+
 @media (max-width: 980px) {
   .settings-workspace {
     width: min(100% - 24px, 760px);
   }
+}
 
+@media (max-width: 640px) {
+  .settings-workspace {
+    width: min(100% - 16px, 560px);
+    padding-top: var(--space-4);
+  }
+}
+
+@container settings-page (max-width: 860px) {
   .settings-hero,
   .settings-layout {
     grid-template-columns: 1fr;
@@ -8394,7 +8417,32 @@ a.listener-cohort-detail__action:focus-visible {
   .settings-nav button {
     min-width: 160px;
   }
+}
 
+@container settings-page (max-width: 560px) {
+  .settings-hero,
+  .settings-panel {
+    padding: var(--space-4);
+  }
+
+  .settings-hero-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-nav button {
+    min-width: 0;
+  }
+
+  .settings-panel {
+    min-height: 0;
+  }
+}
+
+@container settings-panel (max-width: 760px) {
   .settings-library-grid,
   .artist-remix-consent-grid,
   .settings-panel .taste-memory-grid,
@@ -8409,48 +8457,45 @@ a.listener-cohort-detail__action:focus-visible {
   }
 }
 
-@media (max-width: 640px) {
-  .settings-workspace {
-    width: min(100% - 16px, 560px);
-    padding-top: var(--space-4);
-  }
-
-  .settings-hero,
-  .settings-panel {
-    padding: var(--space-4);
-  }
-
-  .settings-hero-metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    overflow-x: visible;
-  }
-
-  .settings-nav button {
-    min-width: 0;
-  }
-
-  .settings-panel {
-    min-height: 0;
-  }
-
+@container settings-panel (max-width: 520px) {
   .settings-panel .settings-section-header,
-  .settings-source-item,
   .notification-preference-row {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .settings-source-item-actions,
   .settings-source-actions {
     width: 100%;
   }
 
-  .settings-source-item-actions > *,
   .settings-source-actions > * {
+    flex: 1;
+  }
+}
+
+/* A source row keeps the folder name on one line; when the row is too narrow
+   for name and buttons side by side, the buttons drop to their own line. */
+.settings-source-item {
+  flex-wrap: wrap;
+}
+
+.settings-source-item .settings-source-info {
+  flex: 1 1 12rem;
+}
+
+.settings-source-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+@container settings-sources (max-width: 360px) {
+  .settings-source-item-actions {
+    width: 100%;
+  }
+
+  .settings-source-item-actions > * {
     flex: 1;
   }
 }
@@ -17114,4 +17159,10 @@ tr[draggable="true"]:hover {
 [data-idle-paused]::before,
 [data-idle-paused]::after {
   animation-play-state: paused !important;
+}
+
+/* A section's main action keeps its label on one line. */
+.settings-panel .settings-section-header > button {
+  flex: none;
+  white-space: nowrap;
 }
