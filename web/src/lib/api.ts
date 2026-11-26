@@ -1012,6 +1012,31 @@ export type ArtistNetReceivedReport =
     }
   | { status: "unavailable"; reason: string };
 
+/** #2686: one interest-mode campaign's counts, under the minimum-group rule. */
+export type ArtistShowInterestCampaign = {
+  campaignId: string;
+  slug: string;
+  title: string;
+  city: string;
+  status: string;
+  deadline: string;
+  interest: {
+    mode: "pledge" | "interest";
+    total: number;
+    cities: Array<{ city: string; count: number }>;
+    otherCount: number;
+    notifyCount: number;
+    minimumGroup: number;
+  };
+};
+
+export type ArtistShowInterest = {
+  status: "ready" | "none" | "unavailable";
+  reason?: string;
+  minimumGroup: number;
+  campaigns: ArtistShowInterestCampaign[];
+};
+
 export type ArtistAnalyticsDashboard = {
   summary: {
     artistId: string;
@@ -1050,6 +1075,8 @@ export type ArtistAnalyticsDashboard = {
     status: "ready" | "thin_data" | "unavailable";
     reason?: string;
   };
+  /** #2686: Shows "I would come" counts per interest-mode campaign. */
+  showInterest?: ArtistShowInterest;
   playsOverTime: ArtistAnalyticsTimePoint[];
   trackPerformance: ArtistAnalyticsTrack[];
   listenerGrowth?: {

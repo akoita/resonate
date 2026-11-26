@@ -50,6 +50,30 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("/shows/create?city=paris&amp;country=FR&amp;releaseId=release-1");
     expect(html).toContain("Aggregate signals only");
   });
+  it("shows Shows interest by city without naming small groups (#2686)", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30} data={{
+      ...dashboard,
+      showInterest: {
+        status: "ready",
+        minimumGroup: 3,
+        campaigns: [{
+          campaignId: "c1", slug: "lyon-night", title: "Lyon night", city: "Lyon", status: "draft", deadline: "2026-12-30T00:00:00.000Z",
+          interest: { mode: "interest", total: 6, cities: [{ city: "Lyon", count: 3 }], otherCount: 3, notifyCount: 1, minimumGroup: 3 },
+        }],
+      },
+    }} onDaysChange={() => {}} />);
+    expect(html).toContain("Who would come");
+    expect(html).toContain("6 people would come: Lyon 3, other places 3. 1 person asked to be told when it opens.");
+    expect(html).toContain("/shows/lyon-night");
+    expect(html).toContain("fewer than 3 people are counted together");
+  });
+
+  it("hides Shows interest when the artist has no interest campaign (#2686)", () => {
+    const html = renderToStaticMarkup(<ArtistAnalyticsDashboard status="ready" days={30}
+      data={{ ...dashboard, showInterest: { status: "none", minimumGroup: 3, campaigns: [] } }} onDaysChange={() => {}} />);
+    expect(html).not.toContain("Who would come");
+  });
+
   describe("net received beside gross (#2172)", () => {
     const netReceived: ArtistAnalyticsDashboardData["netReceived"] = {
       status: "ready",

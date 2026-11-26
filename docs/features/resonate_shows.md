@@ -389,8 +389,13 @@ contract call, and the fan-facing copy never says "pledge" or "back".
   hides the funding stats, trust panel and mobile pledge bar, and the owner sees
   `ShowInterestOwnerPanel` (counts by city, Ask who would come, Open pledges).
 - Privacy: `ShowInterest` is exported by `userId` and deleted on erasure.
-- Not yet: the counts in the artist analytics dashboard (they are on the
-  campaign page only).
+- Artist analytics (#2686): the dashboard (`GET /analytics/artist/:id/v1`)
+  carries `showInterest` with one entry per interest-mode campaign (newest
+  ten), built by the same `summarizeInterest` as the campaign summary
+  (`show-interest-summary.ts`), so both always agree. The web dashboard shows
+  them under "Who would come"; the block is absent when the artist has no
+  interest campaign. Tests: `analytics_show_interest.integration.spec.ts`,
+  `ArtistAnalyticsDashboard.test.tsx`.
 
 ## Current UI Surfaces
 

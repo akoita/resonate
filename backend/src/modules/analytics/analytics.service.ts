@@ -34,6 +34,7 @@ import { unmetDemandCards } from "./analytics_unmet_demand";
 import { UNMET_DEMAND_SOURCE, type UnmetDemandSource } from "../scene_scout/unmet_demand.contracts";
 import { FIRST_LISTENER_RECEPTION_SOURCE, firstListenerReceptionCards, type FirstListenerReceptionSource } from "./analytics_first_listener";
 import { ARTIST_NET_RECEIVED_SOURCE, type ArtistNetReceivedSource } from "./analytics_net_received";
+import { ARTIST_SHOW_INTEREST_SOURCE, type ArtistShowInterestSource } from "./analytics_show_interest";
 
 /**
  * What `payoutUsd` / `totalPayoutUsd` measure in the artist analytics responses (#2144).
@@ -293,6 +294,10 @@ export class AnalyticsService {
     @Optional()
     @Inject(ARTIST_NET_RECEIVED_SOURCE)
     private readonly netReceivedSource?: ArtistNetReceivedSource,
+    // #2686: Shows "I would come" counts by city, under the minimum-group rule.
+    @Optional()
+    @Inject(ARTIST_SHOW_INTEREST_SOURCE)
+    private readonly showInterestSource?: ArtistShowInterestSource,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
@@ -437,12 +442,20 @@ export class AnalyticsService {
         reason: "Net received is temporarily unavailable. Your gross sales are still shown.",
       }));
 
+    const showInterest = await this.showInterestSource?.getArtistShowInterest(artistId).catch(() => ({
+      status: "unavailable" as const,
+      reason: "Show interest is temporarily unavailable. Your other analytics are still available.",
+      minimumGroup: 0,
+      campaigns: [],
+    }));
+
     return {
       summary: {
         ...summary,
         payoutsByAsset: exportPayload.payoutsByAsset,
       },
       ...(netReceived ? { netReceived } : {}),
+      ...(showInterest ? { showInterest } : {}),
       tracks,
       topTracks,
       sessions: [...sessionMap.values()],

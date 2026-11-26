@@ -3878,7 +3878,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["analytics", "dashboard", "plays", "payouts", "gross sales", "net received", "entitled net", "x402", "pending", "platform fee", "royalty", "sales", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception"],
+    keywords: ["analytics", "dashboard", "plays", "payouts", "gross sales", "net received", "entitled net", "x402", "pending", "platform fee", "royalty", "sales", "revenue", "stats", "metrics", "action cockpit", "staking", "Scene Scout", "city demand", "release", "unmet demand", "missing stems", "licenses", "first listeners", "discovery", "reception", "shows", "who would come", "show interest"],
     sections: [
       {
         id: "dashboard",
@@ -4489,7 +4489,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Open your draft campaign's page while signed in with the account that manages the artist.",
               "Under Who would come, choose Ask who would come and confirm. Fans with the link can now say they would come.",
-              "Watch the count and the cities in the same place.",
+              "Watch the count and the cities in the same place. Your Analytics page shows the same counts for each campaign under Who would come.",
               "When pledges are available on Resonate, choose Open pledges. Everyone who asked to be told gets a notice.",
             ],
           },

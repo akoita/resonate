@@ -114,6 +114,7 @@ function ReadyDashboard({
         />
         <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
         <SceneScoutStatus data={data} />
+        <ShowInterestPanel data={data} />
         <EmptyDashboard days={data.meta.timeWindow.days} />
         <SeparatedContentProtection />
       </>
@@ -131,6 +132,7 @@ function ReadyDashboard({
 
       <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
       <SceneScoutStatus data={data} />
+      <ShowInterestPanel data={data} />
 
       <section className="kpi-row" aria-label="Artist analytics summary">
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
@@ -278,6 +280,59 @@ function SceneScoutStatus({ data }: { data: ArtistAnalyticsDashboardData }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/** "8 people", "1 person". */
+function people(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "person" : "people"}`;
+}
+
+/**
+ * #2686: Shows "I would come" counts per campaign, from the same summary as
+ * the campaign page. A city appears only once enough people name it; the rest
+ * are counted together.
+ */
+function ShowInterestPanel({ data }: { data: ArtistAnalyticsDashboardData }) {
+  const state = data.showInterest;
+  if (!state || state.status === "none") return null;
+  return (
+    <section className="artist-action-cockpit show-interest-panel" aria-labelledby="show-interest-heading">
+      <div className="artist-action-cockpit__header">
+        <div>
+          <p className="artist-action-cockpit__eyebrow">Shows</p>
+          <h2 id="show-interest-heading">Who would come</h2>
+        </div>
+        <span className="artist-action-cockpit__privacy">
+          Cities with fewer than {state.minimumGroup || 3} people are counted together
+        </span>
+      </div>
+      {state.status === "unavailable" ? (
+        <p className="artist-action-cockpit__empty">{state.reason ?? "Show interest is currently unavailable."}</p>
+      ) : (
+        <ul className="scene-scout-status__list">
+          {state.campaigns.map((campaign) => (
+            <li key={campaign.campaignId}>
+              <strong>
+                <Link href={`/shows/${campaign.slug}`}>{campaign.title}</Link>
+              </strong>
+              <span>
+                {campaign.interest.total === 0
+                  ? "Nobody has said they would come yet."
+                  : `${people(campaign.interest.total)} would come`
+                    + (campaign.interest.cities.length > 0
+                      ? `: ${campaign.interest.cities.map((city) => `${city.city} ${city.count}`).join(", ")}`
+                      : "")
+                    + (campaign.interest.otherCount > 0
+                      ? `${campaign.interest.cities.length > 0 ? "," : ":"} other places ${campaign.interest.otherCount}`
+                      : "")
+                    + `. ${people(campaign.interest.notifyCount)} asked to be told when it opens.`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
