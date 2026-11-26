@@ -9,6 +9,7 @@ import { getCorsAllowedOrigins } from "./config/cors";
 import { applyGlobalValidation } from "./config/validation";
 import { applyTrustProxy } from "./config/trust_proxy";
 import { requestObservabilityMiddleware } from "./modules/shared/request_observability.middleware";
+import { securityHeadersMiddleware } from "./modules/shared/security_headers.middleware";
 import { createAppLogger } from "./modules/shared/structured_nest_logger";
 import { assertAnalyticsActorIdSaltConfiguration } from "./modules/analytics/analytics_identity";
 import {
@@ -99,6 +100,10 @@ async function bootstrap() {
     exposedHeaders: ["Content-Disposition"],
   });
 
+  // Browser security headers on every response (see the middleware for why each one).
+  const httpServer = app.getHttpAdapter().getInstance();
+  httpServer.disable("x-powered-by");
+  app.use(securityHeadersMiddleware());
   app.use(requestObservabilityMiddleware());
   if (!servesPublicApi(runtimeMode)) {
     // A worker runs the Nest app only so the in-process event bus joins each

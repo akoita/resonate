@@ -1,6 +1,8 @@
 // #2660: a production build refuses development switches such as mock auth.
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- next.config.js is CJS
 require("./src/lib/build/productionBuildGuard.cjs").assertProductionBuild(process.env);
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- next.config.js is CJS
+const { securityHeaders } = require("./src/lib/build/securityHeaders.cjs");
 
 /** @type {import('next').NextConfig} */
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
@@ -70,6 +72,8 @@ const commitSha = readCommitSha();
 
 const nextConfig = {
   output: "standalone",
+  // Don't advertise the framework in every response.
+  poweredByHeader: false,
   images: {
     remotePatterns: [
       {
@@ -121,6 +125,11 @@ const nextConfig = {
   // moved into Home and Settings. Old URLs keep working; they are temporary
   // (non-permanent) redirects while the new layout settles. The admin Accounts
   // page folded into Users: suspend/lift/close live on a person's record.
+  // Browser security headers on every route; see securityHeaders.cjs for
+  // what each one does and why the script policy is report-only for now.
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders(process.env) }];
+  },
   async redirects() {
     return [
       { source: "/marketplace", destination: "/crates?tab=stems", permanent: false },
