@@ -1,13 +1,11 @@
 # Vision Sprint 61: Works when you show it
 
-**Status:** 🟡 Approved by the owner on 2026-11-26 ("plan and start working on
-all the works not requiring external actors"). Runs alongside
+**Status:** ✅ Closed on 2026-11-26 (all three items and the first slice of
+the stretch item merged). Runs alongside
 [Sprint 60](2026-12-10-vision-sprint-60-ready-to-show.md), whose rehearsal
-waits on invited artists.
-**Progress (2026-11-26):** all four slices merged: #2682 (PR #2707), #2686
-(PR #2712), #2689 (PR #2713) and the #1121 card for remixes waiting for
-approval. #1121 stays open for its remaining recommendation work. The
-milestone closes with its release.
+waits on invited artists. #1121 stays open, with no milestone, for its
+remaining recommendation work. Release notes:
+[milestone-60](releases/milestone-60.md).
 **Milestone:** [60](https://github.com/akoita/resonate/milestone/60), due
 2026-12-23.
 **Goal:** When an artist or a partner first looks at the preview, the
