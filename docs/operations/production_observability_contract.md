@@ -150,6 +150,21 @@ Infrastructure turns `degraded.fallback` into a log-based metric and an alert.
 The companion rollout is tracked in
 [`akoita/resonate-iac#266`](https://github.com/akoita/resonate-iac/issues/266).
 
+## Web Security Events
+
+The web app (not the backend) emits `security.csp_violation` from
+`POST /api/security/csp-report`, at `severity: "WARNING"`, one line per
+browser Content-Security-Policy report. The policy is report-only for now
+(see [Browser security headers](./browser_security_headers.md)), so each
+event is a resource the policy *would* have blocked.
+
+Fields: `documentPath` (path only), `blocked` (origin + path, or a CSP
+keyword such as `inline` or `eval`), `directive`, `disposition`, and optional
+`sourceFile`, `line` and a 40-character `sample`. Query strings are dropped,
+fields are truncated, and each web instance logs at most 120 reports a minute.
+Use `directive` and the origin of `blocked` for grouping; `documentPath` and
+`sourceFile` are unbounded and must not become metric labels.
+
 ## Infrastructure Mapping
 
 `resonate-iac` can turn these events into Cloud Logging log-based metrics for
