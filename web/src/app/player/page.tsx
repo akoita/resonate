@@ -511,6 +511,11 @@ function PlayerContent() {
     ? playerArtistHref({ ...currentTrack, releaseId: currentTrack.releaseId || shareTrack.releaseId })
     : null;
 
+  // With nothing loaded, the stage stays clean: no leftover cover from the
+  // last session, no playhead, no share row (the owner's empty-queue report).
+  const stageArtworkUrl = currentTrack ? artworkUrl : null;
+  const queueEmpty = queue.length === 0;
+
   const displayTrack = currentTrack || {
     title: "No track selected",
     artist: "Select a track from the library",
@@ -526,10 +531,10 @@ function PlayerContent() {
       data-console-minimized={consoleLayout.minimized ? "true" : undefined}
     >
       {/* Mesh Backdrop Layer */}
-      {artworkUrl && (
+      {stageArtworkUrl && (
         <div
           className="player-mesh-bg"
-          style={{ backgroundImage: `url(${artworkUrl})` }}
+          style={{ backgroundImage: `url(${stageArtworkUrl})` }}
         />
       )}
       <div className="player-mesh-overlay" />
@@ -545,14 +550,14 @@ function PlayerContent() {
       {/* THE HERO STAGE */}
       <section className="player-hero-stage">
         <div className="player-art-container">
-          {artworkUrl && heroReleaseHref ? (
+          {stageArtworkUrl && heroReleaseHref ? (
             <Link href={heroReleaseHref} className="player-art-link" title={displayTrack.album ? `Go to album ${displayTrack.album}` : "Go to album"}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={artworkUrl} alt={displayTrack.title} className="player-art-master" />
+              <img src={stageArtworkUrl} alt={displayTrack.title} className="player-art-master" />
             </Link>
-          ) : artworkUrl ? (
+          ) : stageArtworkUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={artworkUrl} alt={displayTrack.title} className="player-art-master" />
+            <img src={stageArtworkUrl} alt={displayTrack.title} className="player-art-master" />
           ) : (
             <div className="player-art-master player-art-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: "160px", opacity: 0.05 }}>🎵</span>
@@ -617,7 +622,7 @@ function PlayerContent() {
       >
         <div className="player-status-area" onPointerDown={consoleLayout.onHeaderPointerDown}>
           <PlayerConsoleMoveHandle layout={consoleLayout} />
-          <div className="studio-label">System Monitoring</div>
+          <div className="studio-label">Now playing</div>
           <div className="player-status-signal" title="Live Sync Active">
             <div className="status-led" />
             <span className="status-text">Live Sync Active</span>
@@ -651,7 +656,7 @@ function PlayerContent() {
             </svg>
           </button>
 
-          <button className="ui-btn btn-main" onClick={togglePlay} aria-label={isPlaying ? "Pause" : "Play"}>
+          <button className="ui-btn btn-main" onClick={togglePlay} disabled={queueEmpty && !currentTrack} aria-label={isPlaying ? "Pause" : "Play"}>
             {isPlaying ? (
               <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="4" width="4" height="16" rx="1" />
@@ -674,8 +679,10 @@ function PlayerContent() {
 
         <div className="player-progress" style={{ marginBottom: "var(--space-2)" }}>
           <div className="studio-label" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: "2px" }}>
-            <span>Signal Progress</span>
-            <span>{formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} / {formatTime(duration)}</span>
+            <span>Progress</span>
+            {currentTrack ? (
+              <span>{formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} / {formatTime(duration)}</span>
+            ) : null}
           </div>
           {/* The A–B marker sits on the scrub track itself, so the highlight reads against the playhead. */}
           <div className="player-range-wrap">
@@ -686,7 +693,8 @@ function PlayerContent() {
             min="0"
             max="100"
             step="0.1"
-            value={isDragging ? dragValue : (progress || 0)}
+            value={currentTrack ? (isDragging ? dragValue : (progress || 0)) : 0}
+            disabled={!currentTrack}
             onPointerDown={handleSeekStart}
             onChange={handleSeekChange}
             onPointerUp={handleSeekEnd}
@@ -697,7 +705,7 @@ function PlayerContent() {
         </div>
 
         <div className={`console-gain ${muted ? "is-muted" : ""}`}>
-          <div className="studio-label console-gain__label">Output Gain</div>
+          <div className="studio-label console-gain__label">Volume</div>
           <div className="console-gain__row">
             <button
               type="button"
@@ -736,7 +744,7 @@ function PlayerContent() {
         )}
 
         <div className="queue-section" style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
-          <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
+          <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue</div>
           <PlayerDjQueueHeader queue={queue} />
           <div className="queue-manifest-actions">
             <SaveQueuePlaylist />
@@ -835,8 +843,9 @@ function PlayerContent() {
           </div>
         </div>
 
+        {currentTrack ? (
         <div className="player-share-section" style={{ marginTop: "auto", paddingTop: "var(--space-2)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-          <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Broadcast Signal</div>
+          <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Share</div>
           <SocialShare
             track={shareTrack}
             // A catalog track whose release id arrives with its actions: keep
@@ -845,6 +854,7 @@ function PlayerContent() {
             pending={!shareTrack.releaseId && Boolean(actionTrackId) && !visibleTrackActions && !actionsFailed}
           />
         </div>
+        ) : null}
 
         {consoleLayout.dock === "floating" && !consoleLayout.minimized && (
           <div

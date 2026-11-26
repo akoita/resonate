@@ -148,9 +148,9 @@ line (1) Shows campaign fees: active campaigns render as `Support a show` chips
 linking to `/shows/<slug>`. Non-active campaign states stay disabled here
 because player support means pledging is open now.
 
-## Listening Share (Broadcast Signal)
+## Listening Share (Share section)
 
-The player's Broadcast Signal panel shares the playing track. The share model
+The player console's Share section shares the playing track. The share model
 lives in `web/src/lib/listeningShare.ts`; `SocialShare` renders it. This is
 vision-neutral product quality work: it restates the existing ADR-BM-4 artist
 share and changes no fees, payouts, or monetization mechanics.
@@ -306,7 +306,7 @@ Manual:
     focus the move handle to move it with the arrow keys. On a phone width only
     minimize is offered. `npx playwright test tests/player.spec.ts` covers this
     (PLAYER-06, PLAYER-07).
-11. Play a published track and use each Broadcast Signal button; confirm the
+11. Play a published track and use each Share button; confirm the
     link opens `/release/<id>` with `utm_campaign=listening_share` and the X
     and Reddit drafts carry the track copy. Play a device file and confirm the
     panel shows the published-tracks note instead of buttons.
@@ -331,7 +331,7 @@ Manual:
 Implemented for #1724, #1721 and #1723. These
 controls serve listeners and curators; they are vision-neutral product quality.
 
-**Clear queue** sits in the same Queue Manifest chip row whenever the queue
+**Clear queue** sits in the same Queue header chip row whenever the queue
 holds tracks other than the playing one. It removes every other position in one
 step (played and upcoming), keeps the current track playing, and empties the
 queue when nothing is current. It cancels a queue repeat plan (a track repeat
@@ -340,7 +340,7 @@ position and its playlist source without restarting playback; Undo is offered
 only while the queue is still exactly what the clear left, so any later add,
 removal or play retires it.
 
-**Save queue as playlist** appears beside Queue Manifest for ad-hoc or modified
+**Save queue as playlist** appears beside the Queue heading for ad-hoc or modified
 queues. It snapshots past, current and upcoming tracks in manifest order, never
 shuffle traversal order. An unchanged playlist links to its source. Provenance
 survives player-state restoration; a coincidental content match does not create
@@ -510,3 +510,10 @@ events; segment loops never reset qualifying-play state.
 No new environment variables, schema migration, pricing, payout, or contract
 changes are required. Named saved passages and cross-device repeat plans remain
 out of scope.
+
+### Empty queue and plain labels
+
+When the queue is empty the Player page shows a clean empty state: no cover
+left over from the last session, no time or playhead, a disabled Play button
+and no Share section. The console sections use plain names: Now playing,
+Progress, Volume, Queue and Share.

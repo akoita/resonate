@@ -66,9 +66,9 @@ async function seedPlayer(page: Page, source = false, local = false) {
   });
   await page.route('**/playlists/folders', route => route.fulfill({ json: [] }));
   await page.goto('/player');
-  await expect(page.getByText('Queue Manifest', { exact: true })).toBeVisible();
+  await expect(page.locator("#player-console .studio-label").getByText("Queue", { exact: true })).toBeVisible();
   await injectQueueStorage(page);
-  // The page is server-rendered inline (#2290), so "Queue Manifest" is visible
+  // The page is server-rendered inline (#2290), so the "Queue" label is visible
   // before the player has hydrated. The player writes its (empty) state once it
   // has hydrated; seeding before that write lets it overwrite the seeded queue.
   // Wait for that first write so the seed below is the last one.

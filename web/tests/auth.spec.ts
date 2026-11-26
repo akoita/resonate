@@ -28,7 +28,7 @@ test("shows self-custody actions panel", async ({ page }) => {
 test("sidebar navigation works", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "Player" }).click();
-  await expect(page.getByText("System Monitoring")).toBeVisible();
+  await expect(page.locator("#player-console .studio-label").getByText("Now playing", { exact: true })).toBeVisible();
   // #2663: the artist group (Upload, Analytics) is shown only to artist
   // accounts; the routes stay reachable directly and ask to sign in.
   await expect(page.getByRole("navigation", { name: "Artist and account" }).getByRole("link", { name: "Upload" })).toHaveCount(0);

@@ -14777,7 +14777,7 @@ tr[draggable="true"]:hover {
     display: none !important;
   }
 
-  /* /player page: the floating System Monitoring console was pinned
+  /* /player page: the floating Player console was pinned
    * to the right edge at `width: clamp(320px, 30vw, 500px)`, covering
    * most of a 412px phone viewport and crushing the hero artwork /
    * title into the remaining ~90px. Reflow the whole stage to a

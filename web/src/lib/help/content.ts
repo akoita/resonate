@@ -999,7 +999,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/player.png`,
-              alt: "The Player page with a large play control, progress and output sliders, and a 'Queue Manifest' panel for an AI DJ set: a strip naming the AI DJ and its request, World Music and Afrobeats, with a Steer link, a sparkle mark on each pick the DJ chose, and a muted 'Outside your request' note on one pick.",
+              alt: "The Player page with a large play control, progress and output sliders, and a 'Queue' panel for an AI DJ set: a strip naming the AI DJ and its request, World Music and Afrobeats, with a Steer link, a sparkle mark on each pick the DJ chose, and a muted 'Outside your request' note on one pick.",
               caption: "The Now Playing console: transport controls, per-track actions, and a queue that shows when it is an AI DJ set.",
               width: 1440,
               height: 900,
@@ -1029,8 +1029,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Use Play next or Add to queue on a track, selected tracks, an album, or a playlist. Multi-track additions keep their displayed order and already-queued tracks are skipped.",
               "You can queue a card without opening it. In the catalog and on Home, point at a release, artist, playlist, or track card and select its queue button (always shown on touch screens), or right-click the card, then choose Play next or Add to queue. An artist adds all of their tracks, newest release first. Add to queue never starts playback.",
               "Shuffle plays every eligible queued track once before Repeat All begins another cycle. Tracks added during shuffle join the current cycle.",
-              "Choose Save queue as playlist beside Queue Manifest to keep the whole queue in its displayed order, including tracks already played. Give it a name and folder. An unchanged playlist offers View playlist instead; changing its queue lets you save a new playlist without overwriting the original. Review any tracks that cannot be saved before confirming.",
-              "Choose Clear queue beside Queue Manifest to remove every track except the one playing, which keeps playing. If nothing is playing, the queue empties. Select Undo in the line that appears to put the tracks back in their order; Undo goes away once you add or play something else.",
+              "Choose Save queue as playlist beside the Queue heading to keep the whole queue in its displayed order, including tracks already played. Give it a name and folder. An unchanged playlist offers View playlist instead; changing its queue lets you save a new playlist without overwriting the original. Review any tracks that cannot be saved before confirming.",
+              "Choose Clear queue beside the Queue heading to remove every track except the one playing, which keeps playing. If nothing is playing, the queue empties. Select Undo in the line that appears to put the tracks back in their order; Undo goes away once you add or play something else.",
               "Open Loop and repeat in the player bar or full player (on a phone, tap the queue button on the player bar to open the Session sheet, which also holds shuffle and the repeat mode). Set A and B in seconds, or mark your current position with Set A here and Set B here, then choose Loop passage. Seeking stays within that passage until you clear it; changing tracks clears the loop.",
               "Choose Current track or Entire queue and a number of additional repeats; type it or use the − and + buttons beside the field. One additional repeat means one replay after the current pass. The remaining count changes only at a natural track end or complete queue cycle. Passage loops pause that count. You can update or cancel repeats, and selecting an infinite repeat mode replaces the finite plan.",
               "To set repeats for a track that is not playing, open its menu (right-click a queue or library row, or the ⋮ button) and choose Set repeats. The count waits until that track next starts, then runs like one set from Loop and repeat, and the queue shows it as ↻ with the number. Choose Set repeats again to change or cancel it. If a queue repeat is running, the track count waits until the queue repeat ends.",
@@ -1056,7 +1056,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "While an AI DJ session is live and its picks are in your queue, the Queue Manifest says so. A small strip above the queue shows the AI DJ and a short line about what the session was asked for, such as the genres, mood or energy you chose, or the track, artist or playlist it started from. The sentence you typed is never shown there.",
+            text: "While an AI DJ session is live and its picks are in your queue, the Queue panel says so. A small strip above the queue shows the AI DJ and a short line about what the session was asked for, such as the genres, mood or energy you chose, or the track, artist or playlist it started from. The sentence you typed is never shown there.",
           },
           {
             kind: "list",
@@ -1083,7 +1083,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Check the AI-contribution badge without leaving the player.",
               "Open licensing actions when a stem is available to collect or license in Browse stems.",
               "Support a show when the playing artist has a live campaign; the chip opens the campaign page so you can review the details before pledging.",
-              "Share what you are playing from Broadcast Signal. The link opens the track's release page, with its cover in the preview. When the artist has a live show campaign, the post invites your friends to back it and links to it. The post only mentions what the artist keeps from a sale when something of theirs is actually for sale. Tracks with a public Resonate release can be shared; files from your device cannot.",
+              "Share what you are playing from the Share section of the Player console. The link opens the track's release page, with its cover in the preview. When the artist has a live show campaign, the post invites your friends to back it and links to it. The post only mentions what the artist keeps from a sale when something of theirs is actually for sale. Tracks with a public Resonate release can be shared; files from your device cannot.",
             ],
           },
           {
