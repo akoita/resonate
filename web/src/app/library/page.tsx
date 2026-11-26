@@ -57,6 +57,8 @@ import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
 import { QueueActionsButton } from "../../components/player/QueueActionsButton";
+import { usePlayNow } from "../../components/player/QueueDropLanes";
+import { offerQueueDrag } from "../../lib/queueDrag";
 import { useUIStore } from "../../lib/uiStore";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { RemixCta } from "../../components/remix/RemixCta";
@@ -116,6 +118,7 @@ function LibraryPageContent() {
     const searchParams = useSearchParams();
     const { playQueue, queue, removeFromQueue, currentTrack } = usePlayer();
     const queueActions = useQueueActions();
+    const playSelectionNow = usePlayNow();
     const [tracks, setTracks] = useState<LocalTrack[]>([]);
     const [loading, setLoading] = useState(true);
     const { addToast } = useToast();
@@ -712,6 +715,17 @@ function LibraryPageContent() {
             {selectedRemovable.length > 0 && (
                 <div className="library-selection-bar">
                     <span>{selectedRemovable.length} track{selectedRemovable.length === 1 ? "" : "s"} selected</span>
+                    <span className="library-selection-bar__queue" role="group" aria-label="Send the selection to the queue">
+                        <button type="button" onClick={() => playSelectionNow(queueableTracks(selectedRemovable))} title="Start these right away">
+                            Play now
+                        </button>
+                        <button type="button" onClick={() => queueActions.queue(queueableTracks(selectedRemovable), "next")} title="Right after the current track">
+                            Play next
+                        </button>
+                        <button type="button" onClick={() => queueActions.queue(queueableTracks(selectedRemovable), "queue")} title="At the end of the queue">
+                            Add to queue
+                        </button>
+                    </span>
                     <button type="button" onClick={() => setTracksToAddToPlaylist(selectedRemovable)}>
                         Add {selectedRemovable.length} to playlist
                     </button>
@@ -810,6 +824,11 @@ function LibraryPageContent() {
                                 });
                                 e.dataTransfer.setData("application/json", payload);
                                 e.dataTransfer.setData("text/plain", payload);
+                                // The dock's drop lanes take the whole selection.
+                                offerQueueDrag(e.dataTransfer, {
+                                    title: `${selectedTracks.length} tracks`,
+                                    resolve: async () => queueableTracks(selectedTracks),
+                                });
                             } else {
                                 const payload = JSON.stringify({
                                     type: "track",

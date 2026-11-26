@@ -517,3 +517,10 @@ When the queue is empty the Player page shows a clean empty state: no cover
 left over from the last session, no time or playhead, a disabled Play button
 and no Share section. The console sections use plain names: Now playing,
 Progress, Volume, Queue and Share.
+
+### Library selection to the queue
+
+The Library selection bar offers **Play now**, **Play next** and **Add to
+queue** for the ticked tracks (unavailable tracks are skipped), and dragging
+a ticked track carries the whole selection to the dock's Play now / Up next /
+Later lanes.

@@ -5053,7 +5053,14 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
   cursor: pointer;
 }
 
-.library-selection-bar button:first-of-type {
+/* The queue choices sit together; Play now leads. */
+.library-selection-bar__queue {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.library-selection-bar__queue button:first-of-type {
   color: #fff;
   background: #7255df;
   border-color: #7255df;

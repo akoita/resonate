@@ -36,25 +36,15 @@ export async function droppedTracks(dataTransfer: DataTransfer): Promise<LocalTr
 }
 
 /**
- * Three drop targets that appear while something queueable is dragged:
- * Play now, Up next (after the current track) and Later (end of the queue).
- * Every drag source also has a menu with the same choices, so nothing here is
- * the only way to queue a track.
+ * Put tracks right after the current one and start the first of them, the
+ * same thing the "Play now" drop lane and the library selection bar do.
  */
-export function QueueDropLanes({ className = "" }: { className?: string }) {
-  const active = useQueueDragActive();
+export function usePlayNow(): (tracks: LocalTrack[]) => void {
   const { playTracksNext, playQueue, queue: currentQueue } = usePlayer();
-  const { queue } = useQueueActions();
   const { addToast } = useToast();
-  const [hover, setHover] = useState<QueueDropMode | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!active) setHover(null);
-  }, [active]);
-
-  const playNow = useCallback(
+  return useCallback(
     (tracks: LocalTrack[]) => {
+      if (tracks.length === 0) return;
       const wasEmpty = currentQueue.length === 0;
       const result = playTracksNext(tracks);
       const first = result.added[0] ?? tracks[0];
@@ -69,6 +59,26 @@ export function QueueDropLanes({ className = "" }: { className?: string }) {
     },
     [addToast, currentQueue.length, playQueue, playTracksNext],
   );
+}
+
+/**
+ * Three drop targets that appear while something queueable is dragged:
+ * Play now, Up next (after the current track) and Later (end of the queue).
+ * Every drag source also has a menu with the same choices, so nothing here is
+ * the only way to queue a track.
+ */
+export function QueueDropLanes({ className = "" }: { className?: string }) {
+  const active = useQueueDragActive();
+  const { queue } = useQueueActions();
+  const { addToast } = useToast();
+  const [hover, setHover] = useState<QueueDropMode | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!active) setHover(null);
+  }, [active]);
+
+  const playNow = usePlayNow();
 
   const onDrop = async (event: ReactDragEvent<HTMLElement>, mode: QueueDropMode) => {
     if (!canQueueDrag(event.dataTransfer.types)) return;
