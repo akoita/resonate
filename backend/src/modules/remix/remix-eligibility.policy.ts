@@ -14,7 +14,9 @@ import type { UploadRightsRoute } from "../rights/upload-rights-policy";
 // but the artist themself. "AI use of my work" off denies Remix Studio (which
 // is AI-assisted); "approve AI remixes" on keeps remixes of their work to
 // private drafts until an approval step exists.
-export const REMIX_POLICY_VERSION = "2026-11-26.v7";
+// v8 (#2682): the approval step exists. An approval the artist gave for the
+// exact draft version lifts the private-draft limit for that version only.
+export const REMIX_POLICY_VERSION = "2026-11-26.v8";
 
 export const REMIX_ACTIONS = [
   "private_draft",
@@ -85,6 +87,11 @@ export type RemixEligibilityPolicyInput = {
   artistAiSourceUse?: "allowed" | "disabled";
   /** Artist.aiRemixApproval (#2666). "required" keeps others to private drafts. */
   artistAiRemixApproval?: "required" | "not_required";
+  /**
+   * #2682: the artist approved this exact draft version. Only consulted when
+   * `artistAiRemixApproval` is "required"; resolved server-side.
+   */
+  artistApprovalGranted?: boolean;
   /** The caller owns the source artist profile; the artist's own choices never limit them. */
   callerOwnsSource?: boolean;
   /**
@@ -255,10 +262,14 @@ export function evaluateRemixEligibility(
   if (exportSatisfied) {
     allowedActions.push("export");
   }
-  // v7 (#2666): the artist asked to approve AI remixes of their work. Until
-  // an approval step exists, others keep a private draft only: no publishing
-  // and no export.
-  if (input.artistAiRemixApproval === "required" && !input.callerOwnsSource) {
+  // v7 (#2666): the artist asked to approve AI remixes of their work. Others
+  // keep a private draft only (no publishing, no export) until the artist
+  // approves the exact draft version (v8, #2682).
+  if (
+    input.artistAiRemixApproval === "required" &&
+    !input.callerOwnsSource &&
+    !input.artistApprovalGranted
+  ) {
     return {
       allowed: true,
       requiredLicense: null,
@@ -268,7 +279,7 @@ export function evaluateRemixEligibility(
         {
           code: "artist_approval_required",
           message:
-            "The artist approves remixes of their work before they are shared, so this remix stays a private draft for now.",
+            "The artist approves remixes of their work before they are shared. Ask them to approve this version; until then it stays a private draft.",
         },
       ],
       policyVersion: REMIX_POLICY_VERSION,

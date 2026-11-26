@@ -366,6 +366,41 @@ describe("remix eligibility policy", () => {
       expect(decision.limits?.map((l) => l.code)).toEqual(["artist_approval_required"]);
     });
 
+    it("grants publish and export once the artist approved this version (#2682)", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          ...licensedForExport,
+          artistAiRemixApproval: "required",
+          artistApprovalGranted: true,
+        }),
+      );
+      expect(decision.allowedActions).toEqual(["private_draft", "publish_resonate", "export"]);
+      expect(decision.limits).toBeUndefined();
+    });
+
+    it("an approval never widens past the licence the creator holds (#2682)", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          stems: [{ stemId: "stem-1", mintRemixable: null, licensed: true, exportLicensed: false }],
+          artistAiRemixApproval: "required",
+          artistApprovalGranted: true,
+        }),
+      );
+      expect(decision.allowedActions).toEqual(["private_draft", "publish_resonate"]);
+    });
+
+    it("an approval does not lift a denial (#2682)", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          ...licensedForExport,
+          artistAiSourceUse: "disabled",
+          artistAiRemixApproval: "required",
+          artistApprovalGranted: true,
+        }),
+      );
+      expect(decision.allowed).toBe(false);
+    });
+
     it("leaves existing behaviour unchanged with the stored defaults", () => {
       const decision = evaluateRemixEligibility(
         input({

@@ -1616,6 +1616,7 @@ from the JWT, never the request body.
   | `published-remix` | Published remix audio | `inherits_draft_mark` | A byte copy of the draft. Publishing an AI draft that is not marked is refused (`draft_unmarked`). |
   | `draft-export` | Export audio, DJ extended export and stems export | `inherits_draft_mark` | The draft's own bytes, a re-encode of them, or its marked stems. Exporting an AI draft that is not marked is refused (`draft_unmarked`). The DJ sidecar and the stems manifest carry the AI disclosure. |
   | `draft-playback` | Draft playback in the studio | `studio_playback` | Owner-only stream of a draft covered by the rows above; no download. |
+  | `approval-preview` | Remix version the source artist is asked to approve | `studio_playback` | Stream to the source artist of the exact draft version they are asked to approve (#2682): the same bytes as draft playback, no download. |
   | `standalone-generation` | Track generated outside the remix studio | `provider_mark` | The provider embeds its own mark; a WAV also carries the AI tags in its INFO comment, and the track records `synthIdPresent` and its AI disclosure. |
   | `stream-rendition` | Streaming rendition listeners hear (published remixes and generated tracks included) | `rendition_retags` | A 192 kbit/s MP3 of the archive. The remix mark and provider marks are in the audio and survive the encode; the archive's tags are dropped and, for a track disclosed as AI, `AI_GENERATED` and the IPTC digital source type are written again (`.ai.mp3` renditions). |
 

@@ -21,6 +21,7 @@ import { RemixEligibilityService } from '../modules/remix/remix-eligibility.serv
 import { RemixProjectService } from '../modules/remix/remix-project.service';
 import { RemixGenerationProviderError } from '../modules/remix/remix-generation.provider';
 import { RemixWorkerPrewarmService } from '../modules/remix/remix-worker-prewarm.service';
+import { RemixApprovalService } from '../modules/remix/remix-approval.service';
 import { createControllerTestApp, authToken } from './e2e-helpers';
 
 const mockRemixService = {
@@ -93,6 +94,14 @@ const mockWorkerPrewarmService = {
   prewarm: jest.fn(),
 };
 
+const mockApprovalService = {
+  projectState: jest.fn().mockResolvedValue({ requiredArtists: [], current: [], approved: false }),
+  requestApproval: jest.fn().mockResolvedValue({ requiredArtists: [], current: [], approved: false }),
+  listIncoming: jest.fn().mockResolvedValue([]),
+  previewAudio: jest.fn().mockResolvedValue({ data: Buffer.from('version-audio'), mimeType: 'audio/mpeg' }),
+  decide: jest.fn().mockResolvedValue({ id: 'apr-1', status: 'approved' }),
+};
+
 describe('RemixController (e2e)', () => {
   let app: INestApplication;
   const token = authToken('user-1');
@@ -103,6 +112,7 @@ describe('RemixController (e2e)', () => {
       { provide: RemixEligibilityService, useValue: mockEligibilityService },
       { provide: RemixProjectService, useValue: mockProjectService },
       { provide: RemixWorkerPrewarmService, useValue: mockWorkerPrewarmService },
+      { provide: RemixApprovalService, useValue: mockApprovalService },
     ]);
   });
 
@@ -183,6 +193,75 @@ describe('RemixController (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(400);
     expect(mockEligibilityService.checkEligibility).not.toHaveBeenCalled();
+  });
+
+  it('GET /remix/eligibility?projectId → checks the caller\'s own project (#2682)', async () => {
+    (mockProjectService as any).getProjectEligibility = jest
+      .fn()
+      .mockResolvedValue({ allowed: true, allowedActions: ['private_draft'] });
+    await request(app.getHttpServer())
+      .get('/remix/eligibility?projectId=proj-1')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect((mockProjectService as any).getProjectEligibility).toHaveBeenCalledWith('user-1', 'proj-1');
+    expect(mockEligibilityService.checkEligibility).not.toHaveBeenCalled();
+  });
+
+  // ----- Artist approval (#2682) -----
+
+  it('approval routes → 401 without JWT', async () => {
+    await request(app.getHttpServer()).get('/remix/approvals').expect(401);
+    await request(app.getHttpServer()).post('/remix/projects/proj-1/approval').send({}).expect(401);
+    await request(app.getHttpServer())
+      .post('/remix/approvals/apr-1/decision')
+      .send({ decision: 'approve' })
+      .expect(401);
+  });
+
+  it('POST /remix/projects/:id/approval → asks as the JWT user', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/approval')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'Hello' })
+      .expect(201);
+    expect(mockApprovalService.requestApproval).toHaveBeenCalledWith('user-1', 'proj-1', { message: 'Hello' });
+  });
+
+  it('POST /remix/projects/:id/approval → 400 for a note over 500 characters', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/approval')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'x'.repeat(501) })
+      .expect(400);
+    expect(mockApprovalService.requestApproval).not.toHaveBeenCalled();
+  });
+
+  it('POST /remix/approvals/:id/decision → 200 and 400 for an unknown decision', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/approvals/apr-1/decision')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ decision: 'approve' })
+      .expect(200);
+    expect(mockApprovalService.decide).toHaveBeenCalledWith('user-1', 'apr-1', { decision: 'approve' });
+    await request(app.getHttpServer())
+      .post('/remix/approvals/apr-1/decision')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ decision: 'maybe' })
+      .expect(400);
+  });
+
+  it('GET /remix/approvals and the version audio use the JWT user', async () => {
+    await request(app.getHttpServer())
+      .get('/remix/approvals?status=pending')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(mockApprovalService.listIncoming).toHaveBeenCalledWith('user-1', 'pending');
+    const res = await request(app.getHttpServer())
+      .get('/remix/approvals/apr-1/audio')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(mockApprovalService.previewAudio).toHaveBeenCalledWith('user-1', 'apr-1');
   });
 
   // ----- Projects -----

@@ -24,7 +24,7 @@ export type GeneratedAudioMarking =
   | "file_tags"
   /** A byte copy or re-encode of a draft, refused when that draft is unmarked. */
   | "inherits_draft_mark"
-  /** Owner-only playback inside the studio of audio covered by another row. */
+  /** Playback, never a download, of audio covered by another row: the studio owner, or the source artist approving it (#2682). */
   | "studio_playback"
   /** A listener re-encode: the audio mark survives it and the AI tags are written again. */
   | "rendition_retags";
@@ -125,6 +125,15 @@ export const GENERATED_AUDIO_OUTPUT_PATHS: readonly GeneratedAudioOutputPath[] =
     routes: ["GET /remix/projects/:id/draft-audio"],
     marking: "studio_playback",
     how: "Owner-only stream of a draft covered by the rows above; no download.",
+  },
+  {
+    id: "approval-preview",
+    what: "Remix version the source artist is asked to approve",
+    source: "remix/remix-approval.service.ts",
+    uploads: 0,
+    routes: ["GET /remix/approvals/:id/audio"],
+    marking: "studio_playback",
+    how: "Stream to the source artist of the exact draft version they are asked to approve (#2682): the same bytes as draft playback, no download.",
   },
   {
     id: "standalone-generation",

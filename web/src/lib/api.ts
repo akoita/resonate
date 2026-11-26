@@ -7379,7 +7379,102 @@ export type RemixEligibilityResponse = {
     allowed: boolean;
     allowedActions: Array<"private_draft" | "publish_resonate" | "export">;
   }>;
+  /**
+   * #2666/#2682: narrowing of an allowed remix. `artist_approval_required`
+   * means the source artist approves each version before it is shared.
+   */
+  limits?: Array<{ code: "artist_approval_required"; message: string }>;
 };
+
+export type RemixApprovalStatus = "pending" | "approved" | "declined";
+
+/** One source artist's answer on one remix version (#2682). */
+export type RemixApproval = {
+  id: string;
+  remixProjectId: string;
+  versionKey: string;
+  status: RemixApprovalStatus;
+  message: string | null;
+  reason: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  sourceArtist: { id: string; displayName: string };
+};
+
+/** The creator's view of a remix's approval (#2682). */
+export type RemixProjectApprovalState = {
+  requiredArtists: Array<{ id: string; displayName: string }>;
+  currentVersionKey: string | null;
+  current: RemixApproval[];
+  approved: boolean;
+};
+
+/** A request on the artist's approvals page (#2682). */
+export type IncomingRemixApproval = RemixApproval & {
+  remixTitle: string;
+  sourceTrack: { id: string; title: string };
+  creatorName: string;
+  versionAvailable: boolean;
+};
+
+export const REMIX_APPROVAL_TEXT_MAX = 500;
+
+export function getRemixProjectApproval(token: string, projectId: string) {
+  return apiRequest<RemixProjectApprovalState>(
+    `/remix/projects/${encodeURIComponent(projectId)}/approval`,
+    {},
+    token,
+  );
+}
+
+export function requestRemixApproval(token: string, projectId: string, message?: string) {
+  return apiRequest<RemixProjectApprovalState>(
+    `/remix/projects/${encodeURIComponent(projectId)}/approval`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message?.trim() ? { message: message.trim() } : {}),
+    },
+    token,
+  );
+}
+
+export function listRemixApprovals(token: string, status?: RemixApprovalStatus) {
+  return apiRequest<IncomingRemixApproval[]>(
+    `/remix/approvals${status ? `?status=${status}` : ""}`,
+    {},
+    token,
+  );
+}
+
+export function decideRemixApproval(
+  token: string,
+  requestId: string,
+  decision: "approve" | "decline",
+  reason?: string,
+) {
+  return apiRequest<RemixApproval>(
+    `/remix/approvals/${encodeURIComponent(requestId)}/decision`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, ...(reason?.trim() ? { reason: reason.trim() } : {}) }),
+    },
+    token,
+  );
+}
+
+export async function getRemixApprovalAudioBlob(token: string, requestId: string) {
+  const response = await fetch(
+    `${API_BASE}/remix/approvals/${encodeURIComponent(requestId)}/audio`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(formatApiErrorMessage(response.status, response.statusText, detail));
+  }
+  return response.blob();
+}
 
 export type RemixProjectStem = {
   stemId: string;
@@ -8062,6 +8157,19 @@ export async function exportRemixDraftBlob(
   const match = disposition.match(/filename="?([^"]+)"?/i);
   const filename = match?.[1]?.trim() || "remix-export.mp3";
   return { blob: await response.blob(), filename };
+}
+
+/**
+ * #2682: eligibility of the caller's own project, using its saved stems,
+ * sources and current draft version, so an artist's approval of that version
+ * counts.
+ */
+export async function getRemixProjectEligibility(token: string, projectId: string) {
+  return apiRequest<RemixEligibilityResponse>(
+    `/remix/eligibility?${new URLSearchParams({ projectId }).toString()}`,
+    {},
+    token,
+  );
 }
 
 export async function getRemixEligibility(

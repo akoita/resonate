@@ -595,6 +595,24 @@ export function djExportState(project: {
     : { available: true, reason: null };
 }
 
+/**
+ * The version key of a project's current draft (#2682): its generation job
+ * id once that generation completed with an output, else null. An artist's
+ * approval is recorded against this key.
+ */
+export function currentDraftVersionKey(project: {
+  generationJobId?: string | null;
+  generationMetadata?: unknown;
+}): string | null {
+  if (!project.generationJobId) return null;
+  if (remixGenerationStatusFromMetadata(project.generationMetadata) !== "completed") {
+    return null;
+  }
+  return draftOutputUriFromMetadata(project.generationMetadata)
+    ? project.generationJobId
+    : null;
+}
+
 export function remixGenerationStatusFromMetadata(
   metadata: unknown,
 ): RemixGenerationLifecycleStatus | null {
@@ -3799,6 +3817,21 @@ export class RemixProjectService {
     // #2602: generated audio is not published unmarked.
     assertDraftMarkedForRelease(project.generationMetadata);
 
+    // #2682: the artists' approvals of this exact version travel with the
+    // release's provenance.
+    const approvalVersionKey = currentDraftVersionKey(project);
+    const artistApprovals = approvalVersionKey
+      ? await prisma.remixApprovalRequest.findMany({
+          where: {
+            remixProjectId: project.id,
+            versionKey: approvalVersionKey,
+            status: "approved",
+          },
+          select: { id: true, sourceArtistId: true, decidedAt: true },
+          orderBy: { decidedAt: "asc" },
+        })
+      : [];
+
     const audioBytes = await this.storageProvider.download(outputUri);
     if (!audioBytes) {
       throw new ConflictException({
@@ -3965,6 +3998,16 @@ export class RemixProjectService {
       mode: project.mode,
       grounding,
       aiGenerated,
+      ...(artistApprovals.length > 0
+        ? {
+            artistApprovals: artistApprovals.map((row) => ({
+              approvalRequestId: row.id,
+              sourceArtistId: row.sourceArtistId,
+              versionKey: approvalVersionKey,
+              approvedAt: row.decidedAt?.toISOString() ?? null,
+            })),
+          }
+        : {}),
       ...(Array.isArray(metadata.sourceArrangement)
         ? { sourceArrangement: metadata.sourceArrangement }
         : {}),
@@ -4704,21 +4747,52 @@ export class RemixProjectService {
   }
 
   /**
+   * #2682: eligibility of the caller's own project as the studio shows it:
+   * its saved stems and sources, and its current draft version, so an
+   * artist's approval of that version is taken into account.
+   */
+  async getProjectEligibility(
+    userId: string,
+    projectId: string,
+  ): Promise<RemixEligibilityResult> {
+    const project = await this.loadOwnedProject(userId, projectId);
+    return this.checkProjectEligibility(
+      userId,
+      project,
+      project.stems.map((stem) => stem.stemId),
+    );
+  }
+
+  /**
    * Eligibility of a project's stems (#2558): per source when the project
    * has a second source, else the single-source check exactly as before.
    * Historical stems are allowed (the project already holds them).
    */
   private checkProjectEligibility(
     userId: string,
-    project: { sourceTrackId: string; secondarySourceTrackId?: string | null },
+    project: {
+      id?: string;
+      sourceTrackId: string;
+      secondarySourceTrackId?: string | null;
+      generationJobId?: string | null;
+      generationMetadata?: unknown;
+    },
     stemIds: string[],
   ): Promise<RemixEligibilityResult> {
+    // #2682: an artist's approval covers the current completed draft only.
+    const approval = project.id
+      ? {
+          remixProjectId: project.id,
+          versionKey: currentDraftVersionKey(project),
+        }
+      : undefined;
     if (!project.secondarySourceTrackId) {
       return this.eligibilityService.checkEligibility({
         userId,
         trackId: project.sourceTrackId,
         stemIds,
         allowHistoricalStemIds: true,
+        approval,
       });
     }
     return this.eligibilityService.checkSourcesEligibility({
@@ -4727,6 +4801,7 @@ export class RemixProjectService {
       secondarySourceTrackId: project.secondarySourceTrackId,
       stemIds,
       allowHistoricalStemIds: true,
+      approval,
     });
   }
 
