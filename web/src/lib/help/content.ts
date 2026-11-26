@@ -2478,7 +2478,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "audio", "listen", "example", "before and after", "short edit", "echo", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade", "share", "share remix", "watermark", "mark", "inaudible mark", "export"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace", "tempo", "key", "pitch", "ai part", "instrument", "takes", "audition", "bass", "experimental", "pro", "eq", "equalizer", "pan", "panning", "effects", "fx", "vibe", "slowed", "reverb", "audio", "listen", "example", "before and after", "short edit", "echo", "beginner", "intermediate", "professional", "glossary", "library", "my stems", "stems together", "multi-stem", "upgrade", "share", "share remix", "watermark", "mark", "inaudible mark", "export", "approval", "artist approval", "ask to approve"],
     levelIntros: {
       beginner: {
         title: "Your first remix in 3 minutes",
@@ -2935,6 +2935,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Remix license: lets you make private drafts and publish your remix on Resonate.",
               "Commercial license: also lets you download your remix with \"Export audio\" and use it elsewhere, and sell it. The Export button tells you when a commercial license is what's missing.",
+              "Artist approval: some artists ask to approve each AI-assisted remix of their music first. The studio then shows an Artist approval panel under your drafts. Choose Ask to approve, with a note if you like; the artist listens to that exact version and approves or declines it, and you get a notice either way. Until they approve, the draft stays private. A new draft is a new version and needs a new approval.",
               "Publishing: \"Publish on Resonate\" asks you to confirm, then makes your remix a public release that credits the original song and artist. Resonate checks your rights again at that moment. After publishing, the studio is locked so the release stays as published.",
               "A published remix depends on its original. If the original artist switches off remixing or withdraws the release, or the original track is under review or taken down, your remix is put on hold: it leaves search and streaming and can't be bought, and people who already bought it keep it. You get a notification, your catalog shows On hold with the reason, and the remix comes back by itself when the original is available again.",
               "Selling: on the \"Published on Resonate\" panel, \"List this remix for sale\" takes you to your release page to protect it and list it for sale. You keep the artist's share, like any other sale. It needs the commercial license on every stem you used (or you own the original artist).",
@@ -3647,7 +3648,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               },
               {
                 term: "Ask me before AI-assisted remixes of my music are shared",
-                description: "On by default. Others can make a private draft but cannot publish or export it. A step for approving a specific remix is coming; until then this means private drafts only.",
+                description: "On by default. Others can make a private draft, then ask you to approve it. You listen to that exact version and approve or decline it, with a note if you like. Only an approved version can be published, or exported when the creator's licence allows. A new version needs a new approval, and a declined one stays a private draft.",
               },
               {
                 term: "Allow AI-assisted tools to use my music",
@@ -3659,11 +3660,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "paragraph",
             text: "Change any choice in Settings, Artist, Agreement and consent. A change applies to new uses from the moment you save it, and the change history there lists every change with its date.",
           },
+          {
+            kind: "paragraph",
+            text: "When someone asks you to approve a remix, you get a notice. Open Remix approvals to listen to each version and answer. The creator is told your answer, and your approval is kept with the published remix.",
+          },
         ],
       },
     ],
     appLinks: [
       { label: "Agreement and consent", href: "/settings", description: "Settings, Artist: your agreement, choices and history." },
+      { label: "Remix approvals", href: "/artist/remix-approvals", description: "Remixes of your music that wait for your answer." },
       { label: "Set up an artist profile", href: "/artist/onboarding", description: "Create your profile and accept the agreement." },
     ],
     related: ["upload-music", "remix-studio", "marketplace-sell", "artist-profile"],

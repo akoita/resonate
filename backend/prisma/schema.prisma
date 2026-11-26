@@ -75,6 +75,7 @@ model User {
   stemQualityRatings          StemQualityRating[]
   remixProjects               RemixProject[]
   remixPartTakes              RemixPartTake[]
+  remixApprovalRequests       RemixApprovalRequest[]       @relation("RemixApprovalRequester")
   remixWatermarks             RemixRenderWatermark[]
   reputationFeedbackSubmitted AgentReputationFeedback[]     @relation("AgentReputationFeedbackSubmitter")
   generationCreditAccount     GenerationCreditAccount?
@@ -1139,6 +1140,7 @@ model Artist {
   sceneScoutCityDemand      SceneScoutCityDemand[]
   unmetDemandSignals        DemandSignal[]
   followers                 ArtistFollow[]
+  remixApprovalRequests     RemixApprovalRequest[]
 
   @@index([displayName])
   @@index([profileType, claimStatus])
@@ -1933,10 +1935,43 @@ model RemixProject {
   publishedRelease   Release?           @relation("RemixProjectPublishedRelease", fields: [publishedReleaseId], references: [id])
   stems              RemixProjectStem[]
   partTakes          RemixPartTake[]
+  approvalRequests   RemixApprovalRequest[]
 
   @@index([creatorUserId, createdAt])
   @@index([sourceTrackId])
   @@index([secondarySourceTrackId])
+}
+
+/// An artist's answer on one AI-assisted remix version (#2682). Exists only
+/// when the source artist asked to approve AI remixes of their work
+/// (`Artist.aiRemixApproval = required`). `versionKey` is the draft's
+/// generation job id: an approval covers that rendered version only, so a
+/// new draft needs a new request. One row per source artist and version (a
+/// mashup with two such artists has two rows). Kept with the remix's
+/// provenance; publish copies the approval into the release lineage.
+model RemixApprovalRequest {
+  id              String       @id @default(uuid())
+  remixProjectId  String
+  sourceArtistId  String
+  requesterUserId String
+  versionKey      String
+  /// pending | approved | declined
+  status          String       @default("pending") @db.VarChar(16)
+  /// Optional note from the remix creator to the artist.
+  message         String?      @db.VarChar(500)
+  /// Optional reason the artist gave with the decision.
+  reason          String?      @db.VarChar(500)
+  decidedByUserId String?
+  decidedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  remixProject    RemixProject @relation(fields: [remixProjectId], references: [id], onDelete: Cascade)
+  sourceArtist    Artist       @relation(fields: [sourceArtistId], references: [id])
+  requester       User         @relation("RemixApprovalRequester", fields: [requesterUserId], references: [id])
+
+  @@unique([remixProjectId, sourceArtistId, versionKey])
+  @@index([sourceArtistId, status, createdAt])
+  @@index([requesterUserId])
 }
 
 // AI part takes (#1901): one generated, conformed clip per row (one 30 s

@@ -1,3 +1,5 @@
+import { NotificationModule } from "../notifications/notification.module";
+import { RemixApprovalService } from "./remix-approval.service";
 import { backgroundLoopProviders } from "../../config/runtime_mode";
 import { Logger, Module } from "@nestjs/common";
 import { remixWatermarkEmbedderFromEnv } from "./remix-watermark";
@@ -52,6 +54,7 @@ import {
     GenerationModule,
     CreditsModule,
     ModerationModule,
+    NotificationModule,
     BullModule.registerQueue({
       name: REMIX_GENERATION_QUEUE,
       defaultJobOptions: {
@@ -64,6 +67,8 @@ import {
   providers: [
     RemixService,
     RemixEligibilityService,
+    // #2682: artist approval of one AI-assisted remix version.
+    RemixApprovalService,
     // Entitlement seam (#1903): Remix Studio Pro mode, free for everyone.
     RemixEntitlementsService,
     RemixProjectService,

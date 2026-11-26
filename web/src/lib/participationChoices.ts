@@ -33,7 +33,7 @@ export const PARTICIPATION_CHOICES: ReadonlyArray<{
     on: "required",
     off: "not_required",
     label: "Ask me before AI-assisted remixes of my music are shared",
-    help: "Others can still make a private draft, but cannot publish or export it while this is on.",
+    help: "Others can still make a private draft. Each version waits for you to listen and approve it before it can be published or exported.",
   },
   {
     setting: "aiSourceUse",

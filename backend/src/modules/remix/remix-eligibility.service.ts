@@ -53,6 +53,17 @@ export type RemixEligibilityResult = RemixEligibilityDecision & {
 
 export type RemixSourceRole = "lead" | "secondary";
 
+/**
+ * The draft version an eligibility check is about (#2682). When given, an
+ * approval the source artist gave for exactly this version lifts the
+ * "ask me first" private-draft limit. `versionKey` null means no completed
+ * draft yet, so no approval can apply.
+ */
+export type RemixApprovalContext = {
+  remixProjectId: string;
+  versionKey: string | null;
+};
+
 export type RemixSourceDecision = {
   trackId: string;
   role: RemixSourceRole;
@@ -68,6 +79,7 @@ export class RemixEligibilityService {
     trackId: string;
     stemIds?: string[];
     allowHistoricalStemIds?: boolean;
+    approval?: RemixApprovalContext;
   }): Promise<RemixEligibilityResult> {
     const track = await prisma.track.findUnique({
       where: { id: input.trackId },
@@ -80,6 +92,7 @@ export class RemixEligibilityService {
             rightsRoute: true,
             artist: {
               select: {
+                id: true,
                 remixConsent: true,
                 aiSourceUse: true,
                 aiRemixApproval: true,
@@ -155,6 +168,14 @@ export class RemixEligibilityService {
       exportLicensed: exportLicensedStemIds.has(stemId),
     }));
 
+    const sourceArtist = track.release?.artist ?? null;
+    const approvalRequired =
+      sourceArtist?.aiRemixApproval === "required" && !creatorOwner;
+    const artistApprovalGranted =
+      approvalRequired && sourceArtist
+        ? await this.hasApproval(sourceArtist.id, input.approval)
+        : false;
+
     const decision = evaluateRemixEligibility({
       rightsRoute,
       contentStatus: track.contentStatus,
@@ -169,6 +190,7 @@ export class RemixEligibilityService {
         track.release?.artist?.aiRemixApproval === "required"
           ? "required"
           : "not_required",
+      artistApprovalGranted,
       callerOwnsSource: creatorOwner,
       explicitStemSelection: !!input.stemIds?.length,
       stems,
@@ -208,6 +230,7 @@ export class RemixEligibilityService {
     secondarySourceTrackId?: string | null;
     stemIds: string[];
     allowHistoricalStemIds?: boolean;
+    approval?: RemixApprovalContext;
   }): Promise<RemixEligibilityResult> {
     const secondary = input.secondarySourceTrackId ?? null;
     if (!secondary || secondary === input.sourceTrackId) {
@@ -216,6 +239,7 @@ export class RemixEligibilityService {
         trackId: input.sourceTrackId,
         stemIds: input.stemIds,
         allowHistoricalStemIds: input.allowHistoricalStemIds,
+        approval: input.approval,
       });
     }
 
@@ -251,6 +275,7 @@ export class RemixEligibilityService {
           trackId: source.trackId,
           stemIds: sourceStemIds,
           allowHistoricalStemIds: input.allowHistoricalStemIds,
+          approval: input.approval,
         });
         return { ...source, stemIds: sourceStemIds, result };
       }),
@@ -262,6 +287,28 @@ export class RemixEligibilityService {
    * Artist-level remix consent is a revocation hook layered on top of
    * per-stem remixable mints. Default/null keeps existing artists allowed.
    */
+  /**
+   * #2682: whether the source artist approved exactly this draft version.
+   * Read fresh on every check, so publish and export never trust an earlier
+   * answer.
+   */
+  private async hasApproval(
+    sourceArtistId: string,
+    approval: RemixApprovalContext | undefined,
+  ): Promise<boolean> {
+    if (!approval?.versionKey) return false;
+    const row = await prisma.remixApprovalRequest.findFirst({
+      where: {
+        remixProjectId: approval.remixProjectId,
+        sourceArtistId,
+        versionKey: approval.versionKey,
+        status: "approved",
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   private isSourceOptedIn(remixConsent?: string | null): boolean {
     return remixConsent !== "disabled";
   }

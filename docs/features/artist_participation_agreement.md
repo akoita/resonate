@@ -1,9 +1,9 @@
 # Artist Participation Agreement and Consent Record
 
-**Status:** partial (#2666). The agreement, consent choices, history and
-upload gate are built. An approval step for AI-assisted remixes does not
-exist yet, so "ask me first" keeps other people's remixes to private drafts
-(see [What is not built yet](#what-is-not-built-yet)).
+**Status:** partial (#2666, #2682). The agreement, consent choices, history,
+upload gate and the approval step for AI-assisted remixes are built. The
+final agreement text is the operator's to publish (see
+[What is not built yet](#what-is-not-built-yet)).
 **Audience:** artists, operators
 
 ## What it does
@@ -49,7 +49,7 @@ The operator supplies the text as a Markdown file:
 | --- | --- | --- | --- |
 | Let listeners remix my music in Remix Studio | `Artist.remixConsent` | on | Off denies new remixes and holds published ones, as before (#2601). |
 | Offer my stems as collectibles | `Artist.stemListing` | off | Off disables Mint & List on the artist's release pages. It is the artist's own preference; nobody else can list their stems. |
-| Ask me before AI-assisted remixes of my music are shared | `Artist.aiRemixApproval` | on | On keeps other people's remixes of this artist's work to private drafts: no publishing and no export (`limits: artist_approval_required` in the eligibility answer). |
+| Ask me before AI-assisted remixes of my music are shared | `Artist.aiRemixApproval` | on | On keeps other people's remixes of this artist's work to private drafts until the artist approves the exact version (`limits: artist_approval_required` in the eligibility answer; see [Approving a remix](#approving-a-remix)). |
 | Allow AI-assisted tools to use my music | `Artist.aiSourceUse` | off | Off denies Remix Studio, which is AI-assisted, to anyone but the artist (`artist_ai_use_disabled`). |
 
 The artist's own choices never limit the artist themself. Rows that existed
@@ -74,9 +74,42 @@ Every upload checks that the artist accepted the current version
 default; `PARTICIPATION_AGREEMENT_REQUIRED=false` turns it off. Test runs
 default to off so older upload suites keep working.
 
+## Approving a remix
+
+Added by #2682 (remix eligibility policy v8).
+
+1. **Request.** In Remix Studio, the creator of a completed draft asks the
+   source artist to approve it, with an optional note (up to 500
+   characters): `POST /remix/projects/:id/approval`. One request per source
+   artist and version (`RemixApprovalRequest`, unique on project, artist and
+   version key). The version key is the draft's generation job id. A mashup
+   whose two artists both ask to approve gets two requests.
+2. **Notice.** The artist (or the manager answering for an unclaimed
+   profile) gets a `service` notice linking `/artist/remix-approvals`.
+3. **Decision.** The artist lists requests (`GET /remix/approvals`), plays
+   the exact version (`GET /remix/approvals/:id/audio`), and approves or
+   declines it with an optional reason
+   (`POST /remix/approvals/:id/decision`). Each request is answered once.
+   Requests of other artists answer `404`.
+4. **Approved.** Eligibility reads the approval fresh on every check
+   (`GET /remix/eligibility?projectId=`, publish, export, selling) and lifts
+   the private-draft limit for that version only. The approval never widens
+   past the creator's licence, and never lifts a denial (consent off,
+   quarantine, rights route). A new draft is a new version and needs a new
+   approval.
+5. **Declined.** The remix stays a private draft and the creator is told,
+   with the artist's reason. The same version cannot be asked again.
+6. **Record.** Publishing copies the approvals into the release track's
+   lineage metadata (`artistApprovals`: request id, artist id, version key,
+   approval time).
+
+Privacy: the export lists requests a person sent; erasure scrubs the
+creator's note and rewrites `decidedByUserId`, and keeps the answer as the
+consent record of the retained remix.
+
+Tests: `remix-approval.integration.spec.ts`, `remix-eligibility.policy.spec.ts`,
+`remix.controller.http.spec.ts`, web `remixApproval.test.ts`.
+
 ## What is not built yet
 
-- An approval step where the artist approves or declines a specific
-  AI-assisted remix. Until it exists, "ask me first" means "private drafts
-  only" for others.
 - The final agreement text, which is the operator's to publish.

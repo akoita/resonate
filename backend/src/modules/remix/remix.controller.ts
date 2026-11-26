@@ -39,6 +39,11 @@ import {
   ExportRemixDraftDto,
   UpdateRemixProjectDto,
 } from "./remix-project.dto";
+import { RemixApprovalService } from "./remix-approval.service";
+import {
+  DecideRemixApprovalDto,
+  RequestRemixApprovalDto,
+} from "./remix-approval.dto";
 
 const GENERATION_ERROR_STATUS: Record<RemixGenerationErrorCode, number> = {
   provider_disabled: 503,
@@ -54,6 +59,7 @@ export class RemixController {
     private readonly eligibilityService: RemixEligibilityService,
     private readonly projectService: RemixProjectService,
     private readonly workerPrewarmService: RemixWorkerPrewarmService,
+    private readonly approvalService: RemixApprovalService,
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
@@ -64,8 +70,19 @@ export class RemixController {
     @Query("stemIds") stemIds?: string,
     /** Mashups (#2560): the second source; each stem is checked against its own track. */
     @Query("secondaryTrackId") secondaryTrackId?: string,
+    /**
+     * #2682: the caller's own project. Its sources and current draft version
+     * are used, so an artist's approval of that version counts.
+     */
+    @Query("projectId") projectId?: string,
   ) {
     this.workerPrewarmService.prewarm();
+    if (projectId?.trim()) {
+      return this.projectService.getProjectEligibility(
+        req.user.userId,
+        projectId.trim(),
+      );
+    }
     if (!trackId) {
       throw new BadRequestException("trackId query parameter is required");
     }
@@ -318,6 +335,58 @@ export class RemixController {
    * Owner-only; eligibility is re-checked server-side at publish time and
    * publish_resonate is enforced on top of `allowed`.
    */
+  /** #2682: who must approve this remix and where its current version stands. */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("projects/:id/approval")
+  getApprovalState(@Req() req: any, @Param("id") id: string) {
+    return this.approvalService.projectState(req.user.userId, id);
+  }
+
+  /** #2682: ask the source artist(s) to approve the current draft version. */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("projects/:id/approval")
+  requestApproval(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() body: RequestRemixApprovalDto,
+  ) {
+    return this.approvalService.requestApproval(req.user.userId, id, {
+      message: body?.message,
+    });
+  }
+
+  /** #2682: approval requests for the artists this account answers for. */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("approvals")
+  listIncomingApprovals(@Req() req: any, @Query("status") status?: string) {
+    return this.approvalService.listIncoming(req.user.userId, status || undefined);
+  }
+
+  /** #2682: the exact version the artist is asked about. */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("approvals/:id/audio")
+  async getApprovalAudio(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Headers("range") range: string,
+    @Res() res: Response,
+  ) {
+    const audio = await this.approvalService.previewAudio(req.user.userId, id);
+    this.sendAudioResponse(audio, range, res);
+  }
+
+  /** #2682: the artist approves or declines one version. */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("approvals/:id/decision")
+  @HttpCode(200)
+  decideApproval(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body() body: DecideRemixApprovalDto,
+  ) {
+    return this.approvalService.decide(req.user.userId, id, body);
+  }
+
   @UseGuards(AuthGuard("jwt"))
   @Post("projects/:id/publish")
   publishProject(@Req() req: any, @Param("id") id: string) {

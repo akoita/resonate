@@ -294,6 +294,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "AI part takes this person generated in Remix Studio (#1901): role, style words, seed, provider and conform parameters.",
   },
   {
+    model: "RemixApprovalRequest",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "requesterUserId" }],
+    note: "Added by #2682. Approval requests this person sent to source artists for AI-assisted remix versions: the note they wrote, the artist's answer and when.",
+  },
+  {
     model: "RemixRenderWatermark",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

@@ -675,6 +675,15 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "so nothing in it names the person.",
   },
   {
+    model: "RemixApprovalRequest",
+    disposition: "anonymize",
+    reason:
+      "The artist's answer on a remix version is the consent record for that remix (#2682) and stays with "
+      + "the retained RemixProject; the note the person wrote to the artist is their writing.",
+    scrub: ["message"],
+    matchOn: "requesterUserId",
+  },
+  {
     model: "RemixPartTake",
     disposition: "anonymize",
     reason:
@@ -1318,6 +1327,14 @@ export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
     reason:
       "The account that was viewed or acted on (#2166). It has no User relation, so the id rotation never reaches "
       + "it; the retained audit record carries the rewritten id and no longer names the person.",
+  },
+  {
+    model: "RemixApprovalRequest",
+    column: "decidedByUserId",
+    action: "rewrite",
+    reason:
+      "The account that answered for the source artist (#2682). It has no User relation, so when that account is "
+      + "erased the retained consent record must stop naming it.",
   },
   {
     model: "ReleaseArtistCredit",

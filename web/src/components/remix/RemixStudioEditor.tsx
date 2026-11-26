@@ -14,6 +14,7 @@ import {
   getCreditsBalance,
   getUsageSummary,
   getRemixEligibility,
+  getRemixProjectEligibility,
   getRemixProject,
   listRemixMashupCandidates,
   publishRemixProject,
@@ -156,6 +157,7 @@ import {
 } from "./RemixSessionLanes";
 import { RemixGridPanel } from "./RemixGridPanel";
 import { RemixMashupPanel } from "./RemixMashupPanel";
+import { RemixApprovalPanel } from "./RemixApprovalPanel";
 import {
   initialMashup,
   measuredKey,
@@ -1539,6 +1541,18 @@ export function stemPreviewStates(
  * gates the button so a denied publish is explained before the round-trip:
  * only a completed, saved draft on an allowed source can publish.
  */
+/** #2682: the source artist approves each version before it is shared. */
+export const ARTIST_APPROVAL_NEEDED_REASON =
+  "The artist approves remixes of their music before they are shared. Ask them to approve this version first.";
+
+export function hasArtistApprovalLimit(
+  eligibility: Pick<RemixEligibilityResponse, "limits"> | null | undefined,
+): boolean {
+  return Boolean(
+    eligibility?.limits?.some((limit) => limit.code === "artist_approval_required"),
+  );
+}
+
 export function describePublishAvailability(input: {
   status: string;
   generationStatus: RemixGenerationMetadata["status"] | null;
@@ -1581,6 +1595,17 @@ export function describePublishAvailability(input: {
       enabled: false,
       reason: "Checking whether this source can be published…",
       reasonCode: "publish_eligibility_loading",
+    };
+  }
+  if (
+    input.eligibility.allowed &&
+    !input.eligibility.allowedActions.includes("publish_resonate") &&
+    hasArtistApprovalLimit(input.eligibility)
+  ) {
+    return {
+      enabled: false,
+      reason: ARTIST_APPROVAL_NEEDED_REASON,
+      reasonCode: "publish_needs_artist_approval",
     };
   }
   if (
@@ -1648,6 +1673,17 @@ export function describeExportAvailability(input: {
       enabled: false,
       reason: "Checking whether this source can be exported…",
       reasonCode: "export_eligibility_loading",
+    };
+  }
+  if (
+    input.eligibility.allowed &&
+    !input.eligibility.allowedActions.includes("export") &&
+    hasArtistApprovalLimit(input.eligibility)
+  ) {
+    return {
+      enabled: false,
+      reason: ARTIST_APPROVAL_NEEDED_REASON,
+      reasonCode: "export_needs_artist_approval",
     };
   }
   if (
@@ -1937,6 +1973,8 @@ export function RemixStudioEditor({
       return next;
     });
   };
+  // #2682: bumped when an artist's approval changes what this draft may do.
+  const [eligibilityRefresh, setEligibilityRefresh] = useState(0);
   const [eligibility, setEligibility] =
     useState<RemixEligibilityResponse | null>(null);
   // Autosave failure (#1879): the edits that failed to save. Autosave stays
@@ -2786,12 +2824,9 @@ export function RemixStudioEditor({
     let cancelled = false;
     void (async () => {
       try {
-        const result = await getRemixEligibility(
-          token,
-          project.sourceTrackId,
-          project.stems.map((stem) => stem.stemId),
-          project.secondarySource?.trackId ?? null,
-        );
+        // #2682: checked as this project, so an artist's approval of the
+        // current version counts.
+        const result = await getRemixProjectEligibility(token, project.id);
         if (!cancelled) setEligibility(result);
       } catch {
         // A failed eligibility probe leaves the button in its honest
@@ -2810,6 +2845,8 @@ export function RemixStudioEditor({
     project.sourceTrackId,
     project.secondarySource?.trackId,
     project.stems,
+    project.generationJobId,
+    eligibilityRefresh,
   ]);
 
   // Mashups (#2560): what this user may do with track B, so the studio can
@@ -4083,6 +4120,14 @@ export function RemixStudioEditor({
               published={published}
               emptyHint={draftsEmptyHint}
             />
+            {token && !published && draftReadyToPublish ? (
+              <RemixApprovalPanel
+                token={token}
+                projectId={project.id}
+                versionKey={draftReadyToPublish ? project.generationJobId ?? null : null}
+                onChanged={() => setEligibilityRefresh((n) => n + 1)}
+              />
+            ) : null}
           </div>
         </div>
       </div>

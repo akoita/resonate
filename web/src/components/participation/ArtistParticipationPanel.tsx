@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useState } from "react";
 import {
   ApiRequestError,
@@ -139,6 +141,11 @@ export function ArtistParticipationPanel({ token, artistId, mode, onAccepted }: 
           </span>
         </label>
       ))}
+      {choiceIsOn(draft, "aiRemixApproval") ? (
+        <p className={styles.notice}>
+          <Link href="/artist/remix-approvals">See remixes waiting for your approval</Link>
+        </p>
+      ) : null}
     </fieldset>
   );
 
