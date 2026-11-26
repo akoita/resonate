@@ -55,7 +55,8 @@ test("home hero shows an honest empty state when no campaign is open", async ({ 
   const hero = page.locator(".ng-hero--empty");
   await expect(hero).toBeVisible();
   await expect(hero.locator(".ng-hero__title")).toHaveText("Fans bring the show.");
-  await expect(hero.getByText(/No campaigns are open for pledges right now/)).toBeVisible();
+  await expect(hero.getByText(/No shows are open right now/)).toBeVisible();
+  await expect(hero.getByText(/escrow/i)).toHaveCount(0);
   await expect(hero.getByRole("link", { name: /Start a campaign/ })).toHaveAttribute("href", "/shows/create");
   await expect(hero.getByRole("link", { name: /Browse shows/ })).toHaveAttribute("href", "/shows");
   await expect(page.locator(".ng-hero").getByText(/Featured Campaign|SennaRin/)).toHaveCount(0);

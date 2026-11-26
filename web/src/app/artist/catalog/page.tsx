@@ -1,5 +1,6 @@
 "use client";
 
+import { formatRightsRoute } from "../../../lib/rightsRoute";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "../../../components/auth/AuthGate";
@@ -662,17 +663,14 @@ function releaseTime(release: Release) {
   return Date.parse(release.createdAt || release.releaseDate || "") || 0;
 }
 
-function formatRightsRoute(route?: string | null) {
-  if (!route) return "Not Routed";
-  return route.toLowerCase().split("_").map(capitalize).join(" ");
-}
 
 // Fixed formatStatus helper to map ready/published/complete consistently
 function formatStatus(status?: string | null) {
   if (!status) return "Unknown";
   const norm = status.toLowerCase();
   if (norm === "ready" || norm === "published" || norm === "complete") return "Active ✓";
-  if (norm === "failed" || norm === "blocked") return "Slashed ✕";
+  if (norm === "failed") return "Failed ✕";
+  if (norm === "blocked") return "Blocked ✕";
   return status.split(/[_\s-]+/).map(capitalize).join(" ");
 }
 

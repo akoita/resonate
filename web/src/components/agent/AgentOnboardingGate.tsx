@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { getAgentConfig, createAgentConfig } from "../../lib/api";
 import AgentSetupWizard from "./AgentSetupWizard";
@@ -11,8 +12,10 @@ const DISMISSED_KEY = "resonate.agent_onboarding_dismissed";
 /**
  * Renders the AgentSetupWizard overlay automatically when a user
  * first connects their wallet and has no AgentConfig.
- * Placed in AppShell so it works on every page, not just the Home AI DJ
- * section (`/#ai-dj`) or Settings → AI DJ, which also offer "Set up your DJ".
+ * Placed in AppShell, but it only opens on Home, where the AI DJ lives: a
+ * newcomer who follows a link to a release, a show or the upload page sees
+ * that page, not a dialog about something else. Home's AI DJ section and
+ * Settings → AI DJ also offer "Set up your DJ".
  *
  * It waits while the usage-measurement question is still on screen, so a new
  * account never gets the consent banner drawn over this dialog, and a
@@ -20,6 +23,7 @@ const DISMISSED_KEY = "resonate.agent_onboarding_dismissed";
  */
 export default function AgentOnboardingGate() {
     const { status, token } = useAuth();
+    const onHome = usePathname() === "/";
     const [showWizard, setShowWizard] = useState(false);
     const [checked, setChecked] = useState(() => {
         return wasDismissed();
@@ -68,7 +72,7 @@ export default function AgentOnboardingGate() {
         setShowWizard(false);
     }, []);
 
-    if (!showWizard || consentPending) return null;
+    if (!showWizard || consentPending || !onHome) return null;
 
     return <AgentSetupWizard onComplete={handleComplete} onClose={handleClose} />;
 }

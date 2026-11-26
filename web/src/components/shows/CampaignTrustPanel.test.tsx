@@ -53,7 +53,8 @@ describe("CampaignTrustPanel (#949)", () => {
     expect(html).toContain('data-trust="authorized_escrow"');
     expect(html).toContain("Artist approved");
     expect(html).toContain("Approved by the artist");
-    expect(html).toContain("0x1234…5678"); // masked beneficiary
+    expect(html).toContain("The artist&#x27;s account"); // beneficiary in words
+    expect(html).not.toContain("0x1234…5678");
     expect(html).toContain("USDC on Base Sepolia");
     expect(html).toContain("10%"); // deposit release
     expect(html).toContain("6% success-only");

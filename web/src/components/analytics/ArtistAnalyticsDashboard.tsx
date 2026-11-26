@@ -1,5 +1,6 @@
 "use client";
 
+import { formatRightsRoute } from "../../lib/rightsRoute";
 import { useProductSurfaces } from "../../hooks/useProductSurfaces";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -856,7 +857,7 @@ function RouteBreakdown({ routes }: { routes: ArtistAnalyticsDashboardData["prot
     <div className="sources-list" style={{ borderTop: "1px solid rgba(255,255,255,0.03)", paddingTop: "12px", marginTop: "12px" }}>
       {routes.map((route) => (
         <div key={route.route} className="sources-item-row" style={{ fontSize: "12px", padding: "4px 0" }}>
-          <span style={{ fontWeight: 500 }}>{formatRoute(route.route)}</span>
+          <span style={{ fontWeight: 500 }}>{formatRightsRoute(route.route)}</span>
           <span style={{ opacity: 0.8, fontFamily: "var(--font-mono)" }}>
             {formatNumber(route.releases)} releases · {formatNumber(route.decisions)} decisions
           </span>
@@ -900,13 +901,6 @@ function cacheLabel(hit: boolean) {
   return hit ? "Cache: reused" : "Cache: refreshed";
 }
 
-function formatRoute(route: string) {
-  return route
-    .toLowerCase()
-    .split("_")
-    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
-    .join(" ");
-}
 
 function formatFreshness(asOf: string | null, lagSeconds: number | null) {
   if (!asOf) {

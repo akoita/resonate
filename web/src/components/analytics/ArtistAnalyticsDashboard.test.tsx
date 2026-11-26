@@ -257,7 +257,7 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Track Performance");
     expect(html).toContain("Content protection");
     expect(html).toContain("Marketplace Ready");
-    expect(html).toContain("Standard Escrow");
+    expect(html).toContain("Cleared");
     expect(html).toContain("Recommended next actions");
     expect(html).toContain("Promote the track listeners already choose");
     expect(html).toContain("Open community");
