@@ -147,7 +147,7 @@ export default function MyStakesCard() {
         <span style={{ fontSize: "18px" }}>🛡️</span>
         <div>
           <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>My Stakes</h3>
-          <p style={{ margin: 0, fontSize: "12px", opacity: 0.5 }}>
+          <p style={{ margin: 0, fontSize: "12px", opacity: 0.75 }}>
             Content Protection deposits — claim yours back once its escrow ends
           </p>
         </div>
@@ -155,7 +155,7 @@ export default function MyStakesCard() {
 
       {/* Loading */}
       {loading && (
-        <div style={{ padding: "24px 0", textAlign: "center", opacity: 0.5, fontSize: "13px" }}>
+        <div style={{ padding: "24px 0", textAlign: "center", opacity: 0.75, fontSize: "13px" }}>
           Loading stakes…
         </div>
       )}
@@ -165,7 +165,7 @@ export default function MyStakesCard() {
         <div style={emptyStyle}>
           <div style={{ fontSize: "28px", marginBottom: "8px" }}>🔒</div>
           <p style={{ margin: 0, fontWeight: 500, fontSize: "14px" }}>No stakes found</p>
-          <p style={{ margin: "4px 0 0", fontSize: "12px", opacity: 0.5 }}>
+          <p style={{ margin: "4px 0 0", fontSize: "12px", opacity: 0.75 }}>
             Stakes are created when you publish content with Content Protection enabled.
           </p>
         </div>
@@ -211,7 +211,7 @@ export default function MyStakesCard() {
                     <span style={{ fontSize: "12px" }}>
                       {ESCROW_STATUS_LABELS[stake.escrow.status]}
                       {stake.escrow.daysRemaining > 0 && (
-                        <span style={{ opacity: 0.5, marginLeft: "4px" }}>
+                        <span style={{ opacity: 0.75, marginLeft: "4px" }}>
                           ({stake.escrow.daysRemaining}d)
                         </span>
                       )}
@@ -253,7 +253,7 @@ export default function MyStakesCard() {
                       </span>
                     )}
                     {stake.action.detail && stake.action.kind === "on_hold" && (
-                      <div style={{ fontSize: "10px", opacity: 0.5, marginTop: "2px" }}>
+                      <div style={{ fontSize: "10px", opacity: 0.75, marginTop: "2px" }}>
                         {stake.action.detail}
                       </div>
                     )}
@@ -305,7 +305,7 @@ const thStyle: React.CSSProperties = {
   borderBottom: "1px solid rgba(255,255,255,0.06)",
   fontSize: "11px",
   fontWeight: 500,
-  opacity: 0.5,
+  opacity: 0.75,
   textTransform: "uppercase",
   letterSpacing: "0.5px",
 };
