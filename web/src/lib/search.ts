@@ -3,11 +3,22 @@
  * public playlists, flattened into one keyboard order for the results panel.
  */
 import { API_BASE, ApiRequestError, getReleaseArtworkUrl } from "./api";
+import { artistProfileHref, catalogArtistHref } from "./artistRoutes";
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
 export const SEARCH_DEBOUNCE_MS = 250;
 
-export type SearchArtist = { id: string; displayName: string; imageUrl: string | null };
+/**
+ * `profile`: an artist account, opened by id. `credit`: a name credited on
+ * releases with no account behind it (an imported catalog's artist), opened
+ * on the catalog page for that name.
+ */
+export type SearchArtist = {
+  kind: "profile" | "credit";
+  id: string | null;
+  displayName: string;
+  imageUrl: string | null;
+};
 export type SearchRelease = {
   id: string;
   title: string;
@@ -84,12 +95,14 @@ export function toSearchOptions(results: SearchResults): Array<{ group: SearchGr
   const groups: Array<{ group: SearchGroupKey; options: SearchOption[] }> = [
     {
       group: "artists",
-      options: results.artists.map((artist) => ({
-        key: `artist-${artist.id}`,
+      options: results.artists.map((artist, index) => ({
+        key: artist.kind === "profile" && artist.id ? `artist-${artist.id}` : `artist-credit-${index}`,
         group: "artists",
         label: artist.displayName,
         detail: "Artist",
-        href: `/artist/${encodeURIComponent(artist.id)}`,
+        href: artist.kind === "profile" && artist.id
+          ? artistProfileHref(artist.id)
+          : catalogArtistHref(artist.displayName),
         imageUrl: artist.imageUrl,
       })),
     },

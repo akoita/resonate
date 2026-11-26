@@ -3,7 +3,7 @@ import { moveActive, normalizeQuery, shouldSearch, toSearchOptions, type SearchR
 
 const results: SearchResults = {
   query: "night",
-  artists: [{ id: "a 1", displayName: "Night Owl", imageUrl: null }],
+  artists: [{ kind: "profile", id: "a 1", displayName: "Night Owl", imageUrl: null }],
   releases: [{ id: "r1", title: "Night Drive", type: "ep", artistName: "Night Owl", hasArtwork: true, artworkRevision: 3 }],
   tracks: [
     { id: "t1", title: "Night Song", artistName: "Night Owl", releaseId: "r1", releaseTitle: "Night Drive", hasArtwork: false, artworkRevision: 1 },
@@ -27,6 +27,17 @@ describe("top-bar search helpers (#2671)", () => {
     expect(release.imageUrl).toMatch(/\/catalog\/releases\/r1\/artwork\/v3$/);
     expect(track).toMatchObject({ href: "/release/r1", detail: "Night Owl · Night Drive", imageUrl: null });
     expect(playlist).toMatchObject({ href: "/playlist/p1", detail: "1 track" });
+  });
+
+  it("links a credited artist name to its catalog page", () => {
+    const [group] = toSearchOptions({
+      ...results,
+      artists: [{ kind: "credit", id: null, displayName: "Booba", imageUrl: null }],
+      releases: [],
+      tracks: [],
+      playlists: [],
+    });
+    expect(group.options[0]).toMatchObject({ key: "artist-credit-0", href: "/catalog/artists/Booba", detail: "Artist" });
   });
 
   it("leaves out empty groups", () => {

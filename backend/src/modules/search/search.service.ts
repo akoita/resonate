@@ -14,7 +14,17 @@ export const SEARCH_MIN_QUERY_LENGTH = 2;
 export const SEARCH_MAX_QUERY_LENGTH = 80;
 export const SEARCH_GROUP_LIMIT = 5;
 
-export type SearchArtist = { id: string; displayName: string; imageUrl: string | null };
+/**
+ * An artist result. `profile` is an artist account (its page is by id);
+ * `credit` is a name credited on releases with no account behind it, such
+ * as an imported catalog's artist (its page is by name).
+ */
+export type SearchArtist = {
+  kind: "profile" | "credit";
+  id: string | null;
+  displayName: string;
+  imageUrl: string | null;
+};
 export type SearchRelease = {
   id: string;
   title: string;
@@ -52,6 +62,35 @@ export function normalizeSearchQuery(raw: unknown): string {
   return raw.replace(/\s+/g, " ").trim().slice(0, SEARCH_MAX_QUERY_LENGTH);
 }
 
+/**
+ * Artist accounts first, then credited names that no listed account already
+ * shows (compared without case), names that start with the query before the
+ * rest, at most `SEARCH_GROUP_LIMIT` in all.
+ */
+export function mergeArtistResults(
+  profiles: SearchArtist[],
+  creditedNames: Array<string | null>,
+  query: string,
+): SearchArtist[] {
+  const seen = new Set(profiles.map((artist) => artist.displayName.trim().toLowerCase()));
+  const needle = query.toLowerCase();
+  const credits: SearchArtist[] = [];
+  for (const raw of creditedNames) {
+    const name = raw?.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    credits.push({ kind: "credit", id: null, displayName: name, imageUrl: null });
+  }
+  credits.sort((a, b) => {
+    const aStarts = a.displayName.toLowerCase().startsWith(needle) ? 0 : 1;
+    const bStarts = b.displayName.toLowerCase().startsWith(needle) ? 0 : 1;
+    return aStarts - bStarts || a.displayName.localeCompare(b.displayName);
+  });
+  return [...profiles, ...credits].slice(0, SEARCH_GROUP_LIMIT);
+}
+
 const PUBLIC_ROUTE = {
   OR: [{ rightsRoute: null }, { rightsRoute: { in: [...PUBLIC_RELEASE_ROUTES] } }],
 } satisfies Prisma.ReleaseWhereInput;
@@ -85,12 +124,21 @@ export class SearchService {
     }
     const contains = { contains: query, mode: "insensitive" as const };
 
-    const [artists, releases, tracks, playlists] = await Promise.all([
+    const [artists, credits, releases, tracks, playlists] = await Promise.all([
       prisma.artist.findMany({
         where: { displayName: contains, releases: { some: LISTED_RELEASE_WHERE } },
         orderBy: { displayName: "asc" },
         take: SEARCH_GROUP_LIMIT,
         select: { id: true, displayName: true, imageUrl: true },
+      }),
+      // Names credited on listed releases: an imported catalog credits artists
+      // that have no account, and they are still who listeners search for.
+      prisma.release.findMany({
+        where: { AND: [LISTED_RELEASE_WHERE, { primaryArtist: contains }] },
+        distinct: ["primaryArtist"],
+        orderBy: { primaryArtist: "asc" },
+        take: SEARCH_GROUP_LIMIT * 2,
+        select: { primaryArtist: true },
       }),
       prisma.release.findMany({
         where: {
@@ -136,11 +184,16 @@ export class SearchService {
 
     return {
       query,
-      artists: artists.map((artist) => ({
-        id: artist.id,
-        displayName: artist.displayName,
-        imageUrl: artist.imageUrl ?? null,
-      })),
+      artists: mergeArtistResults(
+        artists.map((artist) => ({
+          kind: "profile" as const,
+          id: artist.id,
+          displayName: artist.displayName,
+          imageUrl: artist.imageUrl ?? null,
+        })),
+        credits.map((credit) => credit.primaryArtist),
+        query,
+      ),
       releases: releases.map((release) => ({
         id: release.id,
         title: release.title,
