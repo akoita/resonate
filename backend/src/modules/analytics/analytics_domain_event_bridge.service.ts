@@ -1174,7 +1174,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "user_wallet",
     subjectIdKeys: ["userId"],
     actorIdKeys: ["userId"],
-    payloadKeys: ["userId", "chainId", "amountEth", "status"],
+    payloadKeys: ["userId", "chainId", "amountEth", "amountUsdc", "status"],
     sourceRefKeys: ["userId", "chainId", "status"],
   },
   {

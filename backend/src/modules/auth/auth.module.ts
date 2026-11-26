@@ -9,6 +9,7 @@ import { AuditModule } from "../audit/audit.module";
 import { PrivacyModule } from "../privacy/privacy.module";
 import { SharedModule } from "../shared/shared.module";
 import { AuthController } from "./auth.controller";
+import { WelcomeFundsController } from "./welcome_funds.controller";
 import { AuthNonceService } from "./auth_nonce.service";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./jwt.strategy";
@@ -112,7 +113,7 @@ function getChainFromConfig(config: ConfigService): { chain: Chain; transport: R
       },
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, WelcomeFundsController],
   providers: [
     AuthService,
     AuthNonceService,

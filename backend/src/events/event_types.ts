@@ -1096,7 +1096,9 @@ export interface WalletFaucetRequestedEvent extends BaseEvent {
   eventName: "wallet.faucet_requested";
   userId: string;
   chainId: number;
-  amountEth: string;
+  /** Absent when only test USDC was sent. */
+  amountEth?: string;
+  amountUsdc?: string;
   status: "sent" | "skipped" | "failed";
 }
 

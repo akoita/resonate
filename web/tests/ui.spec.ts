@@ -19,11 +19,13 @@ test("home hero renders", async ({ page }) => {
 
 test("wallet page renders", async ({ page }) => {
   await page.goto("/wallet");
-  await expect(page.getByText("Smart Account Balance")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your balance" })).toBeVisible();
 });
 
-test("wallet recovery panel renders", async ({ page }) => {
+test("wallet recovery panel renders under technical details", async ({ page }) => {
   await page.goto("/wallet");
+  // #2720: the account's technical side is folded away for newcomers.
+  await page.getByTestId("wallet-technical-details").locator("summary").click();
   await expect(page.getByText("Security & Recovery")).toBeVisible();
 });
 

@@ -97,9 +97,13 @@ type AuthVerifyResponse =
       address?: string;
       signupFaucet?: {
         status: "sent";
-        txHash: `0x${string}`;
         chainId: number;
-        amountEth: string;
+        /** ETH for fees; absent when only test dollars were sent. */
+        txHash?: `0x${string}`;
+        amountEth?: string;
+        /** Welcome test dollars (test USDC). */
+        usdcTxHash?: `0x${string}`;
+        amountUsdc?: string;
       };
     }
   | { status: "invalid_signature" | "invalid_nonce" | "error" | AuthInviteStatus; message?: string };
@@ -366,6 +370,32 @@ export async function refreshSmartAccount(token: string) {
 
 export async function deploySmartAccountSelf(token: string) {
   return apiRequest<WalletRecord>("/wallet/aa/deploy", { method: "POST" }, token);
+}
+
+/** Welcome test money for newcomers on test networks (staging only). */
+export type WelcomeFundsStatus = {
+  available: boolean;
+  chainId: number;
+  amountEth: string | null;
+  amountUsdc: string | null;
+  eth: "pending" | "sent" | "failed" | null;
+  usdc: "pending" | "sent" | "failed" | null;
+  canClaim: boolean;
+};
+
+export type WelcomeFundsClaim = {
+  result:
+    | { status: "sent"; amountEth: string | null; amountUsdc: string | null }
+    | { status: "skipped" | "failed"; reason: string };
+  welcome: WelcomeFundsStatus;
+};
+
+export async function getWelcomeFunds(token: string) {
+  return apiRequest<WelcomeFundsStatus>("/welcome-funds", {}, token);
+}
+
+export async function claimWelcomeFunds(token: string) {
+  return apiRequest<WelcomeFundsClaim>("/welcome-funds", { method: "POST" }, token);
 }
 
 export async function configurePaymaster(

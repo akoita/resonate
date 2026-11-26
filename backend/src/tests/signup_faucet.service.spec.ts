@@ -16,7 +16,9 @@ function config(values: Record<string, string | undefined>) {
 }
 
 class MemoryStore implements SignupFaucetStore {
-  private readonly attempts = new Map<string, { id: string; status: string; txHash?: string | null }>();
+  private readonly attempts = new Map<string, { id: string; status: string; txHash?: string | null; userId: string; chainId: number; purpose: string }>();
+  verifiedWallet: { address: string; chainId: number } | null = null;
+  fundedToday = 0;
   readonly sent: Array<{ id: string; txHash: string }> = [];
   readonly failed: Array<{ id: string; reason: string }> = [];
 
@@ -37,7 +39,14 @@ class MemoryStore implements SignupFaucetStore {
       }
       return { created: false, attempt: existing };
     }
-    const attempt = { id: `attempt-${this.attempts.size + 1}`, status: "pending", txHash: null };
+    const attempt = {
+      id: `attempt-${this.attempts.size + 1}`,
+      status: "pending",
+      txHash: null,
+      userId: input.userId,
+      chainId: input.chainId,
+      purpose: input.purpose,
+    };
     this.attempts.set(key, attempt);
     return { created: true, attempt };
   }
@@ -53,6 +62,25 @@ class MemoryStore implements SignupFaucetStore {
     this.findAttempt(id).status = "failed";
   }
 
+  async countAccountsFundedSince() {
+    const users = new Set(
+      [...this.attempts.values()]
+        .filter((attempt) => attempt.status === "pending" || attempt.status === "sent")
+        .map((attempt) => attempt.userId),
+    );
+    return this.fundedToday + users.size;
+  }
+
+  async listForUser(userId: string, chainId: number) {
+    return [...this.attempts.values()]
+      .filter((attempt) => attempt.userId === userId && attempt.chainId === chainId)
+      .map(({ purpose, status }) => ({ purpose, status }));
+  }
+
+  async findVerifiedWallet() {
+    return this.verifiedWallet;
+  }
+
   private findAttempt(id: string) {
     for (const attempt of this.attempts.values()) {
       if (attempt.id === id) return attempt;
@@ -63,7 +91,20 @@ class MemoryStore implements SignupFaucetStore {
 
 class MemorySender implements SignupFaucetSender {
   readonly calls: Array<{ to: string; amountWei: bigint; chainId: number }> = [];
+  readonly tokenCalls: Array<{ token: string; to: string; amount: bigint; chainId: number }> = [];
   failWith?: Error;
+  failTokenWith?: Error;
+
+  async sendErc20(input: {
+    chainId: number;
+    token: `0x${string}`;
+    to: `0x${string}`;
+    amount: bigint;
+  }): Promise<`0x${string}`> {
+    this.tokenCalls.push({ token: input.token, to: input.to, amount: input.amount, chainId: input.chainId });
+    if (this.failTokenWith) throw this.failTokenWith;
+    return "0xusdc";
+  }
 
   async sendEth(input: {
     chainId: number;
@@ -303,5 +344,160 @@ describe("SignupFaucetService", () => {
     expect(result).toEqual({ status: "failed", reason: "missing_funder_private_key" });
     expect(sender.calls).toHaveLength(0);
     expect(store.failed).toEqual([{ id: "attempt-1", reason: "missing_funder_private_key" }]);
+  });
+
+  describe("welcome test USDC, daily limit and test-network guard", () => {
+    const USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+    const BASE_SEPOLIA = 84532;
+
+    function welcomeConfig(overrides: Record<string, string | undefined> = {}) {
+      return enabledConfig({
+        SIGNUP_FAUCET_CHAIN_ID: String(BASE_SEPOLIA),
+        SIGNUP_FAUCET_AMOUNT_ETH: "0.002",
+        SIGNUP_FAUCET_USDC_AMOUNT: "20",
+        SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS: USDC,
+        ...overrides,
+      });
+    }
+
+    const signup = {
+      authMode: "register" as const,
+      requestedChainId: BASE_SEPOLIA,
+      verifiedChainId: BASE_SEPOLIA,
+      userId: WALLET,
+      walletAddress: WALLET,
+    };
+
+    it("parses the USDC amount in 6-decimal units and falls back to the Shows payment token", () => {
+      const parsed = getSignupFaucetConfig(welcomeConfig(), BASE_SEPOLIA);
+      expect(parsed.amountUsdc).toBe("20");
+      expect(parsed.amountUsdcUnits).toBe("20000000");
+      expect(parsed.usdcTokenAddress).toBe(USDC);
+      expect(parsed.dailyLimit).toBe(25);
+    });
+
+    it("ignores a malformed USDC amount", () => {
+      const parsed = getSignupFaucetConfig(welcomeConfig({ SIGNUP_FAUCET_USDC_AMOUNT: "-5" }), BASE_SEPOLIA);
+      expect(parsed.amountUsdcUnits).toBe("0");
+    });
+
+    it("sends both ETH and test USDC once at sign-up", async () => {
+      const { service, sender } = makeService(welcomeConfig());
+
+      const first = await service.maybeFundOnSignup(signup);
+      const second = await service.maybeFundOnSignup(signup);
+
+      expect(first).toEqual({
+        status: "sent",
+        chainId: BASE_SEPOLIA,
+        txHash: "0xtx",
+        amountEth: "0.002",
+        usdcTxHash: "0xusdc",
+        amountUsdc: "20",
+      });
+      expect(second).toEqual({ status: "skipped", reason: "already_attempted" });
+      expect(sender.calls).toHaveLength(1);
+      expect(sender.tokenCalls).toEqual([
+        { token: USDC, to: "0x00000000000000000000000000000000000000AA", amount: 20000000n, chainId: BASE_SEPOLIA },
+      ]);
+    });
+
+    it("sends only test USDC when the ETH amount is zero (gas is sponsored)", async () => {
+      const { service, sender } = makeService(welcomeConfig({ SIGNUP_FAUCET_AMOUNT_ETH: "0" }));
+
+      const result = await service.maybeFundOnSignup(signup);
+
+      expect(result).toEqual({ status: "sent", chainId: BASE_SEPOLIA, usdcTxHash: "0xusdc", amountUsdc: "20" });
+      expect(sender.calls).toHaveLength(0);
+    });
+
+    it("still reports the ETH leg when the USDC leg fails", async () => {
+      const { service, sender } = makeService(welcomeConfig());
+      sender.failTokenWith = new Error("transfer amount exceeds balance");
+
+      const result = await service.maybeFundOnSignup(signup);
+
+      expect(result).toEqual({ status: "sent", chainId: BASE_SEPOLIA, txHash: "0xtx", amountEth: "0.002" });
+    });
+
+    it("never pays on a network that is not a test network", async () => {
+      const { service, sender } = makeService(welcomeConfig({ SIGNUP_FAUCET_CHAIN_ID: "8453" }));
+
+      const result = await service.maybeFundOnSignup({ ...signup, requestedChainId: 8453, verifiedChainId: 8453 });
+
+      expect(result).toEqual({ status: "skipped", reason: "not_a_test_network" });
+      expect(sender.calls).toHaveLength(0);
+      expect(sender.tokenCalls).toHaveLength(0);
+    });
+
+    it("stops new accounts once the daily limit is reached", async () => {
+      const { service, store, sender } = makeService(welcomeConfig({ SIGNUP_FAUCET_DAILY_LIMIT: "3" }));
+      store.fundedToday = 3;
+
+      const result = await service.maybeFundOnSignup(signup);
+
+      expect(result).toEqual({ status: "skipped", reason: "daily_limit" });
+      expect(sender.calls).toHaveLength(0);
+    });
+
+    it("a daily limit of 0 pauses the faucet", async () => {
+      const { service, sender } = makeService(welcomeConfig({ SIGNUP_FAUCET_DAILY_LIMIT: "0" }));
+
+      expect(await service.maybeFundOnSignup(signup)).toEqual({ status: "skipped", reason: "daily_limit" });
+      expect(sender.calls).toHaveLength(0);
+    });
+
+    it("lets an account that missed its welcome money claim it from the Wallet page", async () => {
+      const { service, store, sender } = makeService(welcomeConfig());
+      store.verifiedWallet = { address: WALLET, chainId: BASE_SEPOLIA };
+
+      const before = await service.getWelcomeFundsStatus(WALLET);
+      const claim = await service.claimWelcomeFunds(WALLET);
+      const after = await service.getWelcomeFundsStatus(WALLET);
+      const again = await service.claimWelcomeFunds(WALLET);
+
+      expect(before).toEqual({
+        available: true,
+        chainId: BASE_SEPOLIA,
+        amountEth: "0.002",
+        amountUsdc: "20",
+        eth: null,
+        usdc: null,
+        canClaim: true,
+      });
+      expect(claim).toMatchObject({ status: "sent", amountUsdc: "20", amountEth: "0.002" });
+      expect(after).toMatchObject({ eth: "sent", usdc: "sent", canClaim: false });
+      expect(again).toEqual({ status: "skipped", reason: "already_attempted" });
+      expect(sender.tokenCalls).toHaveLength(1);
+    });
+
+    it("retries only the leg that failed", async () => {
+      const { service, store, sender } = makeService(welcomeConfig());
+      store.verifiedWallet = { address: WALLET, chainId: BASE_SEPOLIA };
+      sender.failTokenWith = new Error("transfer amount exceeds balance");
+      await service.maybeFundOnSignup(signup);
+      expect(await service.getWelcomeFundsStatus(WALLET)).toMatchObject({ eth: "sent", usdc: "failed", canClaim: true });
+
+      sender.failTokenWith = undefined;
+      const claim = await service.claimWelcomeFunds(WALLET);
+
+      expect(claim).toEqual({ status: "sent", chainId: BASE_SEPOLIA, usdcTxHash: "0xusdc", amountUsdc: "20" });
+      expect(sender.calls).toHaveLength(1);
+    });
+
+    it("refuses a claim without a sign-in verified wallet", async () => {
+      const { service, sender } = makeService(welcomeConfig());
+
+      expect(await service.claimWelcomeFunds(WALLET)).toEqual({ status: "skipped", reason: "no_verified_wallet" });
+      expect(await service.getWelcomeFundsStatus(WALLET)).toMatchObject({ available: true, canClaim: false });
+      expect(sender.calls).toHaveLength(0);
+    });
+
+    it("reports nothing to claim when the faucet is off", async () => {
+      const { service, store } = makeService(welcomeConfig({ SIGNUP_FAUCET_ENABLED: "false" }));
+      store.verifiedWallet = { address: WALLET, chainId: BASE_SEPOLIA };
+
+      expect(await service.getWelcomeFundsStatus(WALLET)).toMatchObject({ available: false, canClaim: false });
+    });
   });
 });

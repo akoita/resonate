@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useUIStore } from "../../lib/uiStore";
 import { getArtistMe, type ArtistProfile } from "../../lib/api";
 import { getEnvironment, isProduction } from "../../lib/buildInfo";
 import { AboutModal } from "../ui/AboutModal";
+import { ContextMenu, type ContextMenuItem } from "../ui/ContextMenu";
+import { AUTH_COPY } from "../../lib/authCopy";
 import { BrandLogo } from "../brand/BrandLogo";
 import { useProductSurfaces } from "../../hooks/useProductSurfaces";
 import { useAccountName } from "../../hooks/useAccountName";
@@ -168,6 +170,22 @@ const ACCOUNT_ITEMS = [
 ];
 
 
+/**
+ * The sidebar account card's menu: where "your account" lives, then Sign out.
+ * Artists' profile is their public artist page; listeners edit theirs under
+ * Settings > Community. Wallet shows only while the deployment offers it.
+ */
+export function accountMenuDestinations(input: { artistProfileId: string | null; walletOn: boolean }) {
+  return [
+    {
+      label: "Profile",
+      href: input.artistProfileId ? `/artist/${input.artistProfileId}` : "/settings?section=community",
+    },
+    ...(input.walletOn ? [{ label: "Wallet", href: "/wallet" }] : []),
+    { label: "Settings", href: "/settings" },
+  ];
+}
+
 type NavItem = { name: string; href: string; surface?: ProductSurface; icon: React.ReactNode; badge?: "NEW" };
 
 /**
@@ -202,7 +220,10 @@ export default function Sidebar() {
   // Width and fold, remembered per device (wide screens only).
   const sidebarLayout = useSidebarLayout();
   useRailTooltips(sidebarRef, sidebarLayout.rail);
-  const { role, status, address, smartAccountAddress, token } = useAuth();
+  const { role, status, address, smartAccountAddress, token, disconnect } = useAuth();
+  const router = useRouter();
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
+  const [accountMenuAt, setAccountMenuAt] = useState<{ x: number; y: number } | null>(null);
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
   const { isSidebarOpen, closeSidebar } = useUIStore();
   const [artistProfile, setArtistProfile] = useState<ArtistProfile | null>(null);
@@ -212,7 +233,6 @@ export default function Sidebar() {
   // Product surface switches (#2658): hide entry points the deployment has
   // switched off.
   const { surfaces } = useProductSurfaces();
-  const accountHref = surfaces.wallet ? "/wallet" : "/settings";
 
   // Auto-close drawer on route change only. `closeSidebar` is a Zustand
   // action — referentially stable, deliberately excluded from deps so
@@ -247,6 +267,19 @@ export default function Sidebar() {
   const accountName = useAccountName(token, showUserChip);
   const primaryLabel = accountName ?? "Your account";
   const userInitial = accountName ? accountName[0]!.toUpperCase() : "";
+  const accountMenuItems = accountMenuDestinations({
+    artistProfileId: artistProfile?.id ?? null,
+    walletOn: surfaces.wallet,
+  }).map<ContextMenuItem>((item) => ({
+    label: item.label,
+    onClick: () => router.push(item.href),
+  })).concat({ label: "", separator: true, onClick: () => {} }, {
+    label: AUTH_COPY.signOut,
+    onClick: () => {
+      disconnect();
+      router.push("/");
+    },
+  });
 
   const renderLink = (item: NavItem) => {
     const isActive = pathname === item.href;
@@ -623,12 +656,24 @@ export default function Sidebar() {
       <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
       {showUserChip ? (
         <div className="sidebar-footer">
-          <Link
-            href={accountHref}
-            prefetch={false}
+          <button
+            ref={accountButtonRef}
+            type="button"
             className="user-profile"
-            aria-label={`${accountName ? `Signed in as ${accountName}` : "Signed in"}. Open your account.`}
-            aria-current={pathname === accountHref ? "page" : undefined}
+            aria-label={`${accountName ? `Signed in as ${accountName}` : "Signed in"}. Account menu.`}
+            aria-haspopup="menu"
+            aria-expanded={accountMenuAt ? true : false}
+            data-testid="sidebar-account-button"
+            onClick={() => {
+              if (accountMenuAt) {
+                setAccountMenuAt(null);
+                return;
+              }
+              const rect = accountButtonRef.current?.getBoundingClientRect();
+              // Opens at the card's top edge; the menu flips above it when it
+              // would spill past the bottom of the window.
+              setAccountMenuAt(rect ? { x: rect.left, y: rect.top } : { x: 16, y: 16 });
+            }}
           >
             <div className="user-avatar" aria-hidden="true">
               {userInitial || (
@@ -645,8 +690,18 @@ export default function Sidebar() {
                 Signed in
               </div>
             </div>
-          </Link>
+          </button>
         </div>
+      ) : null}
+      {accountMenuAt ? (
+        <ContextMenu
+          x={accountMenuAt.x}
+          y={accountMenuAt.y}
+          items={accountMenuItems}
+          onClose={() => setAccountMenuAt(null)}
+          openerRef={accountButtonRef}
+          ariaLabel="Account"
+        />
       ) : null}
       </aside>
       {sidebarLayout.media === "wide" ? <SidebarResizeEdge sidebarRef={sidebarRef} layout={sidebarLayout.layout} /> : null}

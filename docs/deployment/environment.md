@@ -353,7 +353,10 @@ When adding a new environment variable:
 | `INDEXER_MAX_BATCHES_PER_CYCLE` | Backend | Optional maximum indexer batches processed per poll cycle; defaults to `20` |
 | `INDEXER_PROGRESS_LOG_LEVEL` | Backend | Optional progress log level for per-batch indexing messages: `silent`, `debug`, or `log`; defaults to `silent` |
 | `SIGNUP_FAUCET_ENABLED` | Backend | Enables native ETH funding for newly registered wallets. Defaults to `false`; set `true` only in staging/testnet environments |
-| `SIGNUP_FAUCET_AMOUNT_ETH` | Backend | Native ETH amount sent to new signup wallets when the faucet is enabled; defaults to `0.1` |
+| `SIGNUP_FAUCET_AMOUNT_ETH` | Backend | Native ETH amount sent to new signup wallets when the faucet is enabled; defaults to `0.1`. `0` skips the ETH leg (for example when network fees are sponsored) |
+| `SIGNUP_FAUCET_USDC_AMOUNT` | Backend | Welcome test USDC sent once per account (decimal dollars, e.g. `20`). Unset or `0` switches the leg off |
+| `SIGNUP_FAUCET_USDC_TOKEN_ADDRESS` | Backend | Optional token for the USDC leg; falls back to `SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS`, then `PAYMENT_USDC_ADDRESS` |
+| `SIGNUP_FAUCET_DAILY_LIMIT` | Backend | Most accounts given welcome money per UTC day (default `25`); `0` pauses the faucet. The faucet only ever pays on test networks (Base Sepolia, Sepolia, local Anvil) |
 | `SIGNUP_FAUCET_CHAIN_ID` | Backend | Optional faucet chain guard. When omitted, signup funding uses the active chain verified by the backend auth RPC |
 | `SIGNUP_FAUCET_RPC_URL` | Backend | Optional faucet RPC override; otherwise resolves from the active chain (`BASE_SEPOLIA_RPC_URL`, `BASE_RPC_URL`, `SEPOLIA_RPC_URL`, `LOCAL_RPC_URL`) before falling back to `RPC_URL` |
 | `SIGNUP_FAUCET_FUNDER_PRIVATE_KEY` | Backend secret | Optional faucet funding key; falls back to the deployer `PRIVATE_KEY`. Store in secret manager/GitHub environment secrets, never source |
