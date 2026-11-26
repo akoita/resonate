@@ -1065,3 +1065,39 @@ html.is-resizing-sidebar .app-sidebar {
     display: none;
   }
 }
+
+/* ---- Sidebar header as the sidebar narrows -----------------------------
+ * The header follows its own width (the sidebar is resizable), so nothing
+ * ever slides over the wordmark: first the staging pill turns into a dot,
+ * then the wordmark gives way, leaving mark, dot and fold button. */
+.app-sidebar .sidebar-logo {
+  container: sidebar-logo / inline-size;
+  min-width: 0;
+}
+
+.app-sidebar .sidebar-logo .brand-logo {
+  min-width: 0;
+}
+
+.app-sidebar .sidebar-logo .brand-logo__wordmark {
+  white-space: nowrap;
+}
+
+@container sidebar-logo (max-width: 250px) {
+  .app-sidebar .sidebar-logo .env-badge {
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    flex: none;
+    font-size: 0;
+    letter-spacing: 0;
+    border-width: 2px;
+    background: var(--ds-tertiary, #ffb782);
+  }
+}
+
+@container sidebar-logo (max-width: 190px) {
+  .app-sidebar .sidebar-logo .brand-logo__wordmark {
+    display: none;
+  }
+}
