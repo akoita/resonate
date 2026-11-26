@@ -3,7 +3,6 @@ import {
   campaignTerms,
   campaignFeeNotice,
   campaignDisputeView,
-  maskAddress,
   refundDisclosure,
   type Campaign,
 } from "../../lib/shows";
@@ -38,14 +37,12 @@ function humanizeAuthority(status: string): string {
 
 function humanizeBeneficiaryType(type?: string | null): string {
   switch (type) {
-    case "wallet":
-      return "Wallet";
     case "split_contract":
-      return "Shared payout";
+      return "Split between the artist's team";
     case "multisig":
-      return "Shared wallet";
+      return "An account the artist's team shares";
     default:
-      return "Wallet";
+      return "The artist's account";
   }
 }
 
@@ -86,8 +83,10 @@ export function CampaignTrustPanel({ campaign }: Props) {
         {campaign.beneficiaryAddress ? (
           <>
             <span className="campaign-trust__authority-label">Paid out to</span>
-            <span className="campaign-trust__authority-value tabular">
-              {humanizeBeneficiaryType(campaign.beneficiaryType)} · {maskAddress(campaign.beneficiaryAddress)}
+            {/* Who receives the money, in words. The address itself is on the
+                public ledger the funding card links to. */}
+            <span className="campaign-trust__authority-value">
+              {humanizeBeneficiaryType(campaign.beneficiaryType)}
             </span>
           </>
         ) : null}

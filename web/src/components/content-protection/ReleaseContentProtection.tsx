@@ -155,9 +155,9 @@ export default function ReleaseContentProtection({ releaseId }: ReleaseContentPr
         : data.rightsUpgradeRequestStatus === "more_evidence_requested"
           ? "More evidence needed"
           : data.rightsUpgradeRequestStatus === "approved_standard_escrow"
-            ? "Approved: Standard Escrow"
+            ? "Approved: cleared"
             : data.rightsUpgradeRequestStatus === "approved_trusted_fast_path"
-              ? "Approved: Trusted Fast Path"
+              ? "Approved: trusted artist"
               : data.rightsUpgradeRequestStatus === "denied"
                 ? "Denied"
                 : "No active request";

@@ -120,7 +120,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "The sidebar keeps to what you use most: Home, Player, Library (your playlists are inside it), Shows, Drops, Crates & Stems, then Settings and this User Guide. Artist accounts also see their tools under For artists: Upload, Catalog, Listings and Analytics, with creating music with AI last. Your account chip at the bottom of the sidebar opens your account. On a wide screen, drag the sidebar's right edge to make it narrower or wider, or past the edge to fold it to icons; double-click the edge, or use the button beside the logo, to fold or open it. Hover an icon to see its name. Your choice is remembered on this device.",
+            text: "The sidebar keeps to what you use most: Home, Player, Library (your playlists are inside it), Shows, Drops, Crates & Stems, then Settings and this User Guide. Artist accounts also see their tools under For artists: Upload, Catalog, Listings and Analytics, with creating music with AI last. Your account chip, in the top bar and at the bottom of the sidebar, shows your artist or profile name (or Your account until you set one) and opens your account; the sign-out button sits beside it in the top bar. On a wide screen, drag the sidebar's right edge to make it narrower or wider, or past the edge to fold it to icons; double-click the edge, or use the button beside the logo, to fold or open it. Hover an icon to see its name. Your choice is remembered on this device.",
           },
         ],
       },
@@ -4347,7 +4347,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/shows.png`,
-              alt: "The Shows landing page headlined 'Fans bring the show.' with counts of campaigns shown and fans signalled, above a grid of six live campaign cards. Each card has banner art, a city chip, an artist-authorized escrow badge, the show title and venue, the amount raised against the goal with a progress bar, and the backers, days left and backer threshold.",
+              alt: "The Shows landing page headlined 'Fans bring the show.' with counts of campaigns and fans backing, above a grid of six campaign cards. Each card has banner art, a city chip, an Artist approved badge, the show title and venue, the amount raised against the goal with a progress bar, and the backers and days left.",
               caption: "Shows: browse live campaigns and see how much money each has gathered, how many fans have backed it and how long is left. Sample campaigns.",
               width: 1440,
               height: 1800,
@@ -4389,7 +4389,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/show-campaign.png`,
-              alt: "The 'Nadia Okoro in Paris' campaign page, open for pledges. A banner shows the show title, date and venue. Below are the campaign story, the amount raised against the goal with backers, days left and threshold, and a Back this show card with three tiers to pick from, a note on what a refund returns if a deposit was already paid, a Connect wallet to pledge button, and the platform fee note.",
+              alt: "The 'Nadia Okoro in Paris' campaign page, open for pledges. A banner shows the show title, date and venue. Below are the campaign story, the amount raised against the goal with backers, days left and threshold, and a Back this show card with three tiers to pick from, a note on what a refund returns if a deposit was already paid, a Sign in to pledge button, and the platform fee note.",
               caption: "A campaign that is open for pledges: the show, its story, funding progress, the pledge tiers, the refund and fee terms, and the pledge button. Sample campaign.",
               width: 1440,
               height: 1500,

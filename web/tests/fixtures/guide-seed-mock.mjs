@@ -465,6 +465,10 @@ export function guideSeedResponse(method, url, now = Date.now()) {
   if (method !== "GET") return json({ message: "Not found" }, 404);
   const { pathname } = url;
 
+  // The guide documents pledging, so the sample deployment has it switched on.
+  if (pathname === "/config/surfaces") {
+    return json({ surfaces: { showsPledging: true, stemPurchases: true, paidCollects: true } });
+  }
   if (pathname === "/shows/campaigns") {
     return json(CAMPAIGNS.map((campaign) => campaignDto(campaign, now)));
   }

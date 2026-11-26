@@ -92,7 +92,7 @@ export function LiveEventRail({ campaigns }: { campaigns: Campaign[] }) {
       kicker="Real-time performance"
       kickerTone="tertiary"
       title="Upcoming Live Events"
-      description="Fan-funded shows — pledges are held in escrow and refunded if the goal isn't met."
+      description="Fan-funded shows. Pledges are held safely and refunded if the goal isn't met."
       action={{ href: "/shows", label: "Browse all" }}
       itemWidth={300}
       testId="live-event-rail"

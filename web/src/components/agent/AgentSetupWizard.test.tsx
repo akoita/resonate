@@ -21,7 +21,8 @@ describe("AgentSetupWizard", () => {
     );
 
     expect(html).toContain("Name Your DJ");
-    expect(html).toContain("curate and play tracks for you");
+    expect(html).toContain("plays them for you, live");
+    expect(html).toContain("Not now");
     for (const pattern of FORBIDDEN_COPY) {
       expect(html).not.toMatch(pattern);
     }

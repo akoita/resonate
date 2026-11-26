@@ -77,7 +77,8 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                         <div className="agent-wizard-emoji">🤖</div>
                         <h2 className="agent-wizard-title">Name Your DJ</h2>
                         <p className="agent-wizard-desc">
-                            Your AI DJ agent will curate and play tracks for you in real-time.
+                            Your DJ picks tracks by Resonate artists and plays them for you, live.
+                            Not now? You can set it up any time in Settings, under AI DJ.
                         </p>
                         <input
                             className="agent-wizard-input"
@@ -139,6 +140,11 @@ export default function AgentSetupWizard({ onComplete, onClose }: WizardProps) {
                 )}
 
                 <div className="agent-wizard-actions">
+                    {step === 0 && (
+                        <button type="button" className="ui-btn ui-btn-ghost" onClick={onClose}>
+                            Not now
+                        </button>
+                    )}
                     {step > 0 && (
                         <button className="ui-btn ui-btn-ghost" onClick={() => setStep(step - 1)}>
                             Back

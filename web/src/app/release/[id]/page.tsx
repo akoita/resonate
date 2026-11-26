@@ -1,5 +1,6 @@
 "use client";
 
+import { formatRightsRoute } from "../../../lib/rightsRoute";
 import { Suspense, useRef, useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -301,9 +302,9 @@ const formatRightsUpgradeStatusLabel = (value?: string | null): string => {
     case "more_evidence_requested":
       return "More Evidence Needed";
     case "approved_standard_escrow":
-      return "Approved: Standard Escrow";
+      return "Approved: cleared";
     case "approved_trusted_fast_path":
-      return "Approved: Trusted Fast Path";
+      return "Approved: trusted artist";
     case "denied":
       return "Denied";
     default:
@@ -495,7 +496,7 @@ function ReleaseDetailsContent() {
   const availableReleaseProtectionId = freshReleaseProtectionId ?? indexedReleaseProtectionId;
   const shouldWaitForPendingRelease = searchParams.get("pending") === "1";
   const rightsTone = getRightsTone(release?.rightsRoute);
-  const rightsRouteLabel = formatRightsLabel(release?.rightsRoute) || "Not Evaluated";
+  const rightsRouteLabel = formatRightsRoute(release?.rightsRoute);
   const rightsSourceLabel = formatRightsLabel(release?.rightsSourceType);
   const isAiGeneratedRelease = release?.type?.toLowerCase() === "ai_generated";
   const rightsFlagsForDisplay = isAiGeneratedRelease
