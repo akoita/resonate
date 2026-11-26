@@ -1612,6 +1612,7 @@ from the JWT, never the request body.
   | `published-remix` | Published remix audio | `inherits_draft_mark` | A byte copy of the draft. Publishing an AI draft that is not marked is refused (`draft_unmarked`). |
   | `draft-export` | Export audio, DJ extended export and stems export | `inherits_draft_mark` | The draft's own bytes, a re-encode of them, or its marked stems. Exporting an AI draft that is not marked is refused (`draft_unmarked`). The DJ sidecar and the stems manifest carry the AI disclosure. |
   | `draft-playback` | Draft playback in the studio | `studio_playback` | Owner-only stream of a draft covered by the rows above; no download. |
+| `approval-preview` | Remix version the source artist is asked to approve | `studio_playback` | Stream to the source artist of the exact draft version they are asked to approve (#2682): the same bytes as draft playback, no download. |
   | `standalone-generation` | Track generated outside the remix studio | `provider_mark` | The provider embeds its own mark; the track records `synthIdPresent` and its AI disclosure. |
 
   Open points for the legal check (owner decision 3 of Sprint 56): whether
