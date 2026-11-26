@@ -351,12 +351,18 @@ jobs:
       # the main Ubuntu archive instead of the runner's mirror. A failure stays
       # visible (warning below) rather than failing a required check on an
       # outage.
+      # ImageOS/ImageVersion are runner shell variables, not part of the
+      # `env` context, so read them in a step to key the cache per image.
+      - name: Compute ffmpeg cache key
+        id: ffmpeg-key
+        run: echo "key=ffmpeg-debs-v1-${RUNNER_OS}-${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
       - name: Restore cached ffmpeg packages
         id: ffmpeg-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/ffmpeg-debs
-          key: ffmpeg-debs-v1-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}
+          key: ${{ steps.ffmpeg-key.outputs.key }}
 
       - name: Install ffmpeg (best effort)
         id: ffmpeg
@@ -397,7 +403,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/ffmpeg-debs
-          key: ffmpeg-debs-v1-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}
+          key: ${{ steps.ffmpeg-key.outputs.key }}
 
       - name: Warn when ffmpeg is unavailable
         if: steps.ffmpeg.outcome != 'success'
