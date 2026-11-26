@@ -6,6 +6,9 @@ import { sceneScoutMinimumAudience } from "../scene_scout/scene_scout.service";
 import { writeStructuredLog } from "../shared/structured_logging";
 import { SHOW_CAMPAIGN_MODES, SHOW_INTEREST_CITY_MAX, type ShowCampaignMode } from "./show-interest.dto";
 import { PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES, ShowsService } from "./shows.service";
+import { summarizeInterest, type ShowInterestSummary } from "./show-interest-summary";
+
+export { summarizeInterest, type ShowInterestSummary } from "./show-interest-summary";
 
 type Actor = { userId: string; role?: string };
 
@@ -19,17 +22,6 @@ export interface ShowInterestState {
   mine: { city: string | null; notifyWhenOpen: boolean; createdAt: string } | null;
 }
 
-export interface ShowInterestSummary {
-  mode: ShowCampaignMode;
-  total: number;
-  /** Cities with at least `minimumGroup` people, largest first. */
-  cities: Array<{ city: string; count: number }>;
-  /** People in smaller cities, or who gave no city, counted together. */
-  otherCount: number;
-  /** People who asked to be told when tickets or pledges open. */
-  notifyCount: number;
-  minimumGroup: number;
-}
 
 function normalizeCity(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -39,10 +31,6 @@ function normalizeCity(value: unknown): string | null {
   return city;
 }
 
-/** Group key: case- and accent-insensitive, so "Lyon" and "lyon" count together. */
-function cityKey(city: string): string {
-  return city.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-}
 
 /**
  * Shows "I would come" (#2668): a campaign in `interest` mode collects
@@ -194,42 +182,4 @@ export class ShowInterestService {
     if (!campaign) throw new NotFoundException("Show campaign not found");
     return campaign;
   }
-}
-
-/**
- * Counts by city. A city with fewer than `minimumGroup` people is folded into
- * `otherCount`, so nobody in a small town can be singled out. Pure for tests.
- */
-export function summarizeInterest(
-  rows: Array<{ city: string | null; notifyWhenOpen: boolean }>,
-  mode: ShowCampaignMode,
-  minimumGroup: number,
-): ShowInterestSummary {
-  const groups = new Map<string, { city: string; count: number }>();
-  let noCity = 0;
-  for (const row of rows) {
-    if (!row.city) {
-      noCity += 1;
-      continue;
-    }
-    const key = cityKey(row.city);
-    const group = groups.get(key);
-    if (group) group.count += 1;
-    else groups.set(key, { city: row.city, count: 1 });
-  }
-  const cities: Array<{ city: string; count: number }> = [];
-  let otherCount = noCity;
-  for (const group of groups.values()) {
-    if (group.count >= minimumGroup) cities.push(group);
-    else otherCount += group.count;
-  }
-  cities.sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
-  return {
-    mode,
-    total: rows.length,
-    cities,
-    otherCount,
-    notifyCount: rows.filter((row) => row.notifyWhenOpen).length,
-    minimumGroup,
-  };
 }

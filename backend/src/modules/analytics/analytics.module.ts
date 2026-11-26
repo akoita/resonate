@@ -1,3 +1,4 @@
+import { ARTIST_SHOW_INTEREST_SOURCE, PrismaArtistShowInterestSource } from "./analytics_show_interest";
 import { Module } from "@nestjs/common";
 import { AnalyticsController } from "./analytics.controller";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
@@ -45,6 +46,11 @@ import { ARTIST_NET_RECEIVED_SOURCE, PrismaArtistNetReceivedSource } from "./ana
       provide: FIRST_LISTENER_RECEPTION_SOURCE,
       useFactory: entitledFirstListenerReceptionSource,
       inject: [FirstListenerReceptionService, SceneScoutEntitlementsService],
+    },
+    {
+      // #2686: Shows "I would come" counts in artist analytics.
+      provide: ARTIST_SHOW_INTEREST_SOURCE,
+      useClass: PrismaArtistShowInterestSource,
     },
     {
       // #2172: net received per marketplace sale, beside the gross settled figure.
