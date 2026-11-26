@@ -1280,6 +1280,23 @@
     min-height: 280px;
     align-items: flex-end;
   }
+  /* One width for every Home container on phones: hero, tuner, catalog,
+     AI DJ and studio panels all run edge to edge as bands with the same
+     16px inner gutter, so nothing sits inset next to something full width. */
+  .home-ng .ng-main .ng-tuner,
+  .home-ng .ng-main .ng-catalog-shell,
+  .home-ng .ng-main .ng-ops-panel,
+  .home-ng .ng-main .agent-session-presets.compact,
+  .home-ng .ng-main .agent-session-presets {
+    margin-inline: -16px;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    padding-inline: 16px;
+  }
+  /* The tuner sits straight in the page, outside any section gutter. */
+  .home-ng .ng-main > .ng-tuner,
+  .home-ng .ng-main > * > .ng-tuner { margin-inline: 0; }
   .home-ng .ng-hero .ng-hero__card,
   .home-ng .ng-hero.ng-hero--campaign-image .ng-hero__card {
     padding: 0;
