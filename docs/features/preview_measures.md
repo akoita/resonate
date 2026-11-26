@@ -1,8 +1,8 @@
 # Preview measures
 
-Status: `partial` ([#2670](https://github.com/akoita/resonate/issues/2670),
-Vision Sprint 60 "Ready to show"). Stem previews are not recorded yet
-([#2689](https://github.com/akoita/resonate/issues/2689)).
+Status: `available` ([#2670](https://github.com/akoita/resonate/issues/2670),
+Vision Sprint 60 "Ready to show"; stem previews
+[#2689](https://github.com/akoita/resonate/issues/2689), Vision Sprint 61).
 
 Revenue line: vision-neutral operations. No fee, split, price or payout change.
 
@@ -15,7 +15,7 @@ period (at most 92 days, default the last 28):
 | --- | --- | --- |
 | Artists who joined with an artist invitation, and the share who published within 14 days | `InvitationRedemption` (role `artist`), the artist's first `ready`/`published` `Release` | Artists still inside their 14 days are counted apart and left out of the share. |
 | Listeners who joined, and the share active in each of their first four weeks | `User` without an artist profile; activity = any `AnalyticsEvent` for the account's pseudonymous actor id | Consenting accounts only (`AnalyticsConsent.productAnalytics`). A week counts once it has fully passed. |
-| People using each feature, per week | `Session` (AI DJ), `RemixProject`, `Crate`, `PunchlineCollectible` (Drops), `ShowInterest`, `LibraryTrack` with `source = local` | Distinct accounts per seven-day bucket from the start of the period. Stem previews: not recorded yet (#2689). |
+| People using each feature, per week | `Session` (AI DJ), `RemixProject`, `Crate`, `PunchlineCollectible` (Drops), `ShowInterest`, `LibraryTrack` with `source = local` | Distinct accounts per seven-day bucket from the start of the period. Stem previews (#2689) come from the consent-gated `marketplace.stem_previewed` product event in `AnalyticsEvent` (distinct pseudonymous `actorId`), so they count only accounts that allow product analytics; the row label says so. A table count was not used because previews are served to signed-out listeners too, without an account to count. |
 | Support requests opened, answered, median time to an answer | `SupportRequest` | Time to the request's last status change, which is the first answer for a request handled once. |
 | Uploads refused by a limit; takedown and community reports | `UploadLimitRefusal` (new, written when an upload limit refuses), `DmcaReport`, `CommunityModerationReport` | |
 

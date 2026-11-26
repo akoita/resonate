@@ -445,6 +445,17 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["tokenId", "listingId", "channel", "trigger", "source"],
   },
   {
+    // #2689: someone started a stem preview (marketplace card or stem page).
+    // Consent-gated like every web product event; counted on the operator's
+    // preview measures page as distinct accounts per week. Ids and an enum
+    // source only.
+    eventName: "marketplace.stem_previewed",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["stemId", "trackId", "source"],
+  },
+  {
     // #1915: a remixer shared a remix they just published from Remix Studio.
     // The link is the public remix release tagged utm_campaign=remix_share.
     // Only the release and project ids and two enums (channel, trigger

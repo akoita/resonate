@@ -84,6 +84,9 @@ const FEATURES = [
 
 export type FeatureKey = (typeof FEATURES)[number]["key"] | "stemPreviews";
 
+/** #2689: the web product event written when a stem preview starts. */
+export const STEM_PREVIEW_EVENT = "marketplace.stem_previewed";
+
 @Injectable()
 export class PreviewMeasuresService {
   async measures(fromInput?: string, toInput?: string, now = new Date()) {
@@ -239,11 +242,23 @@ export class PreviewMeasuresService {
         };
       }),
     );
+    // #2689: stem previews are a consent-gated product event, so this line
+    // counts accounts that allowed product analytics, by pseudonymous actor.
+    const previewCounts = await prisma.$queryRaw<Array<{ bucket: number; users: number }>>(Prisma.sql`
+      SELECT FLOOR(EXTRACT(EPOCH FROM ("occurredAt" - ${period.from}::timestamp)) / 604800)::int AS bucket,
+             COUNT(DISTINCT "actorId")::int AS users
+      FROM "AnalyticsEvent"
+      WHERE "eventName" = ${STEM_PREVIEW_EVENT}
+        AND "actorId" IS NOT NULL
+        AND "occurredAt" >= ${period.from} AND "occurredAt" < ${period.to}
+      GROUP BY 1
+    `);
+    const previewsByBucket = new Map(previewCounts.map((row) => [row.bucket, row.users]));
     rows.splice(3, 0, {
       key: "stemPreviews",
-      label: "Stem previews",
-      recorded: false,
-      weekly: buckets.map(() => 0),
+      label: "Stem previews (accounts that allow analytics)",
+      recorded: true,
+      weekly: buckets.map((_, index) => guard(previewsByBucket.get(index) ?? 0)),
     });
     return {
       weeks: buckets.map((bucket) => ({ start: bucket.start.toISOString(), end: bucket.end.toISOString() })),

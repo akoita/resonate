@@ -82,6 +82,31 @@ describe("preview measures (#2670)", () => {
       }
     }
 
+    // #2689: the five listeners active in week 1 preview a stem in week 1;
+    // one previews twice and counts once. (Week 1 keeps retention unchanged.)
+    for (const [index, userId] of [...listeners.slice(0, 5), listeners[0]].entries()) {
+      const occurredAt = hours(day(index), 6);
+      const eventId = `${TEST_PREFIX}ev${eventIds.length}`;
+      eventIds.push(eventId);
+      await prisma.analyticsEvent.create({
+        data: {
+          eventId,
+          eventName: "marketplace.stem_previewed",
+          eventVersion: 1,
+          occurredAt,
+          receivedAt: occurredAt,
+          producer: "web-app",
+          environment: "test",
+          privacyTier: "pseudonymous",
+          subjectType: "stem",
+          subjectId: `${TEST_PREFIX}stem`,
+          actorId: pseudonymousAnalyticsActorId(userId),
+          payload: { source: "marketplace" },
+          envelope: {},
+        },
+      });
+    }
+
     // Feature use: five listeners start an AI DJ session in week 1, two make a crate in week 2.
     for (const userId of listeners.slice(0, 5)) {
       await prisma.session.create({ data: { userId, budgetCapUsd: 0, startedAt: day(1) } });
@@ -138,7 +163,7 @@ describe("preview measures (#2670)", () => {
     const row = (key: string) => result.features.rows.find((r) => r.key === key);
     expect(row("aiDj")?.weekly).toEqual([5, 0, 0, 0]);
     expect(row("crates")?.weekly).toEqual([0, null, 0, 0]);
-    expect(row("stemPreviews")).toMatchObject({ recorded: false });
+    expect(row("stemPreviews")).toMatchObject({ recorded: true, weekly: [5, 0, 0, 0] });
 
     expect(result.support).toEqual({ opened: 6, answered: 5, medianHoursToAnswer: 6 });
     expect(result.safety).toEqual({ uploadsRefusedByLimit: 5, takedownReports: 0, communityReports: 0 });

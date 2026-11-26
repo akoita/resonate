@@ -19,6 +19,7 @@ import type { LicenseType } from "../../../components/marketplace/LicenseTypeSel
 import { RemixCta } from "../../../components/remix/RemixCta";
 import ContentProtectionBadge from "../../../components/content-protection/ContentProtectionBadge";
 import { API_BASE, getReleaseArtworkUrl, getRemixEligibility } from "../../../lib/api";
+import { recordProductAnalytics } from "../../../lib/productAnalytics";
 import {
     applyPurchaseToListings,
     POST_PURCHASE_ELIGIBILITY_DELAYS_MS,
@@ -352,9 +353,18 @@ export default function StemDetailPage() {
         audio.src = `${API_BASE}/catalog/stems/${catalogStemId}/preview`;
         audio
             .play()
-            .then(() => setPreviewPlaying(true))
+            .then(() => {
+                setPreviewPlaying(true);
+                // #2689: a started preview counts on the preview measures page.
+                void recordProductAnalytics(token, "marketplace.stem_previewed", {
+                    subjectType: "stem",
+                    subjectId: catalogStemId,
+                    source: "stem_page",
+                    payload: { stemId: catalogStemId, source: "stem_page" },
+                });
+            })
             .catch(() => setPreviewPlaying(false));
-    }, [catalogStemId, previewPlaying]);
+    }, [catalogStemId, previewPlaying, token]);
 
     const copyLink = useCallback(() => {
         if (typeof navigator !== "undefined" && navigator.clipboard) {

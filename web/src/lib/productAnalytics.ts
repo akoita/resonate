@@ -39,6 +39,7 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "marketplace.purchase_intent",
   "marketplace.owner_inventory_viewed",
   "marketplace.license_shared",
+  "marketplace.stem_previewed",
   "player.action_impression",
   "player.action_selected",
   "artist.upload_started",

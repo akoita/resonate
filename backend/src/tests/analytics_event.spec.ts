@@ -262,6 +262,7 @@ describe("analytics event envelope", () => {
       "playlist.shared",
       "shows.campaign_shared",
       "marketplace.license_shared",
+      "marketplace.stem_previewed",
       "remix.published_shared",
       "recommendation.generated",
       "recommendation.served",

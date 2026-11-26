@@ -93,6 +93,10 @@ authenticated pseudonymous user playback lifecycle events through
   `after_purchase`, at pseudonymous tier. The backend keeps only those fields
   and rejects unknown enums or non-numeric ids; no price, payment method,
   receipt, transaction, or wallet. Arrivals carry `utm_campaign=license_share`.
+- `marketplace.stem_previewed` — someone started a stem preview on a
+  marketplace card or a stem page (#2689): subject `stem`, payload `stemId` and
+  `source` (`marketplace` or `stem_page`), at pseudonymous tier. Consent-gated
+  like every web product event; read by the preview measures page.
 - `remix.published_shared` — a remixer shared a remix they just published from
   Remix Studio (#1915): `releaseId`, optional `projectId` (id-shaped),
   `channel` enum, `trigger` `after_publish`, at pseudonymous tier, with the
