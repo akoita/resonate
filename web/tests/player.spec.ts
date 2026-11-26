@@ -26,14 +26,14 @@ test.describe("Player Page", () => {
         await expect(main.getByRole("button", { name: "Next" })).toBeVisible();
     });
 
-    test("PLAYER-02: System monitoring label is visible", async ({ page }) => {
+    test("PLAYER-02: Now playing label is visible", async ({ page }) => {
         await page.goto("/player");
-        await expect(page.getByText("System Monitoring")).toBeVisible();
+        await expect(page.locator("#player-console .studio-label").getByText("Now playing", { exact: true })).toBeVisible();
     });
 
-    test("PLAYER-03: Output Gain label is present", async ({ page }) => {
+    test("PLAYER-03: Volume label is present", async ({ page }) => {
         await page.goto("/player");
-        await expect(page.getByText("Output Gain")).toBeVisible();
+        await expect(page.locator("#player-console .studio-label").getByText("Volume", { exact: true })).toBeVisible();
     });
 
     test("PLAYER-04: Track Title is present", async ({ page }) => {
@@ -65,13 +65,13 @@ test.describe("Player console layout", () => {
         expect(box && viewport && box.x + box.width / 2 < viewport.width / 2).toBe(true);
 
         await panel.getByRole("button", { name: "Minimize player console" }).click();
-        await expect(page.getByText("Output Gain")).toBeHidden();
+        await expect(page.locator("#player-console .studio-label").getByText("Volume", { exact: true })).toBeHidden();
 
         await page.reload();
         await expect(stage).toHaveAttribute("data-console-dock", "left");
         await expect(panel.getByRole("button", { name: "Restore player console" })).toBeVisible();
         await panel.getByRole("button", { name: "Restore player console" }).click();
-        await expect(page.getByText("Output Gain")).toBeVisible();
+        await expect(page.locator("#player-console .studio-label").getByText("Volume", { exact: true })).toBeVisible();
     });
 
     test("PLAYER-07: dragging the header undocks the console and moves it", async ({ page }) => {

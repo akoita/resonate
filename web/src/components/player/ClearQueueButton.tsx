@@ -5,7 +5,7 @@ import type { LocalTrack } from "../../lib/localLibrary";
 import type { QueueSource } from "../../lib/listeningSession";
 import { canUndoQueueClear, clearQueueIndices } from "../../lib/playerQueue";
 
-/** Same 17px box and stroke as the other Queue Manifest chips. */
+/** Same 17px box and stroke as the other Queue header chips. */
 function ClearQueueIcon() {
   return <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <line x1="3" y1="6" x2="13" y2="6" /><line x1="3" y1="12" x2="11" y2="12" /><line x1="3" y1="18" x2="9" y2="18" />
@@ -31,7 +31,7 @@ export interface ClearQueueButtonViewProps {
 }
 
 /**
- * Clear queue chip for the Queue Manifest. It is a fragment so it shares the
+ * Clear queue chip for the console Queue header. It is a fragment so it shares the
  * chip row with Save queue / View playlist, and its Undo line wraps below.
  */
 export function ClearQueueButtonView({ clearableCount, undoCount, onClear, onUndo }: ClearQueueButtonViewProps) {

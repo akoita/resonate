@@ -3168,7 +3168,7 @@ Vision-neutral UX (ADR-BM-6): no money, fee or payout change; presentation of
 data the DJ already produces.
 
 - **What `/player` shows.** While the live DJ set (`web/src/lib/agentDjSet.ts`)
-  has at least one track in the queue, the Queue Manifest gets a header strip
+  has at least one track in the queue, the console Queue panel gets a header strip
   (`PlayerDjQueueHeader`): a small DJ orb with a live dot (still under
   `prefers-reduced-motion`), "AI DJ", a one-line request summary and a **Steer**
   link to `/#ai-dj` (the Now & Up next card on Home). Each queued track that

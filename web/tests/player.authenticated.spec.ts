@@ -23,11 +23,11 @@ test.describe("Authenticated Player", () => {
         await expect(main.getByRole("button", { name: "Play", exact: true })).toBeVisible();
     });
 
-    test("PLAYER-AUTH-02: System monitoring label visible", async ({ authenticatedPage }) => {
+    test("PLAYER-AUTH-02: Now playing label visible", async ({ authenticatedPage }) => {
         await authenticatedPage.goto("/player");
 
-        // System monitoring label should be visible
-        await expect(authenticatedPage.getByText("System Monitoring")).toBeVisible();
+        // "Now playing" label should be visible
+        await expect(authenticatedPage.locator("#player-console .studio-label").getByText("Now playing", { exact: true })).toBeVisible();
     });
 
     test("PLAYER-AUTH-03: Player with mock trackId shows track title", async ({ authenticatedPage }) => {
@@ -36,7 +36,7 @@ test.describe("Authenticated Player", () => {
 
         // Since it's a mock ID that won't exist in actual DB, it might show "No track selected" 
         // or just the generic player UI. We check for a common element.
-        await expect(authenticatedPage.getByText("Queue Manifest", { exact: true })).toBeVisible();
+        await expect(authenticatedPage.locator("#player-console .studio-label").getByText("Queue", { exact: true })).toBeVisible();
     });
 
     test("PLAYER-AUTH-04: Volume slider is interactive", async ({ authenticatedPage }) => {
@@ -51,11 +51,11 @@ test.describe("Authenticated Player", () => {
         await expect(volumeSlider).toHaveAttribute("max", "100");
     });
 
-    test("PLAYER-AUTH-05: Output Gain label visible", async ({ authenticatedPage }) => {
+    test("PLAYER-AUTH-05: Volume label visible", async ({ authenticatedPage }) => {
         await authenticatedPage.goto("/player");
 
-        // Output Gain label should be visible
-        await expect(authenticatedPage.getByText("Output Gain")).toBeVisible();
+        // Volume label should be visible
+        await expect(authenticatedPage.locator("#player-console .studio-label").getByText("Volume", { exact: true })).toBeVisible();
     });
 
     test("PLAYER-AUTH-06: mute restores the prior slider value", async ({ authenticatedPage }) => {

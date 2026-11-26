@@ -219,14 +219,17 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
           <span className="shows-home-section__kicker">Campaign community</span>
           <h2 className="shows-home-section__title">Demand starts in {campaign.city}.</h2>
         </div>
-        <button
-          type="button"
-          className="show-community__refresh"
-          onClick={() => void refreshMessages()}
-          disabled={!supporterRoom || (!joined && !updateAllowed) || loading}
-        >
-          Refresh
-        </button>
+        {/* Refresh only matters once there is a room to read. */}
+        {supporterRoom && (joined || updateAllowed) ? (
+          <button
+            type="button"
+            className="show-community__refresh"
+            onClick={() => void refreshMessages()}
+            disabled={loading}
+          >
+            Refresh
+          </button>
+        ) : null}
       </div>
 
       {notice ? (
@@ -251,7 +254,8 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
               accessModel={campaignRoomAccessModel("show_city_demand")}
               eyebrow="City demand"
               title={cityDemandRoom?.title ?? `${campaign.city} demand group`}
-              meta={<span>{cityJoined ? "Demand joined" : "Join city demand"}</span>}
+              // The button carries the action; the meta only confirms a join.
+              meta={cityJoined ? <span>Demand joined</span> : undefined}
               actions={!cityJoined ? (
                 <button
                   type="button"
@@ -285,7 +289,7 @@ export function CampaignCommunityPanel({ campaign }: { campaign: Campaign }) {
               accessLocked={!joined && action.disabled}
               eyebrow="Supporter room"
               title={supporterRoom?.title ?? "Campaign supporter room"}
-              meta={<span>{joined ? "Access active" : action.label}</span>}
+              meta={joined ? <span>Access active</span> : undefined}
               actions={!joined ? (
                 <button
                   type="button"

@@ -28,6 +28,7 @@ import {
     type SavedPlaylistView,
 } from "../../lib/api";
 import { queueableTracks } from "./trackAvailability";
+import { offerQueueDrag } from "../../lib/queueDrag";
 import {
     COVER_TRACK_SAMPLE,
     PlaylistCoverThumb,
@@ -457,6 +458,19 @@ export function PlaylistTab({
                                 key={playlist.id}
                                 className={`playlist-card ${dragOverId === playlist.id ? "drag-over" : ""}`}
                                 onClick={() => onSelectPlaylist(playlist)}
+                                // A whole playlist drags into the queue (Session dock, /player).
+                                draggable={editingId !== playlist.id}
+                                onDragStart={(e) => {
+                                    e.dataTransfer.setData("text/plain", playlist.name);
+                                    e.dataTransfer.effectAllowed = "copy";
+                                    offerQueueDrag(e.dataTransfer, {
+                                        title: playlist.name,
+                                        resolve: async () => {
+                                            const tracks = await Promise.all(playlist.trackIds.map((id) => getTrack(id)));
+                                            return queueableTracks(tracks.filter((t): t is LocalTrack => t !== null));
+                                        },
+                                    });
+                                }}
                                 onDragOver={(e) => {
                                     e.preventDefault();
                                     // Library/catalog drags allow "copy" only.

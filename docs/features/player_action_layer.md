@@ -148,9 +148,9 @@ line (1) Shows campaign fees: active campaigns render as `Support a show` chips
 linking to `/shows/<slug>`. Non-active campaign states stay disabled here
 because player support means pledging is open now.
 
-## Listening Share (Broadcast Signal)
+## Listening Share (Share section)
 
-The player's Broadcast Signal panel shares the playing track. The share model
+The player console's Share section shares the playing track. The share model
 lives in `web/src/lib/listeningShare.ts`; `SocialShare` renders it. This is
 vision-neutral product quality work: it restates the existing ADR-BM-4 artist
 share and changes no fees, payouts, or monetization mechanics.
@@ -306,7 +306,7 @@ Manual:
     focus the move handle to move it with the arrow keys. On a phone width only
     minimize is offered. `npx playwright test tests/player.spec.ts` covers this
     (PLAYER-06, PLAYER-07).
-11. Play a published track and use each Broadcast Signal button; confirm the
+11. Play a published track and use each Share button; confirm the
     link opens `/release/<id>` with `utm_campaign=listening_share` and the X
     and Reddit drafts carry the track copy. Play a device file and confirm the
     panel shows the published-tracks note instead of buttons.
@@ -331,7 +331,7 @@ Manual:
 Implemented for #1724, #1721 and #1723. These
 controls serve listeners and curators; they are vision-neutral product quality.
 
-**Clear queue** sits in the same Queue Manifest chip row whenever the queue
+**Clear queue** sits in the same Queue header chip row whenever the queue
 holds tracks other than the playing one. It removes every other position in one
 step (played and upcoming), keeps the current track playing, and empties the
 queue when nothing is current. It cancels a queue repeat plan (a track repeat
@@ -340,7 +340,7 @@ position and its playlist source without restarting playback; Undo is offered
 only while the queue is still exactly what the clear left, so any later add,
 removal or play retires it.
 
-**Save queue as playlist** appears beside Queue Manifest for ad-hoc or modified
+**Save queue as playlist** appears beside the Queue heading for ad-hoc or modified
 queues. It snapshots past, current and upcoming tracks in manifest order, never
 shuffle traversal order. An unchanged playlist links to its source. Provenance
 survives player-state restoration; a coincidental content match does not create
@@ -427,14 +427,23 @@ payloads the playlists panel already understands (library rows and selections,
 library album and artist cards, release rows, selections and artwork, playlist
 rows) plus an in-memory offer for sources that hold or fetch their tracks:
 catalog and Home cards (resolved on drop with `resolveCardQueueTracks`) and
-whole playlists from the playlists panel (`web/src/lib/queueDrag.ts`). Only
+whole playlists from the playlists panel and from the playlist cards on the
+Library Playlists tab (`web/src/lib/queueDrag.ts`; unavailable tracks are left
+out, as when a playlist is played). Only
 drags that started in the page are accepted, so drag data from another site
 cannot point the player at an arbitrary URL. Queue rows drag with a `track`
 payload and a queue-row marker type, so they copy onto playlists and are never
 offered back to the queue.
 
-Phones get no floating panel: the queue chip opens a Session sheet (native
-`<dialog>`) with now playing and the queue.
+Phones get no floating panel: the queue button opens a Session sheet (native
+`<dialog>`) with now playing, the queue, shuffle and repeat mode, and Loop and
+repeat. Below 768px the player bar keeps only the track, previous, play, next
+and that queue button, all inside the bar (previous drops below 360px), and a
+fade behind the bar keeps page content from showing around it. On wide screens
+the bar's floating queue chip shows only while the dock is folded, since the
+open dock already shows the place in the queue. A docked dock runs the full
+height beside the page, its bottom edge level with the player bar, and the bar
+spans only the page column, so the two never overlap.
 
 Slice 2 (#2699): the dock has **Session** and **Playlists** tabs. Where the
 dock can show (off `/player`, wide enough for it), the top bar's playlists
@@ -501,3 +510,17 @@ events; segment loops never reset qualifying-play state.
 No new environment variables, schema migration, pricing, payout, or contract
 changes are required. Named saved passages and cross-device repeat plans remain
 out of scope.
+
+### Empty queue and plain labels
+
+When the queue is empty the Player page shows a clean empty state: no cover
+left over from the last session, no time or playhead, a disabled Play button
+and no Share section. The console sections use plain names: Now playing,
+Progress, Volume, Queue and Share.
+
+### Library selection to the queue
+
+The Library selection bar offers **Play now**, **Play next** and **Add to
+queue** for the ticked tracks (unavailable tracks are skipped), and dragging
+a ticked track carries the whole selection to the dock's Play now / Up next /
+Later lanes.

@@ -2465,7 +2465,8 @@ a {
 }
 
 .tab.active {
-  color: var(--color-accent);
+  /* The light violet keeps 4.5:1 on the tinted tab over the dark canvas. */
+  color: var(--r-primary-soft, #a48cff);
   background: rgba(124, 92, 255, 0.1);
 }
 
@@ -5052,7 +5053,14 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
   cursor: pointer;
 }
 
-.library-selection-bar button:first-of-type {
+/* The queue choices sit together; Play now leads. */
+.library-selection-bar__queue {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.library-selection-bar__queue button:first-of-type {
   color: #fff;
   background: #7255df;
   border-color: #7255df;
@@ -14776,7 +14784,7 @@ tr[draggable="true"]:hover {
     display: none !important;
   }
 
-  /* /player page: the floating System Monitoring console was pinned
+  /* /player page: the floating Player console was pinned
    * to the right edge at `width: clamp(320px, 30vw, 500px)`, covering
    * most of a 412px phone viewport and crushing the hero artwork /
    * title into the remaining ~90px. Reflow the whole stage to a

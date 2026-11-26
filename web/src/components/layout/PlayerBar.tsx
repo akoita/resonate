@@ -105,8 +105,10 @@ export default function PlayerBar() {
           aria-valuetext={`${Math.round(progress)} percent`}
         />
 
-        {/* Floating Queue Indicator */}
-        <button
+        {/* Floating Queue Indicator. An open Session Dock already shows the
+          * place in the queue, so the chip only appears when the dock is folded
+          * (or on phones, where it opens the Session sheet). */}
+        {!dockShowsListening || isPlayerPage ? <button
           type="button"
           className="queue-indicator"
           onClick={(event) => {
@@ -121,8 +123,8 @@ export default function PlayerBar() {
           title="Show or hide the queue"
         >
           <span className="queue-icon" aria-hidden="true">📋</span>
-          <span className="queue-count">N° {currentIndex + 1} / {queue.length}</span>
-        </button>
+          <span className="queue-count"><span className="queue-count__prefix">N° </span>{currentIndex + 1} / {queue.length}</span>
+        </button> : null}
       </div>
 
       <div className="player-track-info">
@@ -162,7 +164,7 @@ export default function PlayerBar() {
       <div className="player-controls" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
         <div className="player-buttons">
           <button
-            className={`player-btn-side ${shuffle ? 'active' : ''}`}
+            className={`player-btn-side player-btn-shuffle ${shuffle ? 'active' : ''}`}
             onClick={toggleShuffle}
             aria-label={shuffle ? "Turn shuffle off" : "Turn shuffle on"}
             aria-pressed={shuffle}
@@ -173,7 +175,7 @@ export default function PlayerBar() {
             </svg>
           </button>
           <button
-            className="player-btn-side"
+            className="player-btn-side player-btn-prev"
             onClick={prevTrack}
             disabled={currentIndex <= 0 && repeatMode !== "all"}
             aria-label="Previous track"
@@ -211,7 +213,7 @@ export default function PlayerBar() {
             </svg>
           </button>
           <button
-            className={`player-btn-side ${repeatMode !== 'none' ? 'active' : ''}`}
+            className={`player-btn-side player-btn-repeat ${repeatMode !== 'none' ? 'active' : ''}`}
             onClick={handleToggleRepeat}
             aria-label={`Repeat mode: ${repeatMode}. Change repeat mode`}
             aria-pressed={repeatMode !== "none"}
@@ -247,7 +249,7 @@ export default function PlayerBar() {
             )}
           </button>
           <button
-            className="player-btn-side"
+            className="player-btn-side player-btn-add"
             onClick={() => currentTrack && setTracksToAddToPlaylist([currentTrack])}
             aria-label="Add current track to playlist"
             title="Add to Playlist"
