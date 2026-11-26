@@ -34,7 +34,11 @@ Every group applies the playable-content rule:
 - tracks match `PLAYABLE_TRACK_WHERE`;
 - releases are `ready` or `published`, on a public rights route, with at least
   one playable track;
-- artists are listed only with at least one such release;
+- artists are listed only with at least one such release. The group also
+  lists credited artist names (a release's `primaryArtist`, for imported or
+  label releases with no artist account) from listed releases only; a credit
+  that matches an artist account's name is shown once, as the account. A
+  credit links to the catalog credit page (`/catalog/artists/<name>`);
 - playlists come from the public playlist feed narrowed by name
   (`listPublicPlaylists({ query })`), which already drops playlists with no
   playable track.

@@ -22,6 +22,10 @@ const draftTrack = `${TEST_PREFIX}drafttrk`;
 const publicPlaylist = `${TEST_PREFIX}publicpl`;
 const privatePlaylist = `${TEST_PREFIX}privatepl`;
 const deadPlaylist = `${TEST_PREFIX}deadpl`;
+const creditedRelease = `${TEST_PREFIX}credited`;
+const creditedTrack = `${TEST_PREFIX}creditedtrk`;
+const hiddenCreditRelease = `${TEST_PREFIX}hiddencredit`;
+const hiddenCreditTrack = `${TEST_PREFIX}hiddencredittrk`;
 
 describe("top-bar search (#2671)", () => {
   const service = new SearchService(new PlaylistService());
@@ -65,6 +69,29 @@ describe("top-bar search (#2671)", () => {
         tracks: { create: [{ id: draftTrack, title: `Draft ${TOKEN} Song`, position: 1 }] },
       },
     });
+    // An imported release credits an artist with no account behind it.
+    await prisma.release.create({
+      data: {
+        id: creditedRelease,
+        artistId,
+        title: `Imported ${TOKEN} Single`,
+        primaryArtist: `Credited ${TOKEN} Singer`,
+        status: "published",
+        tracks: { create: [{ id: creditedTrack, title: `Imported ${TOKEN} Tune`, position: 1 }] },
+      },
+    });
+    // A credit whose only release is withdrawn is not listed.
+    await prisma.release.create({
+      data: {
+        id: hiddenCreditRelease,
+        artistId,
+        title: `Gone ${TOKEN} Single`,
+        primaryArtist: `Gone ${TOKEN} Singer`,
+        status: "withdrawn",
+        statusBeforeWithdrawal: "published",
+        tracks: { create: [{ id: hiddenCreditTrack, title: `Gone ${TOKEN} Tune`, position: 1 }] },
+      },
+    });
     const libraryRow = (trackId: string, releaseId: string) => ({
       userId: ownerUser,
       source: "remote",
@@ -87,8 +114,8 @@ describe("top-bar search (#2671)", () => {
   afterAll(async () => {
     await prisma.playlist.deleteMany({ where: { id: { in: [publicPlaylist, privatePlaylist, deadPlaylist] } } });
     await prisma.libraryTrack.deleteMany({ where: { userId: ownerUser } });
-    await prisma.track.deleteMany({ where: { id: { in: [liveTrack, removedTrack, withdrawnTrack, draftTrack] } } });
-    await prisma.release.deleteMany({ where: { id: { in: [liveRelease, withdrawnRelease, draftRelease] } } });
+    await prisma.track.deleteMany({ where: { id: { in: [liveTrack, removedTrack, withdrawnTrack, draftTrack, creditedTrack, hiddenCreditTrack] } } });
+    await prisma.release.deleteMany({ where: { id: { in: [liveRelease, withdrawnRelease, draftRelease, creditedRelease, hiddenCreditRelease] } } });
     await prisma.artist.deleteMany({ where: { id: { in: [artistId, hiddenArtistId] } } });
     await prisma.user.deleteMany({ where: { id: ownerUser } });
   });
@@ -96,13 +123,16 @@ describe("top-bar search (#2671)", () => {
   it("returns each group, and only what a listener can open", async () => {
     const results = await service.search(`  ${TOKEN}  `);
     expect(results.query).toBe(TOKEN);
-    expect(results.artists.map((a) => a.id)).toEqual([artistId]);
-    expect(results.releases).toEqual([
+    expect(results.artists).toEqual([
+      expect.objectContaining({ kind: "profile", id: artistId }),
+      { kind: "credit", id: null, displayName: `Credited ${TOKEN} Singer`, imageUrl: null },
+    ]);
+    expect(results.releases).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: liveRelease, artistName: `Live ${TOKEN} Artist`, hasArtwork: true }),
-    ]);
-    expect(results.tracks).toEqual([
-      expect.objectContaining({ id: liveTrack, releaseId: liveRelease, releaseTitle: `Live ${TOKEN} Album` }),
-    ]);
+      expect.objectContaining({ id: creditedRelease, artistName: `Credited ${TOKEN} Singer` }),
+    ]));
+    expect(results.releases).toHaveLength(2);
+    expect(results.tracks.map((track) => track.id).sort()).toEqual([creditedTrack, liveTrack].sort());
     expect(results.playlists.map((p) => p.id)).toEqual([publicPlaylist]);
   });
 
@@ -112,6 +142,8 @@ describe("top-bar search (#2671)", () => {
     expect(results.tracks).toEqual([]);
     const byArtist = await service.search(`Hidden ${TOKEN}`);
     expect(byArtist.artists).toEqual([]);
+    const byCredit = await service.search(`Gone ${TOKEN}`);
+    expect(byCredit.artists).toEqual([]);
   });
 
   it("answers nothing for a query that is too short", async () => {

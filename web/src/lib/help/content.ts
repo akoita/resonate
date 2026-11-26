@@ -820,7 +820,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "The search field at the top of every page finds artists, releases, tracks and public playlists by name. Type at least two letters and the results appear in groups under the field. Select one to open its page; a track opens the release it belongs to.",
+            text: "The search field at the top of every page finds artists, releases, tracks and public playlists by name. Type at least two letters and the results appear in groups under the field. Select one to open its page; a track opens the release it belongs to. Artists include names credited on releases even when that artist has no Resonate account yet; those open a page listing the releases that credit them.",
           },
           {
             kind: "paragraph",
