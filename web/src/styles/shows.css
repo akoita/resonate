@@ -4516,3 +4516,116 @@
 .show-interest-owner__table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--color-border); }
 .show-interest-owner__table td:last-child,
 .show-interest-owner__table th:last-child { text-align: right; }
+
+/* ══════════════════════════════════════════════════════════════════
+ * DETAIL PAGE REFLOW BY AVAILABLE WIDTH
+ *
+ * The Session Dock takes a column beside the page, so the window width no
+ * longer says how wide the page is. These rules follow the page's own
+ * width: columns stack before any text column gets squeezed.
+ * ══════════════════════════════════════════════════════════════════ */
+
+.show-detail {
+  container: show-detail / inline-size;
+}
+
+.show-detail__narrative {
+  container: show-narrative / inline-size;
+}
+
+/* Three steps wrap to two or one instead of squeezing their words. */
+.show-detail__how {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+}
+
+.show-detail__notice {
+  flex-wrap: wrap;
+}
+
+.show-detail__notice > div {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.show-detail__notice-link {
+  flex: none;
+}
+
+/* Join buttons in the community room cards get the community button look. */
+.show-community .room-card__actions button {
+  min-height: 42px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-signal) 38%, transparent);
+  background: color-mix(in srgb, var(--color-signal) 22%, rgba(255, 255, 255, 0.05));
+  color: #fff;
+  padding: 0 18px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.show-community .room-card__actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-signal) 32%, rgba(255, 255, 255, 0.06));
+}
+
+.show-community .room-card__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.show-community .room-card__actions button:focus-visible,
+.show-community__refresh:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+@container show-detail (max-width: 980px) {
+  .show-detail__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .show-detail__pledge-rail {
+    position: static;
+    order: -1;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .campaign-detail-hero__lede {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container show-narrative (max-width: 640px) {
+  .show-detail__artist-story,
+  .show-detail__brief {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .show-detail__artist-story > img {
+    max-width: 320px;
+    max-height: 420px;
+  }
+
+  .show-detail__brief .show-detail__brief-points {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .show-community__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .show-detail__notice {
+    padding: 28px;
+  }
+}
+
+@container show-narrative (max-width: 900px) {
+  .show-community__grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  }
+}

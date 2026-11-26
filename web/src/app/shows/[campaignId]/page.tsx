@@ -241,13 +241,13 @@ export default async function CampaignDetailPage({ params }: Props) {
             <section className="show-detail__notice" aria-live="polite">
               <div>
                 <h3 className="show-detail__notice-title">
-                  Pledging follows the live escrow
+                  How pledging works
                 </h3>
                 <p className="show-detail__notice-body">
-                  Escrow-backed campaigns let fans select a tier, sign the ERC-20
-                  approval plus pledge through their smart account, and attach the
-                  mined transaction to a Resonate receipt. Demo-only campaigns stay
-                  receipt-preview until their escrow deployment is linked.
+                  On a live campaign, you pick a tier and confirm the pledge in
+                  your wallet. Your money is held safely until the show is booked,
+                  and Resonate gives you a receipt. Campaigns that are not live yet
+                  only show a preview: you can follow them, but nothing is charged.
                 </p>
               </div>
               <a
