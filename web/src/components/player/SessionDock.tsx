@@ -236,6 +236,9 @@ export function SessionSheet() {
     if (open && !dialog.open) {
       if (typeof dialog.showModal === "function") dialog.showModal();
       else dialog.setAttribute("open", "");
+      // Land focus on the sheet itself, not on its close button, so a tap
+      // does not open with a focus ring on "close". Tab still reaches it.
+      dialog.querySelector<HTMLElement>(".session-sheet__panel")?.focus({ preventScroll: true });
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -253,12 +256,12 @@ export function SessionSheet() {
       }}
     >
       {open ? (
-        <div className="session-sheet__panel">
+        <div className="session-sheet__panel" tabIndex={-1}>
           <div className="session-sheet__head">
             <span className="session-sheet__grab" aria-hidden="true" />
-            <span className="session-dock__label">Session</span>
+            <span className="session-sheet__title">Session</span>
             <QueuePlace />
-            <button type="button" className="console-icon-btn" onClick={() => setOpen(false)} aria-label="Close session">
+            <button type="button" className="session-sheet__close" onClick={() => setOpen(false)} aria-label="Close session">
               <RemoveIcon />
             </button>
           </div>

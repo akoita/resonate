@@ -717,8 +717,47 @@ html.is-resizing-sidebar .app-sidebar {
   padding: 14px 4px 4px 10px;
 }
 
-.session-sheet__head .console-icon-btn {
+.session-sheet__panel:focus {
+  outline: none;
+}
+
+.session-sheet__title {
+  font-family: var(--brand-font, inherit);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--r-on-surface);
+}
+
+.session-sheet__head .session-place {
+  padding: 3px 9px;
+  border-radius: var(--r-radius-full);
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--r-primary-soft, #c4b5fd);
+  font-size: 11px;
+}
+
+.session-sheet__close {
   margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--r-on-surface);
+  cursor: pointer;
+}
+
+.session-sheet__close:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.session-sheet__close:focus-visible {
+  outline: 2px solid var(--r-primary, #7c5cff);
+  outline-offset: 2px;
 }
 
 .session-sheet__grab {
