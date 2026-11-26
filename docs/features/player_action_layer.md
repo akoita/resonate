@@ -317,6 +317,7 @@ Manual:
 - [#1367](https://github.com/akoita/resonate/issues/1367)
 - [#1614](https://github.com/akoita/resonate/issues/1614)
 - [#2569](https://github.com/akoita/resonate/issues/2569)
+- [#2699](https://github.com/akoita/resonate/issues/2699)
 - [Strategy execution plan](../strategy/next_generation_music_platform_execution_plan.md)
 - [Agent Taste Intelligence](agent_taste_intelligence.md)
 - [Marketplace Listing Lifecycle](marketplace_listing_lifecycle.md)
@@ -405,6 +406,50 @@ A queue row's own menu now adds *its* track to a playlist (it used to add the
 playing track) and offers Remove from queue. The library track list keeps its
 earlier checkbox selection; moving it to the shared model is a follow-up.
 
+
+### Session Dock on every page (#2699, `partial`)
+
+Off `/player`, the same console layout carries a compact **Session Dock**
+(`web/src/components/player/SessionDock.tsx`): now playing with its artwork,
+the queue (play a row, remove it, drag it onto a playlist) and Loop and repeat.
+It sits in `.app-stage`, the area under the top bar: docked left or right as a
+column beside the page (content moves over, nothing is covered), floating over
+the page, or folded into a capsule above the player bar with a progress ring and
+the queue position. It shares `resonate.player.consoleLayout.v1`, so docking,
+floating or folding it on any page does the same on `/player`. The player bar's
+queue chip folds and unfolds it (on `/player`, the console). It appears whenever
+there is a queue, and while a queueable drag is in progress even when the queue
+is empty.
+
+Dragging opens three drop lanes (`QueueDropLanes.tsx`, also in the `/player`
+console): **Play now**, **Up next** and **Later**. The dock accepts the drag
+payloads the playlists panel already understands (library rows and selections,
+library album and artist cards, release rows, selections and artwork, playlist
+rows) plus an in-memory offer for sources that hold or fetch their tracks:
+catalog and Home cards (resolved on drop with `resolveCardQueueTracks`) and
+whole playlists from the playlists panel (`web/src/lib/queueDrag.ts`). Only
+drags that started in the page are accepted, so drag data from another site
+cannot point the player at an arbitrary URL. Queue rows drag with a `track`
+payload and a queue-row marker type, so they copy onto playlists and are never
+offered back to the queue.
+
+Phones get no floating panel: the queue chip opens a Session sheet (native
+`<dialog>`) with now playing and the queue.
+
+Remaining (slice 2): playlists as a tab of the dock, dropping at an exact queue
+position, and reordering the queue by dragging.
+
+### Sidebar width and icon rail (#2699)
+
+On screens 1280px and wider the left navigation's edge drags between 200 and
+340px; dragging past 150px folds it to the 72px icon rail. Double-click the
+edge, press Enter or Space on it, or use the button beside the logo to fold or
+open it; the arrow keys, Home and End resize it. The choice is stored per device
+under `resonate.sidebar.v1` (`web/src/lib/sidebarLayout.ts`) and applied by the
+root layout's first-paint script, so the page does not shift on load. Tablets
+always use the rail. The rail (folded or tablet) shows icon tooltips, turns the
+environment label and NEW badges into dots, and hides labels visually only, so
+links keep their names for screen readers.
 ### Analytics and API
 
 `POST /playlists` accepts optional `queueContext` with `origin: player_queue`,

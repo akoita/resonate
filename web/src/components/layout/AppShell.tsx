@@ -17,6 +17,8 @@ import AccountStatusBanner from "../account/AccountStatusBanner";
 import { TrackRepeatsDialog } from "../player/TrackRepeatsDialog";
 import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
 import { LegalFooter } from "../legal/LegalFooter";
+import { SessionDock, SessionSheet } from "../player/SessionDock";
+import { useRef } from "react";
 
 export default function AppShell({
   children,
@@ -33,6 +35,8 @@ export default function AppShell({
     trackForRepeats,
     setTrackForRepeats,
   } = useUIStore();
+  // The area under the top bar that the Session Dock docks beside or floats over.
+  const stageRef = useRef<HTMLDivElement>(null);
 
   return (
     <PlayerProvider>
@@ -54,6 +58,7 @@ export default function AppShell({
           <PlatformNoticeBanner />
           {/* #2147: a suspended or closed account says so here, persistently. */}
           <AccountStatusBanner />
+          <div ref={stageRef} className="app-stage">
           <main id="main-content" className="app-content" tabIndex={-1}>
             <div className="app-page">
               {/* No Suspense here: a boundary around every page defers prerendered
@@ -65,7 +70,10 @@ export default function AppShell({
               <LegalFooter />
             </div>
           </main>
+          <SessionDock stageRef={stageRef} />
+          </div>
           <PlayerBar />
+          <SessionSheet />
         </div>
         <GlobalPlaylistPanel isOpen={isPlaylistPanelOpen} onClose={closePlaylistPanel} />
         <AddToPlaylistModal

@@ -1234,6 +1234,10 @@
 
 @media (max-width: 767px) {
   .home-ng .ng-grid-3 { grid-template-columns: minmax(0, 1fr); }
+  /* Phones: Home takes the whole screen width (the shell's own 16px gutter
+     is given back) so the hero can run edge to edge like the player sheet;
+     each section keeps a single 16px gutter. */
+  .home-ng { margin-inline: -16px; }
   .home-ng .ng-section { padding: 0 16px; margin-bottom: 32px; }
   .home-ng .ng-catalog-shell,
   .home-ng .ng-ops-panel { padding: 16px; }
@@ -1265,10 +1269,51 @@
     justify-self: start;
     grid-column: 2;
   }
-  .home-ng .ng-hero { border-radius: 20px; padding: 20px; min-height: 280px; }
-  .home-ng .ng-hero__card { padding: 20px; }
+  /* Phones: the hero runs edge to edge and its text sits straight on
+     the artwork (darkened behind it) instead of a card inside a card, which
+     stacked four paddings and left a narrow column of text. */
+  .home-ng .ng-hero {
+    margin-inline: -16px;
+    border-radius: 0;
+    border-inline: 0;
+    padding: 28px 16px 16px;
+    min-height: 280px;
+    align-items: flex-end;
+  }
+  /* One width for every Home container on phones: hero, tuner, catalog,
+     AI DJ and studio panels all run edge to edge as bands with the same
+     16px inner gutter, so nothing sits inset next to something full width. */
+  .home-ng .ng-main .ng-tuner,
+  .home-ng .ng-main .ng-catalog-shell,
+  .home-ng .ng-main .ng-ops-panel,
+  .home-ng .ng-main .agent-session-presets.compact,
+  .home-ng .ng-main .agent-session-presets {
+    margin-inline: -16px;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    padding-inline: 16px;
+  }
+  /* The tuner sits straight in the page, outside any section gutter. */
+  .home-ng .ng-main > .ng-tuner,
+  .home-ng .ng-main > * > .ng-tuner { margin-inline: 0; }
+  .home-ng .ng-hero .ng-hero__card,
+  .home-ng .ng-hero.ng-hero--campaign-image .ng-hero__card {
+    padding: 0;
+    max-width: none;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .home-ng .ng-hero.ng-hero--campaign-image::after {
+    background:
+      linear-gradient(180deg, rgba(8, 8, 15, 0.62) 0%, rgba(8, 8, 15, 0.84) 40%, rgba(8, 8, 15, 0.96) 100%),
+      radial-gradient(at 18% 18%, rgba(124, 92, 255, 0.28), transparent 55%);
+  }
   .home-ng .ng-hero__title { font-size: 28px; }
-  .home-ng .ng-hero__body { font-size: 14px; margin-bottom: 20px; -webkit-line-clamp: 4; }
+  .home-ng .ng-hero .ng-hero__body { font-size: 15px; margin-bottom: 20px; -webkit-line-clamp: 4; color: rgba(240, 237, 255, 0.86); }
   .home-ng .ng-hero__campaign-rail { grid-template-columns: 1fr; }
   .home-ng .ng-hero__campaign-tab { min-height: 64px; }
   .home-ng .ng-btn { padding: 12px 18px; font-size: 13px; }

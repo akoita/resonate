@@ -7,6 +7,7 @@ import type { QueueFeedbackMode } from "../../lib/queueFeedback";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { AddToQueueIcon, PlayNextIcon, QueueIcon } from "./MenuIcons";
 import { useToast } from "./Toast";
+import { offerQueueDrag } from "../../lib/queueDrag";
 
 /**
  * Queue a card from where it sits, without opening it or starting playback.
@@ -34,6 +35,11 @@ export function CardQueueButton({
   const [menu, setMenu] = useState<{ x: number; y: number; fromButton: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const empty = cardQueueIsEmpty(target);
+  // The drag listener outlives renders; read the latest target from here.
+  const targetRef = useRef(target);
+  useEffect(() => {
+    targetRef.current = target;
+  }, [target]);
 
   useEffect(() => {
     const card = buttonRef.current?.closest<HTMLElement>("[data-card-queue]");
@@ -43,7 +49,20 @@ export function CardQueueButton({
       setMenu({ x: event.clientX, y: event.clientY, fromButton: false });
     };
     card.addEventListener("contextmenu", handleContextMenu);
-    return () => card.removeEventListener("contextmenu", handleContextMenu);
+    // Drag the card onto the Session Dock to queue it. Its tracks are fetched
+    // only on drop, the same way the menu fetches them.
+    const handleDragStart = (event: DragEvent) => {
+      offerQueueDrag(event.dataTransfer, { title: targetRef.current.title, resolve: () => resolveCardQueueTracks(targetRef.current) });
+    };
+    const wasDraggable = card.getAttribute("draggable");
+    card.setAttribute("draggable", "true");
+    card.addEventListener("dragstart", handleDragStart);
+    return () => {
+      card.removeEventListener("contextmenu", handleContextMenu);
+      card.removeEventListener("dragstart", handleDragStart);
+      if (wasDraggable === null) card.removeAttribute("draggable");
+      else card.setAttribute("draggable", wasDraggable);
+    };
   }, [empty]);
 
   const queueCard = async (mode: QueueFeedbackMode) => {

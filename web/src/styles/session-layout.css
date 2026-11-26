@@ -1,0 +1,807 @@
+/* ══════════════════════════════════════════════════════════════════
+ * SIDEBAR: width, fold, and the icon rail
+ *
+ * Wide screens (1280px+) honour the width and fold this device chose
+ * (lib/sidebarLayout.ts): `--sidebar-width` and `<html data-sidebar="rail">`,
+ * both set before first paint. Tablets always show the rail; phones keep the
+ * slide-in drawer (globals.css).
+ * ══════════════════════════════════════════════════════════════════ */
+
+/* The edge sits between the sidebar and the page as a zero-width flex item,
+ * outside the sidebar's own scroll box; its hit area is the ::before. */
+.sidebar-resize-edge {
+  flex: 0 0 0;
+  width: 0;
+  position: relative;
+  z-index: 5001;
+  outline: none;
+}
+
+.sidebar-resize-edge::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+/* The visible line: hidden at rest, shown on hover, focus and drag. */
+.sidebar-resize-edge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--r-violet, #7c5cff);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.sidebar-resize-edge:hover::after,
+.sidebar-resize-edge.is-dragging::after {
+  opacity: 0.7;
+}
+
+.sidebar-resize-edge:focus-visible::after {
+  opacity: 1;
+  width: 3px;
+}
+
+html.is-resizing-sidebar,
+html.is-resizing-sidebar * {
+  cursor: col-resize !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html.is-resizing-sidebar .app-sidebar {
+  transition: none;
+}
+
+.sidebar-fold-btn {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-fold-btn:hover,
+.sidebar-fold-btn:focus-visible {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* The staging pill sits before the fold button when both show. */
+.sidebar-logo .env-badge + .sidebar-fold-btn,
+.sidebar-logo .sidebar-fold-btn + .env-badge {
+  margin-left: 0;
+}
+
+@media (min-width: 1280px) {
+  html[style*="--sidebar-width"]:not([data-sidebar="rail"]) .app-sidebar {
+    width: var(--sidebar-width);
+    flex: 0 0 var(--sidebar-width);
+  }
+
+  html[data-sidebar="rail"] .app-sidebar {
+    width: 72px;
+    flex: 0 0 72px;
+  }
+
+  html[data-sidebar="rail"] .app-sidebar .sidebar-logo {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  html[data-sidebar="rail"] .app-sidebar .sidebar-fold-btn {
+    margin: 0;
+  }
+}
+
+@media (max-width: 1279px) {
+  .sidebar-resize-edge,
+  .sidebar-fold-btn {
+    display: none;
+  }
+}
+
+/* ---- The icon rail ---------------------------------------------------
+ * The same rules for a tablet and for a folded wide sidebar. Labels are
+ * hidden visually only: links keep their names for screen readers (the old
+ * rail used display:none, which left the icons unnamed). */
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  .app-shell .app-sidebar .link-text,
+  .app-shell .app-sidebar .logo-text,
+  .app-shell .app-sidebar .sidebar-group-label {
+    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .app-shell .app-sidebar .sidebar-logo {
+    position: relative;
+  }
+
+  .app-shell .app-sidebar .sidebar-link {
+    position: relative;
+  }
+
+  .app-shell .app-sidebar .sidebar-link__new {
+    position: absolute;
+    top: 7px;
+    left: calc(50% + 6px);
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    border: 2px solid var(--studio-surface, #0e0d16);
+    background: var(--r-play, #ff6b4a);
+    font-size: 0;
+    line-height: 0;
+    letter-spacing: 0;
+  }
+
+  .app-shell .app-sidebar .env-badge {
+    position: absolute;
+    top: calc(var(--space-5) - 2px);
+    left: calc(50% + 10px);
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    border: 2px solid var(--studio-surface, #0e0d16);
+    background: var(--ds-tertiary, #ffb782);
+    font-size: 0;
+    line-height: 0;
+    letter-spacing: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  html[data-sidebar="rail"] .app-sidebar .link-text,
+  html[data-sidebar="rail"] .app-sidebar .logo-text,
+  html[data-sidebar="rail"] .app-sidebar .sidebar-group-label,
+  html[data-sidebar="rail"] .app-sidebar .sidebar-footer .user-info {
+    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  html[data-sidebar="rail"] .app-sidebar .sidebar-logo {
+    position: relative;
+    padding: var(--space-5) var(--space-3) var(--space-3);
+    justify-content: center;
+  }
+
+  html[data-sidebar="rail"] .app-sidebar .sidebar-link {
+    position: relative;
+    justify-content: center;
+    padding: 10px 0;
+  }
+
+  html[data-sidebar="rail"] .app-sidebar .sidebar-link__new {
+    position: absolute;
+    top: 7px;
+    left: calc(50% + 6px);
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    border: 2px solid var(--studio-surface, #0e0d16);
+    background: var(--r-play, #ff6b4a);
+    font-size: 0;
+    line-height: 0;
+    letter-spacing: 0;
+  }
+
+  html[data-sidebar="rail"] .app-sidebar .env-badge {
+    position: absolute;
+    top: calc(var(--space-5) - 2px);
+    left: calc(50% + 10px);
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    border: 2px solid var(--studio-surface, #0e0d16);
+    background: var(--ds-tertiary, #ffb782);
+    font-size: 0;
+    line-height: 0;
+    letter-spacing: 0;
+  }
+
+  html[data-sidebar="rail"] .app-sidebar .sidebar-footer {
+    padding: var(--space-3) 0;
+    display: flex;
+    justify-content: center;
+  }
+
+  html[data-sidebar="rail"] .app-sidebar .sidebar-footer .user-profile {
+    padding: 4px;
+    background: transparent;
+    border: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * SESSION DOCK (components/player/SessionDock.tsx)
+ *
+ * The stage is everything under the top bar. A docked dock is a flex item
+ * beside the page, so it pushes content over instead of covering it; a
+ * floating one is placed inside the stage; a folded one is a capsule above
+ * the player bar. No backdrop-filter: the dock is large and sits over moving
+ * pages (#2534).
+ * ══════════════════════════════════════════════════════════════════ */
+
+.app-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+
+.app-stage > .app-content {
+  min-width: 0;
+}
+
+.session-dock {
+  --dock-gap: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--r-surface-low);
+  border: 1px solid var(--r-chrome-border);
+  border-radius: var(--r-radius-lg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  color: var(--r-on-surface);
+  z-index: 900;
+  container: session-dock / inline-size;
+}
+
+/* Docked: a column beside the page, clear of the floating player bar. */
+.session-dock--right:not(.is-minimized),
+.session-dock--left:not(.is-minimized) {
+  flex: 0 0 clamp(288px, 24vw, 360px);
+  margin: var(--dock-gap) var(--dock-gap) 104px 0;
+}
+
+.session-dock--left:not(.is-minimized) {
+  order: -1;
+  margin: var(--dock-gap) 0 104px var(--dock-gap);
+}
+
+.session-dock--floating {
+  position: absolute;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+
+/* Folded: a capsule over the page, above the player bar. */
+.session-dock.is-minimized {
+  /* Size containment would collapse a max-content capsule to nothing. */
+  container-type: normal;
+  position: absolute;
+  /* Above the player bar and its Loop and Repeat pill. */
+  bottom: 148px;
+  width: max-content;
+  max-width: min(420px, calc(100% - 2 * var(--dock-gap)));
+  border-radius: var(--r-radius-full);
+  padding: 4px 6px 4px 4px;
+}
+
+.session-dock--right.is-minimized { right: var(--space-6); }
+.session-dock--left.is-minimized { left: var(--space-6); }
+.session-dock--floating.is-minimized { bottom: auto; }
+
+.session-dock.is-minimized.is-drop-target {
+  border-radius: var(--r-radius-lg);
+  padding: 6px;
+}
+
+.session-dock.is-moving {
+  opacity: 0.92;
+  cursor: grabbing;
+}
+
+.session-dock.is-moving * {
+  cursor: grabbing;
+}
+
+.session-dock__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px 10px 6px 14px;
+  min-width: 0;
+}
+
+.session-dock.is-minimized .session-dock__head {
+  padding: 0 0 0 10px;
+}
+
+.session-dock__label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--r-on-surface-muted);
+}
+
+.session-dock__actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.session-dock__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 6px 10px;
+  overflow: hidden;
+}
+
+/* Now playing: artwork inside a progress ring. */
+.session-now {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  padding: 4px 8px;
+  min-width: 0;
+}
+
+.session-now--compact {
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: 0;
+  max-width: 240px;
+}
+
+.session-now__art {
+  --progress: 0%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(var(--r-play) var(--progress), rgba(255, 255, 255, 0.12) 0);
+  padding: 3px;
+}
+
+.session-now:not(.session-now--compact) .session-now__art {
+  border-radius: var(--r-radius-md);
+  padding: 0;
+  background: var(--r-surface-high);
+  overflow: hidden;
+}
+
+.session-now__art img,
+.session-now__art-empty {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: grid;
+  place-items: center;
+  background: var(--r-surface-high);
+  color: var(--r-on-surface-muted);
+}
+
+.session-now--compact .session-now__art img,
+.session-now--compact .session-now__art-empty {
+  border-radius: 50%;
+}
+
+.session-now__text {
+  display: grid;
+  min-width: 0;
+}
+
+.session-now__text strong,
+.session-now__text span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-now__text strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.session-now--compact .session-now__text strong {
+  font-size: 12px;
+}
+
+.session-now__text span {
+  font-size: 12px;
+  color: var(--r-on-surface-muted);
+}
+
+.session-place {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--r-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.session-dock.is-minimized .session-place {
+  background: rgba(124, 92, 255, 0.16);
+  padding: 3px 8px;
+  border-radius: var(--r-radius-full);
+}
+
+.session-dock__queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 2px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--r-on-surface-muted);
+}
+
+/* ---- Queue rows --------------------------------------------------- */
+
+.session-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0 2px 0 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.session-queue__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--r-radius-sm);
+  scroll-margin: 6px;
+}
+
+.session-queue__row:hover {
+  background: var(--r-chrome-hover);
+}
+
+.session-queue__row.is-current {
+  background: rgba(124, 92, 255, 0.16);
+}
+
+.session-queue__row.is-played .session-queue__title {
+  color: var(--r-on-surface-muted);
+}
+
+.session-queue__play {
+  display: grid;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--r-radius-sm);
+}
+
+.session-queue__play:focus-visible,
+.session-queue__remove:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: -2px;
+}
+
+.session-queue__title,
+.session-queue__artist {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-queue__title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.session-queue__row.is-current .session-queue__title {
+  color: var(--r-primary-soft);
+}
+
+.session-queue__artist {
+  font-size: 11px;
+  color: var(--r-on-surface-muted);
+}
+
+.session-queue__time {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--r-on-surface-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-queue__remove {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--r-on-surface-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.session-queue__row:hover .session-queue__remove,
+.session-queue__remove:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .session-queue__remove {
+    opacity: 1;
+  }
+}
+
+.session-queue-empty {
+  margin: 0;
+  padding: 10px 10px 4px;
+  font-size: 12px;
+  color: var(--r-on-surface-muted);
+}
+
+/* ---- Drop lanes (also used by the /player console) ------------------ */
+
+.queue-drop-lanes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 2px 4px;
+}
+
+.queue-drop-lanes--capsule {
+  margin-top: 6px;
+  min-width: 300px;
+}
+
+.queue-drop-lane {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  text-align: center;
+  padding: 12px 6px;
+  border-radius: var(--r-radius-md);
+  border: 1.5px dashed rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.12s ease;
+}
+
+.queue-drop-lane * {
+  pointer-events: none;
+}
+
+.queue-drop-lane strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.queue-drop-lane small {
+  font-size: 10px;
+  color: var(--r-on-surface-muted);
+}
+
+.queue-drop-lane.is-hover {
+  border-style: solid;
+  border-color: var(--r-play);
+  background: rgba(255, 107, 74, 0.14);
+  transform: scale(1.03);
+}
+
+.queue-drop-lanes[aria-busy="true"] .queue-drop-lane {
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-drop-lane {
+    transition: none;
+  }
+  .queue-drop-lane.is-hover {
+    transform: none;
+  }
+}
+
+@container session-dock (max-width: 300px) {
+  .queue-drop-lane small {
+    display: none;
+  }
+}
+
+/* The dock's snap preview reuses the console's, inside the stage. */
+.app-stage .console-dock-preview {
+  bottom: 104px;
+  width: clamp(288px, 24vw, 360px);
+}
+
+/* The queue chip on the player bar is a button now. */
+.app-player .queue-indicator {
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.app-player .queue-indicator:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+/* ---- Phone: the Session sheet --------------------------------------- */
+
+.session-sheet {
+  margin: auto 0 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: 82vh;
+  padding: 0;
+  border: 0;
+  border-radius: 22px 22px 0 0;
+  background: var(--r-surface-low);
+  color: var(--r-on-surface);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.session-sheet::backdrop {
+  background: rgba(8, 8, 15, 0.6);
+}
+
+.session-sheet__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 82vh;
+  padding: 8px 8px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.session-sheet__panel .session-queue {
+  max-height: 52vh;
+}
+
+.session-sheet__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 14px 4px 4px 10px;
+}
+
+.session-sheet__panel:focus {
+  outline: none;
+}
+
+.session-sheet__title {
+  font-family: var(--brand-font, inherit);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--r-on-surface);
+}
+
+.session-sheet__head .session-place {
+  padding: 3px 9px;
+  border-radius: var(--r-radius-full);
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--r-primary-soft, #c4b5fd);
+  font-size: 11px;
+}
+
+.session-sheet__close {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--r-on-surface);
+  cursor: pointer;
+}
+
+.session-sheet__close:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.session-sheet__close:focus-visible {
+  outline: 2px solid var(--r-primary, #7c5cff);
+  outline-offset: 2px;
+}
+
+.session-sheet__grab {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 38px;
+  height: 4px;
+  margin-left: -19px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.session-sheet__full {
+  font-family: var(--brand-font, inherit);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--r-primary-soft);
+}
+
+@media (min-width: 768px) {
+  .session-sheet {
+    display: none;
+  }
+}
+
+.session-dock__listening {
+  border-top: 1px solid var(--r-chrome-border);
+  padding: 6px 4px 0;
+}
+
+.session-dock__listening {
+  flex: none;
+}
+
+.session-dock__listening .listening-controls {
+  margin: 0;
+  border: 0;
+  padding: 6px 4px;
+}
+
+.session-dock__listening details[open] {
+  max-height: 40vh;
+  overflow: auto;
+}

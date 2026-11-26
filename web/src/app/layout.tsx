@@ -18,6 +18,9 @@ import "../styles/admin-users.css";
 import "../styles/admin-agent-sessions.css";
 import "../styles/admin-notices.css";
 import "../styles/feature-tips.css";
+// Sidebar width/fold and the Session Dock on every page; after the rest so
+// its rail rules win over the older tablet ones.
+import "../styles/session-layout.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
 import SignupEmailPrompt from "../components/auth/SignupEmailPrompt";
@@ -36,6 +39,7 @@ import {
   socialImageUrl,
 } from "../lib/seo";
 import { BRAND_COLORS } from "../lib/brand";
+import { SIDEBAR_FIRST_PAINT_SCRIPT } from "../lib/sidebarLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -125,12 +129,15 @@ export default function RootLayout({
           * stored, and CSS keeps the top bar at its signed-in height until
           * AuthProvider restores it (ConnectButton.tsx). It reads two keys and
           * sets one attribute; it never exposes their values. The key names
-          * mirror TOKEN_KEY / ADDRESS_KEY in lib/authSession.ts. */}
+          * mirror TOKEN_KEY / ADDRESS_KEY in lib/authSession.ts. It also
+          * applies the sidebar width and fold this device chose
+          * (lib/sidebarLayout.ts), so a resized sidebar does not jump. */}
         <script
           // eslint-disable-next-line react/no-danger -- a fixed inline script with no dynamic text
           dangerouslySetInnerHTML={{
             __html:
-              'try{if(localStorage.getItem("resonate.token")&&localStorage.getItem("resonate.address"))document.documentElement.setAttribute("data-session","stored")}catch(e){}',
+              'try{if(localStorage.getItem("resonate.token")&&localStorage.getItem("resonate.address"))document.documentElement.setAttribute("data-session","stored")}catch(e){}' +
+              SIDEBAR_FIRST_PAINT_SCRIPT,
           }}
         />
         {/* Material Symbols icon font — used by the Stitch-designed home.

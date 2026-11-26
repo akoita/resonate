@@ -25,6 +25,7 @@ import {
     playlistSourceType,
 } from "./playlistDrop";
 import { LocalTrack, getTrack } from "../../lib/localLibrary";
+import { offerQueueDrag } from "../../lib/queueDrag";
 import { useUIStore } from "../../lib/uiStore";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
@@ -400,6 +401,20 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                     className={`gpp-item ${isNested ? "nested" : ""} ${isExpanded ? "expanded" : ""} ${dragOverId === p.id ? "drag-over" : ""}`}
                     style={{ userSelect: "none" }}
                     onClick={() => togglePlaylist(p.id)}
+                    // A whole playlist drags into the Session Dock's queue.
+                    draggable
+                    onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", p.name);
+                        e.dataTransfer.effectAllowed = "copy";
+                        offerQueueDrag(e.dataTransfer, {
+                            title: p.name,
+                            resolve: async () => {
+                                const playlist = await getPlaylist(p.id);
+                                const tracks = await Promise.all((playlist?.trackIds ?? []).map((id) => getTrack(id)));
+                                return tracks.filter((t): t is LocalTrack => t !== null);
+                            },
+                        });
+                    }}
                     onDragOver={(e) => {
                         e.preventDefault();
                         e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed, { types: e.dataTransfer.types, playlistId: p.id });
@@ -472,6 +487,8 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                                         e.dataTransfer.setData("application/json", payload);
                                         e.dataTransfer.setData("text/plain", payload);
                                         e.dataTransfer.setData(playlistSourceType(p.id), track.id);
+                                        // Or into the Session Dock's queue.
+                                        offerQueueDrag(e.dataTransfer, { title: track.title, resolve: () => [track] });
                                         // Move within this playlist, copy onto another one.
                                         e.dataTransfer.effectAllowed = "copyMove";
                                     }}

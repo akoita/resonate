@@ -35,7 +35,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Resonate uses a passkey instead of a password — set it up once and your device unlocks everything, including a built-in wallet.",
     category: "get-started",
     audiences: ["everyone"],
-    keywords: ["sign up", "log in", "passkey", "password", "register", "account", "invitation", "invite code", "waiting list", "waitlist", "founding artist", "connect wallet", "sidebar", "navigation", "menu", "face id", "fingerprint", "tips", "hints", "turn off tips", "show tips again", "help & tips"],
+    keywords: ["sign up", "log in", "passkey", "password", "register", "account", "invitation", "invite code", "waiting list", "waitlist", "founding artist", "connect wallet", "sidebar", "navigation", "menu", "resize sidebar", "collapse sidebar", "icons", "face id", "fingerprint", "tips", "hints", "turn off tips", "show tips again", "help & tips"],
     sections: [
       {
         id: "what-you-need",
@@ -120,7 +120,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "The sidebar keeps to what you use most: Home, Player, Library (your playlists are inside it), Shows, Drops, Crates & Stems, then Settings and this User Guide. Artist accounts also see their tools under For artists: Upload, Catalog, Listings and Analytics, with creating music with AI last. Your account chip at the bottom of the sidebar opens your account.",
+            text: "The sidebar keeps to what you use most: Home, Player, Library (your playlists are inside it), Shows, Drops, Crates & Stems, then Settings and this User Guide. Artist accounts also see their tools under For artists: Upload, Catalog, Listings and Analytics, with creating music with AI last. Your account chip at the bottom of the sidebar opens your account. On a wide screen, drag the sidebar's right edge to make it narrower or wider, or past the edge to fold it to icons; double-click the edge, or use the button beside the logo, to fold or open it. Hover an icon to see its name. Your choice is remembered on this device.",
           },
         ],
       },
@@ -985,7 +985,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog", "album", "go to album", "go to artist", "dock", "undock", "minimize", "move console", "float", "console layout"],
+    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog", "album", "go to album", "go to artist", "dock", "undock", "minimize", "move console", "float", "console layout", "session dock", "session", "capsule", "drag and drop", "drag to queue", "drop", "play now", "up next", "later", "every page"],
     sections: [
       {
         id: "playing",
@@ -1040,6 +1040,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "With a keyboard, use Tab to reach named playback controls and the position or volume sliders, then use the arrow keys to adjust a slider. A Skip to main content link appears when it receives focus, and the current navigation page and open playlist panel are announced to assistive technology.",
               "Open immersive mode from the Player for artwork, track details, controls, volume, and queue access. Use the visible control or Escape to leave it without losing your place.",
               "Move the console out of the way. Select the minimize button in its header to fold it down to that header, and select it again to restore it. On a computer, the layout button next to it docks the console to the left or right edge, undocks it so it floats over the artwork, or resets it. Drag the header (or the dotted handle at its start) to move the console anywhere; drop it against the left or right edge to dock it there. Drag the corner of a floating console to resize it. With a keyboard, focus the dotted handle and use the arrow keys: left and right dock a docked console to that side, and they move a floating one, with Shift for larger steps. The console remembers its layout on this device. On a phone it stays under the artwork, and only minimize applies.",
+              "Keep your session in view on every page. Away from the Player, the Session dock shows what is playing and your queue, docked beside the page, floating, or folded into a small capsule above the player bar. It uses the same layout as the console, so docking, floating or folding it in one place does the same everywhere. Select the queue count on the player bar to fold or unfold it. Select a queue row to play it, its × to remove it, or the expand button to open the full player.",
+              "Drag music straight into your queue. Drag a library track or selection, a release track or its artwork, a catalog or Home card, a playlist track or a whole playlist from the playlists panel, and three drop zones open in the dock: Play now, Up next (after the current track) and Later (end of the queue). Drag a queue row onto a playlist in the playlists panel to add it there. Every drag has a menu equivalent: Play next, Add to queue and Add to playlist.",
+              "On a phone, select the queue count on the player bar to slide up your session: what is playing and your queue.",
               "Signed-in listeners see Saved in green when the current track is already in their library. Select Saved to remove it again.",
             ],
           },

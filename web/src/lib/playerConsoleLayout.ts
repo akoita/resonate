@@ -253,6 +253,12 @@ export function saveConsoleLayout(layout: ConsoleLayout): void {
   listeners.forEach((listener) => listener());
 }
 
+/** Fold or unfold the console (on /player) or the Session Dock (everywhere else). */
+export function toggleConsoleMinimized(): void {
+  const current = getStoredConsoleLayout();
+  saveConsoleLayout({ ...current, minimized: !current.minimized });
+}
+
 export function subscribeConsoleLayout(listener: () => void): () => void {
   listeners.add(listener);
   const onStorage = (event: StorageEvent) => {
