@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { traceLogFields } from "./trace_log_fields";
 
 export type JsonLogValue =
   | string
@@ -112,6 +113,9 @@ export function writeStructuredLog(
     ...(stackTrace === undefined && stack !== undefined ? { stack } : {}),
     severity: SEVERITY_BY_LEVEL[entry.level] ?? "INFO",
   }) as { [key: string]: JsonLogValue };
+
+  // Added after redaction: trace ids are not secrets and must stay exact.
+  Object.assign(payload, traceLogFields());
 
   if (errorObject) {
     payload.errorClass = String(errorObject.name).slice(0, MAX_ERROR_CLASS_LENGTH);

@@ -34,6 +34,15 @@ Any entry built from a caught `Error` also carries `errorClass` (the error class
 name). The error message is never copied into a separate field; `message` is the
 human text chosen by the caller.
 
+## Trace Correlation Fields
+
+When request tracing is on (see [Request tracing](./request_tracing.md)), a
+log line written inside a traced request also carries
+`logging.googleapis.com/trace` (`projects/<project>/traces/<trace id>`),
+`logging.googleapis.com/spanId` and `logging.googleapis.com/trace_sampled`.
+Cloud Logging lifts them out of `jsonPayload` and links the entry to Cloud
+Trace. They are absent when tracing is off or outside a request.
+
 ## Framework Log Events
 
 NestJS framework and service `Logger` output (`Logger.log/warn/error/...`) is

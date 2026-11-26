@@ -1,4 +1,6 @@
 import "dotenv/config";
+// Tracing first: it patches http/express as they load (see tracing.ts).
+import "./tracing";
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { join } from "path";
