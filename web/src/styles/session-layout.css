@@ -269,6 +269,10 @@ html.is-resizing-sidebar .app-sidebar {
   min-height: 0;
   display: flex;
   position: relative;
+  /* One surface under the page and the dock: pages that paint the canvas
+     colour themselves (Shows) no longer leave lighter bands in the gutters
+     beside them, right of the sidebar or around the dock. */
+  background: var(--r-canvas, #08080f);
 }
 
 .app-stage > .app-content {
