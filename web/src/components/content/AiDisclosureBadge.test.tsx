@@ -87,4 +87,26 @@ describe("AiDisclosureBadge", () => {
       expect(html).toContain("The uploader declared that this music contains no AI contribution.");
     });
   });
+
+  describe("aiOnly (player bar)", () => {
+    it("shows the AI-generated and AI-assisted labels", () => {
+      expect(
+        renderToStaticMarkup(
+          <AiDisclosureBadge disclosure={{ level: "all", facets: [], source: "remix_derived" }} aiOnly compact />,
+        ),
+      ).toContain("AI-generated");
+      expect(
+        renderToStaticMarkup(
+          <AiDisclosureBadge disclosure={{ level: "partly", facets: [], source: "artist" }} aiOnly compact />,
+        ),
+      ).toContain("AI-assisted");
+    });
+
+    it("shows nothing for human-made, undeclared or missing disclosures", () => {
+      expect(renderToStaticMarkup(<AiDisclosureBadge disclosure={{ level: "none", facets: [], source: "artist" }} aiOnly showHumanMade />)).toBe("");
+      expect(renderToStaticMarkup(<AiDisclosureBadge disclosure={{ level: "undeclared", facets: [], source: "artist" }} aiOnly />)).toBe("");
+      expect(renderToStaticMarkup(<AiDisclosureBadge disclosure={null} aiOnly />)).toBe("");
+    });
+  });
 });
+

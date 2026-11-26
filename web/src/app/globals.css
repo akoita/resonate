@@ -2269,6 +2269,18 @@ a {
   color: var(--color-muted);
 }
 
+/* The AI label sits before the artist name; the name keeps the rest of the row. */
+.player-artist-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.player-artist-row > .marquee-container {
+  min-width: 0;
+}
+
 .player-controls {
   display: flex;
   flex-direction: column;

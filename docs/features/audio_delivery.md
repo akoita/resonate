@@ -27,6 +27,16 @@ its own `renditions/` storage prefix.
   uploads and backfills the existing catalog, full mixes first. Each stem is
   committed on its own, so the work is resumable. A stem that fails three times
   is parked (`streamFailureCount`) until an operator retries.
+- **AI tags.** The encode drops the archive's own tags. For a track disclosed
+  as AI-generated (`ALL`) or AI-assisted (`PARTLY`) it writes `AI_GENERATED`
+  and the IPTC digital source type (`trainedAlgorithmicMedia` or
+  `compositeWithTrainedAlgorithmicMedia`) again, and stores the rendition as
+  `rendition-<stem>.ai.mp3`. The sweep also picks up an AI track whose
+  rendition lacks that suffix (made before the tags, or before the track's
+  disclosure changed) and makes it again once, deleting the old object. An
+  inaudible remix or provider mark is in the audio and survives the encode.
+  The generated-audio inventory row is `stream-rendition` in
+  [Remix Studio](remix_studio.md).
 - **Which stems.** Every current stem except official stems (#1976), whose
   public preview is already a bounded lossy transcode and whose buyers download
   through their entitlement.

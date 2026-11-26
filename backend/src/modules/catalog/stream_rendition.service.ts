@@ -10,6 +10,7 @@ import { shouldRunBackgroundLoop } from "../../config/runtime_mode";
 import { StorageProvider } from "../storage/storage_provider";
 import { capRangeHeader } from "../storage/byte_range";
 import { MP3_MIME_TYPE, stemFileExtension } from "../shared/stem-media";
+import { aiGeneratedTagsFor } from "../remix/remix-watermark";
 import { CatalogService } from "./catalog.service";
 
 /**
@@ -23,6 +24,11 @@ import { CatalogService } from "./catalog.service";
  *
  * Official stems (#1976) are excluded: their public preview is already a
  * bounded lossy transcode, and buyers download them through entitlements.
+ *
+ * The encode drops the archive's tags (they can hold uploader details), so a
+ * rendition of a track disclosed as AI-generated or AI-assisted gets the
+ * machine-readable AI tags written again from the track's disclosure. The
+ * inaudible remix mark is in the audio itself and survives the encode.
  */
 
 const execFileAsync = promisify(execFile);
@@ -52,6 +58,33 @@ export const RENDITION_ELIGIBLE_WHERE = {
 };
 
 const FULL_MIX_TYPES = ["original", "master"] as const;
+
+const AI_DISCLOSED_LEVELS = ["PARTLY", "ALL"] as const;
+
+/**
+ * A rendition that carries the AI tags is stored under a name ending in this
+ * suffix, so the sweep can tell which renditions still lack them.
+ */
+export const AI_TAGGED_RENDITION_SUFFIX = ".ai.mp3";
+
+/**
+ * Stems of a track disclosed as AI whose rendition lacks the AI tags: made
+ * before the tags existed, or before the track's disclosure changed to AI.
+ */
+const RENDITION_NEEDS_AI_TAGS_WHERE = {
+  streamUri: { not: null },
+  NOT: { streamUri: { endsWith: AI_TAGGED_RENDITION_SUFFIX } },
+  track: { aiDisclosureLevel: { in: [...AI_DISCLOSED_LEVELS] } },
+};
+
+/** Eligible stems the sweep still has to (re)make a rendition for. */
+const RENDITION_PENDING_WHERE = {
+  AND: [
+    RENDITION_ELIGIBLE_WHERE,
+    { streamFailureCount: { lt: STREAM_RENDITION_MAX_FAILURES } },
+    { OR: [{ streamUri: null }, RENDITION_NEEDS_AI_TAGS_WHERE] },
+  ],
+};
 
 export type RenditionSweepResult = { processed: number; failed: number; remaining: number };
 
@@ -90,13 +123,7 @@ export class StreamRenditionService implements OnModuleInit, OnModuleDestroy {
 
   /** Number of eligible stems that still need a rendition (and can still get one). */
   remaining(): Promise<number> {
-    return prisma.stem.count({
-      where: {
-        ...RENDITION_ELIGIBLE_WHERE,
-        streamUri: null,
-        streamFailureCount: { lt: STREAM_RENDITION_MAX_FAILURES },
-      },
-    });
+    return prisma.stem.count({ where: RENDITION_PENDING_WHERE });
   }
 
   /**
@@ -115,11 +142,7 @@ export class StreamRenditionService implements OnModuleInit, OnModuleDestroy {
 
   private async sweep(limit: number): Promise<RenditionSweepResult> {
     const take = Math.max(1, Math.min(limit, 50));
-    const pending = {
-      ...RENDITION_ELIGIBLE_WHERE,
-      streamUri: null,
-      streamFailureCount: { lt: STREAM_RENDITION_MAX_FAILURES },
-    };
+    const pending = RENDITION_PENDING_WHERE;
     // Full mixes first: they are what the player streams.
     const mixes = await prisma.stem.findMany({
       where: { ...pending, type: { in: [...FULL_MIX_TYPES] } },
@@ -152,8 +175,14 @@ export class StreamRenditionService implements OnModuleInit, OnModuleDestroy {
     try {
       const archive = await this.catalogService.loadStemArchiveAudio(stemId);
       if (!archive) throw new Error("archive audio not found");
-      const rendition = await this.transcode(archive.data, archive.mimeType);
-      const stored = await this.storageProvider.upload(rendition, `rendition-${stemId}.mp3`, MP3_MIME_TYPE, {
+      const stem = await prisma.stem.findUnique({
+        where: { id: stemId },
+        select: { streamUri: true, track: { select: { aiDisclosureLevel: true } } },
+      });
+      const tags = aiGeneratedTagsFor(stem?.track?.aiDisclosureLevel);
+      const rendition = await this.transcode(archive.data, archive.mimeType, tags);
+      const filename = `rendition-${stemId}${tags.length > 0 ? AI_TAGGED_RENDITION_SUFFIX : ".mp3"}`;
+      const stored = await this.storageProvider.upload(rendition, filename, MP3_MIME_TYPE, {
         prefix: "renditions",
       });
       await prisma.stem.update({
@@ -167,6 +196,12 @@ export class StreamRenditionService implements OnModuleInit, OnModuleDestroy {
           streamFailureCount: 0,
         },
       });
+      // A rendition made again under a new name leaves the old object behind.
+      if (stem?.streamUri && stem.streamUri !== stored.uri) {
+        await this.storageProvider.delete(stem.streamUri).catch((err) => {
+          this.logger.warn(`Could not delete the replaced rendition of stem ${stemId}: ${err}`);
+        });
+      }
       return true;
     } catch (err) {
       this.logger.warn(`Rendition for stem ${stemId} failed: ${err instanceof Error ? err.message : err}`);
@@ -181,8 +216,8 @@ export class StreamRenditionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Seam for tests; production always uses ffmpeg. */
-  protected transcode(data: Buffer, mimeType: string): Promise<Buffer> {
-    return transcodeForStreaming(data, mimeType);
+  protected transcode(data: Buffer, mimeType: string, tags: string[] = []): Promise<Buffer> {
+    return transcodeForStreaming(data, mimeType, tags);
   }
 
   /**
@@ -254,8 +289,16 @@ function positiveInt(raw: string | undefined, fallback: number): number {
   return Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
-/** MP3 at the streaming bitrate, written to and read from a temp directory. */
-export async function transcodeForStreaming(data: Buffer, mimeType: string | null | undefined): Promise<Buffer> {
+/**
+ * MP3 at the streaming bitrate, written to and read from a temp directory.
+ * `tags` are ffmpeg `-metadata` arguments written after the archive's own
+ * tags are dropped (the AI tags of `aiGeneratedTagsFor`).
+ */
+export async function transcodeForStreaming(
+  data: Buffer,
+  mimeType: string | null | undefined,
+  tags: string[] = [],
+): Promise<Buffer> {
   const directory = await mkdtemp(join(tmpdir(), "resonate-rendition-"));
   try {
     const input = join(directory, `input.${stemFileExtension(mimeType)}`);
@@ -270,6 +313,7 @@ export async function transcodeForStreaming(data: Buffer, mimeType: string | nul
         "-i", input,
         "-vn",
         "-map_metadata", "-1",
+        ...tags,
         "-codec:a", "libmp3lame",
         "-b:a", `${STREAM_RENDITION_BITRATE_KBPS}k`,
         "-f", "mp3",

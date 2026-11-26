@@ -4,6 +4,7 @@ import { ListeningControls } from "../player/ListeningControls";
 import { useRouter, usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { MarqueeText } from "../ui/MarqueeText";
+import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
 import { playerArtistHref } from "../../lib/artistRoutes";
 import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
@@ -141,16 +142,20 @@ export default function PlayerBar() {
             <div className="player-details">
               {/* A paused player holds its titles still: no idle animation (#2436). */}
               <MarqueeText text={currentTrack.title} className="player-title" paused={!isPlaying} />
-              <MarqueeText
-                text={currentTrack.artist || "Unknown Artist"}
-                paused={!isPlaying}
-                className="player-artist clickable"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const target = playerArtistHref(currentTrack);
-                  if (target) router.push(target);
-                }}
-              />
+              <div className="player-artist-row">
+                {/* Listeners see that a track is AI-generated or AI-assisted on every page. */}
+                <AiDisclosureBadge disclosure={currentTrack.aiDisclosure} aiOnly compact className="player-ai-badge" />
+                <MarqueeText
+                  text={currentTrack.artist || "Unknown Artist"}
+                  paused={!isPlaying}
+                  className="player-artist clickable"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const target = playerArtistHref(currentTrack);
+                    if (target) router.push(target);
+                  }}
+                />
+              </div>
             </div>
           </>
         ) : (
