@@ -447,7 +447,9 @@ Playlists to the playlists. In the queue, rows drag to reorder
 there (`insertQueueTracksAtGap`, which moves an already queued track rather
 than duplicating it and never moves the current one), and a coral line marks
 the gap. Alt+Up/Down on a focused row moves it and announces the new position.
-The `/player` console's queue keeps its own rows and the drop lanes.
+The `/player` console's queue takes the same row reordering and between-row
+drops (`useQueueGapDrop`, shared with the dock); its keyboard keeps the
+existing selection keys.
 
 ### Sidebar width and icon rail (#2699)
 

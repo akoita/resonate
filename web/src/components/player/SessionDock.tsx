@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { formatDuration } from "../../lib/metadataExtractor";
-import { canQueueDrag, draggedQueueRowIndex, queueGapForPointer, startQueueRowDrag } from "../../lib/queueDrag";
-import { useToast } from "../ui/Toast";
+import { canQueueDrag, draggedQueueRowIndex, startQueueRowDrag } from "../../lib/queueDrag";
 import { useUIStore } from "../../lib/uiStore";
 import { setConsoleMinimized } from "../../lib/playerConsoleLayout";
 import { GlobalPlaylistPanel } from "../layout/GlobalPlaylistPanel";
 import { usePlayerConsoleLayout } from "./usePlayerConsoleLayout";
 import { PlayerConsoleDockPreview, PlayerConsoleLayoutButtons, PlayerConsoleMoveHandle } from "./PlayerConsoleLayoutControls";
-import { QueueDropLanes, droppedTracks, useQueueDragActive } from "./QueueDropLanes";
+import { QueueDropLanes, useQueueDragActive } from "./QueueDropLanes";
+import { useQueueGapDrop } from "./useQueueGapDrop";
 import { ListeningControls } from "./ListeningControls";
 import type { LocalTrack } from "../../lib/localLibrary";
 
@@ -49,12 +49,11 @@ function RemoveIcon() {
  * anything queueable between two rows to put it exactly there.
  */
 export function SessionQueueList({ onPlayed }: { onPlayed?: () => void }) {
-  const { queue, currentIndex, playQueue, removeFromQueue, moveInQueue, insertTracksAt } = usePlayer();
-  const { addToast } = useToast();
+  const { queue, currentIndex, playQueue, removeFromQueue, moveInQueue } = usePlayer();
   const listRef = useRef<HTMLOListElement>(null);
-  const [dropGap, setDropGap] = useState<number | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const focusTrackId = useRef<string | null>(null);
+  const { dropGap, listProps, rowProps, rowDropClass } = useQueueGapDrop(queue.length);
 
   // Keep the playing row in view as the queue advances.
   useEffect(() => {
@@ -71,56 +70,6 @@ export function SessionQueueList({ onPlayed }: { onPlayed?: () => void }) {
       ?.querySelector<HTMLElement>(`[data-track-id="${CSS.escape(id)}"] .session-queue__play`)
       ?.focus();
   }, [queue]);
-
-  const acceptsDrag = (types: DataTransfer["types"]) =>
-    draggedQueueRowIndex(types) !== null || canQueueDrag(types);
-
-  const onRowDragOver = (event: ReactDragEvent<HTMLLIElement>, index: number) => {
-    if (!acceptsDrag(event.dataTransfer.types)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    const gap = queueGapForPointer(index, event.clientY, rect.top, rect.height);
-    event.dataTransfer.dropEffect = draggedQueueRowIndex(event.dataTransfer.types) !== null ? "move" : "copy";
-    if (gap !== dropGap) setDropGap(gap);
-  };
-
-  const onDrop = async (event: ReactDragEvent<HTMLOListElement>) => {
-    setDropGap(null);
-    if (!acceptsDrag(event.dataTransfer.types)) return;
-    // Work the gap out from the drop itself, not from the last dragover.
-    const row = (event.target as HTMLElement).closest<HTMLElement>("[data-queue-index]");
-    let gap = queue.length;
-    if (row) {
-      const rect = row.getBoundingClientRect();
-      gap = queueGapForPointer(Number(row.dataset.queueIndex), event.clientY, rect.top, rect.height);
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const from = draggedQueueRowIndex(event.dataTransfer.types);
-    if (from !== null) {
-      moveInQueue(from, gap);
-      return;
-    }
-    try {
-      const tracks = await droppedTracks(event.dataTransfer);
-      if (tracks.length === 0) {
-        addToast({ type: "info", title: "Nothing to queue", message: "There are no playable tracks in what you dropped." });
-        return;
-      }
-      const result = insertTracksAt(tracks, gap);
-      const count = result.added.length;
-      if (count > 0) {
-        addToast({
-          type: "success",
-          title: "Added to the queue",
-          message: count === 1 ? result.added[0].title : `${count} tracks`,
-        });
-      }
-    } catch {
-      addToast({ type: "error", title: "Couldn't queue that", message: "Check your connection and try again." });
-    }
-  };
 
   const moveByKey = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number, track: LocalTrack) => {
     if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
@@ -143,21 +92,7 @@ export function SessionQueueList({ onPlayed }: { onPlayed?: () => void }) {
         className={`session-queue ${dropGap !== null ? "is-drop-target" : ""}`}
         aria-label="Queue"
         aria-describedby="session-queue-help"
-        onDragOver={(event) => {
-          // Below the last row: the end of the queue.
-          if (event.target !== event.currentTarget || !acceptsDrag(event.dataTransfer.types)) return;
-          event.preventDefault();
-          if (dropGap !== queue.length) setDropGap(queue.length);
-        }}
-        onDragLeave={(event) => {
-          // Some engines leave relatedTarget empty, so check the pointer too.
-          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-          const rect = event.currentTarget.getBoundingClientRect();
-          const inside = event.clientX > rect.left && event.clientX < rect.right && event.clientY > rect.top && event.clientY < rect.bottom;
-          if (!inside) setDropGap(null);
-        }}
-        onDragEnd={() => setDropGap(null)}
-        onDrop={(event) => void onDrop(event)}
+        {...listProps}
       >
         {queue.map((track, index) => {
           const current = index === currentIndex;
@@ -165,18 +100,16 @@ export function SessionQueueList({ onPlayed }: { onPlayed?: () => void }) {
             <li
               key={`${track.id}-${index}`}
               data-track-id={track.id}
-              data-queue-index={index}
               className={[
                 "session-queue__row",
                 current ? "is-current" : "",
                 index < currentIndex ? "is-played" : "",
-                dropGap === index ? "is-drop-before" : "",
-                dropGap === queue.length && index === queue.length - 1 ? "is-drop-after" : "",
+                rowDropClass(index),
               ].filter(Boolean).join(" ")}
               aria-current={current ? "true" : undefined}
               draggable
               onDragStart={(event) => startQueueRowDrag(event.dataTransfer, track, index)}
-              onDragOver={(event) => onRowDragOver(event, index)}
+              {...rowProps(index)}
             >
               <button
                 type="button"

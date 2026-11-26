@@ -518,8 +518,14 @@ html.is-resizing-sidebar .app-sidebar {
 }
 
 /* Where a drop lands: a coral line in the gap between two rows. */
+.queue-item {
+  position: relative;
+}
+
 .session-queue__row.is-drop-before::before,
-.session-queue__row.is-drop-after::after {
+.session-queue__row.is-drop-after::after,
+.queue-item.is-drop-before::before,
+.queue-item.is-drop-after::after {
   content: "";
   position: absolute;
   left: 6px;
@@ -531,12 +537,14 @@ html.is-resizing-sidebar .app-sidebar {
   pointer-events: none;
 }
 
-.session-queue__row.is-drop-before::before {
-  top: -1px;
+.session-queue__row.is-drop-before::before,
+.queue-item.is-drop-before::before {
+  top: -2px;
 }
 
-.session-queue__row.is-drop-after::after {
-  bottom: -1px;
+.session-queue__row.is-drop-after::after,
+.queue-item.is-drop-after::after {
+  bottom: -2px;
 }
 
 .session-queue__row.is-current {
