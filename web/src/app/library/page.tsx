@@ -1418,7 +1418,7 @@ function LibraryPageContent() {
                                         onChange={(e) => setShowStems(e.target.checked)}
                                         className="library-switch__input"
                                     />
-                                    Show Stems
+                                    Show stems
                                 </label>
                             </div>
                         )}
@@ -1484,7 +1484,7 @@ function LibraryPageContent() {
                                     {searchQuery.trim()
                                         ? <>No results found for &quot;{searchQuery}&quot;</>
                                         : activeTab === "tracks" && !showStems && ownedStems.length > 0
-                                            ? <>No local tracks yet. Enable <strong>Show Stems</strong> to see your {ownedStems.length} owned stem{ownedStems.length !== 1 ? "s" : ""}.</>
+                                            ? <>No full tracks here yet, only stems. Turn on <strong>Show stems</strong> to see your {ownedStems.length} stem{ownedStems.length !== 1 ? "s" : ""}.</>
                                             : activeTab === "stems" && stemLicenseFilter !== "all"
                                                 ? <>No stems with this license yet. <button type="button" className="library-inline-link" onClick={() => setStemLicenseFilter("all")}>Show all stems</button></>
                                                 : <>No tracks to display.</>
