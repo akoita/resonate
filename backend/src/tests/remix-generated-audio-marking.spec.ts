@@ -193,7 +193,7 @@ describe("generated-audio output inventory (#2602)", () => {
       listed.set(path.source, (listed.get(path.source) ?? 0) + path.uploads);
     }
     const found = new Map<string, number>();
-    for (const file of [...sourceFiles("remix"), ...sourceFiles("generation")]) {
+    for (const file of [...sourceFiles("remix"), ...sourceFiles("generation"), "catalog/stream_rendition.service.ts"]) {
       const uploads = count(readFileSync(join(modulesDir, file), "utf8"), /\.upload\(/g);
       if (uploads > 0) found.set(file, uploads);
     }
@@ -230,6 +230,7 @@ describe("generated-audio output inventory (#2602)", () => {
         "file_tags",
         "inherits_draft_mark",
         "studio_playback",
+        "rendition_retags",
       ]).toContain(path.marking);
     }
   });

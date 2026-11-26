@@ -4,7 +4,9 @@
  * - the public blob path never returns the bytes of a cloud-stored original;
  * - the track stream resolves the same stem as before, with its rendition;
  * - the sweep creates renditions, records them, counts `remaining` down to 0,
- *   skips official stems and parks repeated failures.
+ *   skips official stems and parks repeated failures;
+ * - a track disclosed as AI gets the AI tags on its rendition, and an older
+ *   rendition without them is made again once.
  *
  * Run: npm run test:integration -- stream_rendition
  */
@@ -14,6 +16,7 @@ import { EventBus } from "../modules/shared/event_bus";
 import { StorageProvider, type StorageResult } from "../modules/storage/storage_provider";
 import { UploadRightsRoutingService } from "../modules/rights/upload-rights-routing.service";
 import {
+  AI_TAGGED_RENDITION_SUFFIX,
   STREAM_RENDITION_MAX_FAILURES,
   StreamRenditionService,
 } from "../modules/catalog/stream_rendition.service";
@@ -26,10 +29,14 @@ const trackId = `${TEST_PREFIX}track`;
 const originalId = `${TEST_PREFIX}original`;
 const vocalsId = `${TEST_PREFIX}vocals`;
 const officialId = `${TEST_PREFIX}official`;
+const aiTrackId = `${TEST_PREFIX}ai_track`;
+const aiMasterId = `${TEST_PREFIX}ai_master`;
+const OLD_AI_RENDITION = `https://storage.googleapis.com/bucket/renditions/rendition-${aiMasterId}.mp3`;
 const ORIGINAL_BYTES = Buffer.from("lossless-master-bytes");
 
 class RecordingStorage extends StorageProvider {
   readonly uploads: Array<{ filename: string; prefix?: string; size: number }> = [];
+  readonly deleted: string[] = [];
   async upload(data: Buffer, filename: string, _mimeType: string, options?: { prefix?: string }): Promise<StorageResult> {
     this.uploads.push({ filename, prefix: options?.prefix, size: data.length });
     return { uri: `https://storage.googleapis.com/bucket/${options?.prefix ?? "originals"}/${filename}`, provider: "gcs" };
@@ -37,14 +44,18 @@ class RecordingStorage extends StorageProvider {
   async download(): Promise<Buffer | null> {
     return ORIGINAL_BYTES;
   }
-  async delete(): Promise<void> {}
+  async delete(uri: string): Promise<void> {
+    this.deleted.push(uri);
+  }
 }
 
 /** Transcoding is ffmpeg's job; here it only has to differ from the input. */
 class TestRenditionService extends StreamRenditionService {
   failFor = new Set<string>();
-  protected async transcode(data: Buffer): Promise<Buffer> {
+  readonly tagsFor = new Map<string, string[]>();
+  protected async transcode(data: Buffer, _mimeType: string, tags: string[] = []): Promise<Buffer> {
     if (this.failFor.size > 0) throw new Error("transcode failed");
+    this.tagsFor.set(data.toString(), tags);
     return Buffer.concat([Buffer.from("MP3:"), data.subarray(0, 4)]);
   }
 }
@@ -103,7 +114,7 @@ describe("Streaming renditions (integration)", () => {
 
   afterAll(async () => {
     await prisma.stem.deleteMany({ where: ourStems() });
-    await prisma.track.deleteMany({ where: { id: trackId } });
+    await prisma.track.deleteMany({ where: { id: { in: [trackId, aiTrackId] } } });
     await prisma.release.deleteMany({ where: { id: releaseId } });
     await prisma.artist.deleteMany({ where: { id: artistId } });
     await prisma.user.deleteMany({ where: { id: userId } });
@@ -167,5 +178,62 @@ describe("Streaming renditions (integration)", () => {
     await expect(catalog.resolvePublicStreamStem(originalId)).resolves.toBeNull();
     await expect(catalog.resolveTrackStreamStem(trackId, { includeRestricted: true })).resolves.not.toBeNull();
     await prisma.release.update({ where: { id: releaseId }, data: { status: "published" } });
+  });
+
+  it("tags an AI track's rendition and makes an older untagged one again, once", async () => {
+    await prisma.track.create({
+      data: { id: aiTrackId, releaseId, title: "AI Track", artist: "Rendition Artist", aiDisclosureLevel: "ALL" },
+    });
+    // A rendition from before the AI tags existed.
+    await prisma.stem.create({
+      data: {
+        id: aiMasterId,
+        trackId: aiTrackId,
+        type: "master",
+        uri: `https://storage.googleapis.com/bucket/originals/${aiMasterId}.wav`,
+        storageProvider: "gcs",
+        mimeType: "audio/wav",
+        streamUri: OLD_AI_RENDITION,
+        streamStorageProvider: "gcs",
+        streamMimeType: "audio/mpeg",
+        streamCreatedAt: new Date("2026-11-20T00:00:00Z"),
+      },
+    });
+    const humanBefore = await prisma.stem.findUniqueOrThrow({ where: { id: originalId } });
+
+    let guard = 0;
+    while (
+      (await prisma.stem.count({
+        where: { id: aiMasterId, NOT: { streamUri: { endsWith: AI_TAGGED_RENDITION_SUFFIX } } },
+      })) > 0 &&
+      guard < 50
+    ) {
+      await renditions.runSweep(50);
+      guard += 1;
+    }
+
+    const ai = await prisma.stem.findUniqueOrThrow({ where: { id: aiMasterId } });
+    expect(ai.streamUri).toContain(`/renditions/rendition-${aiMasterId}${AI_TAGGED_RENDITION_SUFFIX}`);
+    expect(storage.deleted).toContain(OLD_AI_RENDITION);
+
+    // Made once: another sweep leaves it alone, and so the human-made track.
+    const uploadsBefore = storage.uploads.filter((u) => u.filename.includes(aiMasterId)).length;
+    await renditions.runSweep(50);
+    expect(storage.uploads.filter((u) => u.filename.includes(aiMasterId)).length).toBe(uploadsBefore);
+    const humanAfter = await prisma.stem.findUniqueOrThrow({ where: { id: originalId } });
+    expect(humanAfter.streamUri).toBe(humanBefore.streamUri);
+    expect(humanAfter.streamUri?.endsWith(AI_TAGGED_RENDITION_SUFFIX)).toBe(false);
+  });
+
+  it("passes the AI tags for the track's disclosure to the encoder", async () => {
+    renditions.tagsFor.clear();
+    await renditions.createRendition(aiMasterId);
+    const tags = [...renditions.tagsFor.values()][0];
+    expect(tags).toEqual(expect.arrayContaining(["-metadata", "AI_GENERATED=true"]));
+    expect(tags.join(" ")).toContain("trainedAlgorithmicMedia");
+
+    renditions.tagsFor.clear();
+    await renditions.createRendition(originalId);
+    expect([...renditions.tagsFor.values()][0]).toEqual([]);
   });
 });

@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
 import type { Prisma } from '@prisma/client';
 import { AI_DISCLOSURE_VERSION } from '../catalog/ai-disclosure.policy';
+import { aiGeneratedInfoComment } from '../remix/remix-watermark';
 import { hasArtistManagementAccess } from '../management/management-access';
 import {
   DEFAULT_LYRIA_RATE_LIMIT,
@@ -94,7 +95,7 @@ export function classifyGenerationFailure(error: unknown): string {
  * Appends a RIFF LIST INFO chunk to a standard WAV buffer,
  * and repairs any truncated chunk size declarations (e.g. from Lyria).
  */
-function appendRiffInfoChunk(wavBuffer: Buffer, metadata: Record<string, string>): Buffer {
+export function appendRiffInfoChunk(wavBuffer: Buffer, metadata: Record<string, string>): Buffer {
   if (wavBuffer.length < 12 || wavBuffer.toString('utf8', 0, 4) !== 'RIFF' || wavBuffer.toString('utf8', 8, 12) !== 'WAVE') {
     return wavBuffer;
   }
@@ -130,7 +131,7 @@ function appendRiffInfoChunk(wavBuffer: Buffer, metadata: Record<string, string>
       title: 'INAM',
       artist: 'IART',
       album: 'IPRD',
-      composer: 'ICMT',
+      comment: 'ICMT',
     };
     const chunkId = infoMap[key];
     if (!chunkId) continue;
@@ -412,7 +413,8 @@ export class GenerationService {
             title: prompt.substring(0, 120),
             artist: 'AI (Lyria)',
             album: 'Resonate',
-            composer: userId, // track provenance
+            // Machine-readable AI marking next to the provider's own mark.
+            comment: aiGeneratedInfoComment(),
           });
         } catch (tagError) {
           this.logger.warn(`Failed to inject RIFF chunks into WAV for job ${jobId}: ${tagError}`);
