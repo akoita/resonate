@@ -165,6 +165,15 @@ fields are truncated, and each web instance logs at most 120 reports a minute.
 Use `directive` and the origin of `blocked` for grouping; `documentPath` and
 `sourceFile` are unbounded and must not become metric labels.
 
+### Browser errors
+
+`POST /api/browser-reports/error` on the web app logs `browser.error` at
+`severity: "ERROR"` in Cloud Error Reporting's format
+(`serviceContext.service = "resonate-web-browser"`). Fields: `kind`
+(`error` or `unhandledrejection`), `path` (path only), and
+`context.reportLocation` when the browser gave no parsable stack. See
+[Browser error reporting](./browser_error_reporting.md).
+
 ## Infrastructure Mapping
 
 `resonate-iac` can turn these events into Cloud Logging log-based metrics for
