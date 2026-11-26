@@ -289,16 +289,29 @@ html.is-resizing-sidebar .app-sidebar {
   container: session-dock / inline-size;
 }
 
-/* Docked: a column beside the page, clear of the floating player bar. */
+/* Docked: a full-height column beside the page. The player bar then spans
+ * only the page column (below), so the two never overlap. */
 .session-dock--right:not(.is-minimized),
 .session-dock--left:not(.is-minimized) {
-  flex: 0 0 clamp(288px, 24vw, 360px);
-  margin: var(--dock-gap) var(--dock-gap) 104px 0;
+  --dock-width: clamp(288px, 24vw, 360px);
+  flex: 0 0 var(--dock-width);
+  /* Bottom edge lines up with the player bar's. */
+  margin: var(--dock-gap) var(--dock-gap) var(--space-5) 0;
 }
 
 .session-dock--left:not(.is-minimized) {
   order: -1;
-  margin: var(--dock-gap) 0 104px var(--dock-gap);
+  margin: var(--dock-gap) 0 var(--space-5) var(--dock-gap);
+}
+
+@media (min-width: 768px) {
+  .app-main:has(.session-dock--right:not(.is-minimized)) > .app-player {
+    right: calc(clamp(288px, 24vw, 360px) + 2 * var(--space-3));
+  }
+
+  .app-main:has(.session-dock--left:not(.is-minimized)) > .app-player {
+    left: calc(clamp(288px, 24vw, 360px) + 2 * var(--space-3));
+  }
 }
 
 .session-dock--floating {

@@ -441,7 +441,9 @@ repeat. Below 768px the player bar keeps only the track, previous, play, next
 and that queue button, all inside the bar (previous drops below 360px), and a
 fade behind the bar keeps page content from showing around it. On wide screens
 the bar's floating queue chip shows only while the dock is folded, since the
-open dock already shows the place in the queue.
+open dock already shows the place in the queue. A docked dock runs the full
+height beside the page, its bottom edge level with the player bar, and the bar
+spans only the page column, so the two never overlap.
 
 Slice 2 (#2699): the dock has **Session** and **Playlists** tabs. Where the
 dock can show (off `/player`, wide enough for it), the top bar's playlists
