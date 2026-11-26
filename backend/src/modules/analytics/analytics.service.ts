@@ -35,6 +35,7 @@ import { UNMET_DEMAND_SOURCE, type UnmetDemandSource } from "../scene_scout/unme
 import { FIRST_LISTENER_RECEPTION_SOURCE, firstListenerReceptionCards, type FirstListenerReceptionSource } from "./analytics_first_listener";
 import { ARTIST_NET_RECEIVED_SOURCE, type ArtistNetReceivedSource } from "./analytics_net_received";
 import { ARTIST_SHOW_INTEREST_SOURCE, type ArtistShowInterestSource } from "./analytics_show_interest";
+import { ARTIST_REMIX_APPROVAL_SOURCE, remixApprovalCards, type ArtistRemixApprovalSource } from "./analytics_remix_approvals";
 
 /**
  * What `payoutUsd` / `totalPayoutUsd` measure in the artist analytics responses (#2144).
@@ -103,6 +104,7 @@ export type ArtistActionCardType =
   | "prepare_remix_challenge"
   | "review_remix_supply_pricing"
   | "triage_fan_questions"
+  | "review_remix_approvals"
   | "relist_expired_inventory"
   | "improve_marketplace_conversion"
   | "review_marketplace_pricing";
@@ -298,6 +300,10 @@ export class AnalyticsService {
     @Optional()
     @Inject(ARTIST_SHOW_INTEREST_SOURCE)
     private readonly showInterestSource?: ArtistShowInterestSource,
+    // #1121: remix versions waiting for this artist's approval (#2682).
+    @Optional()
+    @Inject(ARTIST_REMIX_APPROVAL_SOURCE)
+    private readonly remixApprovalSource?: ArtistRemixApprovalSource,
   ) {}
 
   async getArtistStats(artistId: string, days: number) {
@@ -430,6 +436,9 @@ export class AnalyticsService {
       available: false, minimumAudience: 3, releases: [],
     }));
     const receptionCards = firstListenerReceptionCards(reception);
+    const pendingRemixApprovals = await this.remixApprovalSource
+      ?.countPendingApprovals(artistId)
+      .catch(() => 0);
     // Read-only join onto the indexed settlement records; a failure leaves the rest of the dashboard intact.
     const netReceived = await this.netReceivedSource
       ?.getArtistNetReceived({
@@ -463,7 +472,7 @@ export class AnalyticsService {
       playsOverTime: this.playsOverTime(facts),
       trackPerformance: tracks,
       protection,
-      actions: [...sceneScoutCityCards(sceneScout), ...unmetDemandCards(unmetDemand), ...receptionCards, ...this.artistActionCards({
+      actions: [...remixApprovalCards(pendingRemixApprovals), ...sceneScoutCityCards(sceneScout), ...unmetDemandCards(unmetDemand), ...receptionCards, ...this.artistActionCards({
         artistId,
         totalPlays: summary.totalPlays,
         topTracks,

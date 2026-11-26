@@ -36,6 +36,7 @@ import { FirstListenerModule } from "../recommendations/first_listener.module";
 import { FirstListenerReceptionService } from "../recommendations/first_listener_reception.service";
 import { FIRST_LISTENER_RECEPTION_SOURCE, entitledFirstListenerReceptionSource } from "./analytics_first_listener";
 import { ARTIST_NET_RECEIVED_SOURCE, PrismaArtistNetReceivedSource } from "./analytics_net_received";
+import { ARTIST_REMIX_APPROVAL_SOURCE, PrismaArtistRemixApprovalSource } from "./analytics_remix_approvals";
 
 @Module({
   imports: [SharedModule, AccountStandingModule, AgentsModule, DiscoveryJournalModule, SceneScoutModule, FirstListenerModule],
@@ -56,6 +57,11 @@ import { ARTIST_NET_RECEIVED_SOURCE, PrismaArtistNetReceivedSource } from "./ana
       // #2172: net received per marketplace sale, beside the gross settled figure.
       provide: ARTIST_NET_RECEIVED_SOURCE,
       useClass: PrismaArtistNetReceivedSource,
+    },
+    {
+      // #1121: remix versions waiting for the artist's approval (#2682).
+      provide: ARTIST_REMIX_APPROVAL_SOURCE,
+      useClass: PrismaArtistRemixApprovalSource,
     },
     AnalyticsAuthorizationService,
     AnalyticsConsentService,

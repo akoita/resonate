@@ -270,6 +270,11 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   five-signal floor and no `announcement` or `campaign_update` message signal
   is visible in the selected window. Message bodies, authors, room membership,
   and per-fan drilldowns are excluded.
+- `review_remix_approvals` opens `/artist/remix-approvals` while remix
+  creators wait for the artist's approval of a draft version (#2682). It
+  counts pending requests addressed to this artist on remixes that are still
+  drafts, so no listener threshold applies; it is listed first and shows no
+  creator or remix detail.
 - `relist_expired_inventory` opens `/marketplace/manage?status=expired` when
   owner-visible marketplace inventory reports expired or cancelled listings
   that can use the existing relist workflow.
