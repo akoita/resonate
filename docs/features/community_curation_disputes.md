@@ -140,7 +140,7 @@ CuratorReputation (per wallet)
 
 ### Report Flow
 
-Non-owners see a **🚩 Report stolen content** button on release pages. Clicking opens `ReportContentModal` which collects:
+Non-owners see a **Report stolen content** link on release pages, next to the main **Report this release** button (the no-account notice form, #2664). The link is shown only while publishing takes a deposit; with `PUBLISH_DEPOSIT_MODE=none` (#2659) the release page offers the notice form alone. Clicking it opens `ReportContentModal` which collects:
 
 - Evidence URL (required) — link to original content
 - Description (optional)

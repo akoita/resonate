@@ -1402,7 +1402,7 @@ export default function Home() {
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>lock</span>
-                  <p>Connect a wallet to manage artist profiles and releases.</p>
+                  <p>Sign in to manage your artist profile and releases.</p>
                 </div>
               )}
             </article>

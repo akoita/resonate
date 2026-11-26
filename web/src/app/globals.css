@@ -3374,6 +3374,7 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
 .wallet-connect-btn {
   position: relative;
   overflow: hidden;
+  white-space: nowrap;
   padding: 12px 20px;
   border-radius: var(--radius-md);
   border: none;

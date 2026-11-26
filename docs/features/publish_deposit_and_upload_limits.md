@@ -39,6 +39,11 @@ Any other value, or none, keeps the deposit (`required`).
 - Stakes already deposited are untouched and stay claimable from My Stakes.
 - The Content Protection card on the upload page says "No deposit" and
   explains that the release is still attested.
+- On a release page, the Content Protection card shows "Deposit: None needed"
+  for an unstaked release (the status endpoint returns `depositWaived`), with
+  no stake, escrow or "Not staked" status. The stake-backed "Report stolen
+  content" dispute link is hidden, leaving "Report this release" (the
+  no-account notice form) as the one way to report.
 
 ### Upload limits
 

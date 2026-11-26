@@ -4747,7 +4747,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Report stolen content on a release page opens the separate ownership dispute process, which needs an account and a stake. It is for authenticity claims judged by curators. Track those cases from the Disputes area.",
+            text: "Report stolen content, next to Report this release, opens the separate ownership dispute process, which needs an account and a stake. It is for authenticity claims judged by curators, and it only appears while publishing takes a deposit. Track those cases from the Disputes area.",
           },
           {
             kind: "figure",

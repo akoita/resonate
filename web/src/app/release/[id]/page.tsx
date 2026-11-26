@@ -1969,7 +1969,7 @@ function ReleaseDetailsContent() {
               );
             })()}
             <span className="dot" />
-            <span className="track-count">{release.tracks?.length || 0} tracks</span>
+            <span className="track-count">{release.tracks?.length || 0} {(release.tracks?.length || 0) === 1 ? "track" : "tracks"}</span>
             <FollowArtistButton
               artistId={release.artist?.id || release.artistId}
               releaseId={release.id}
@@ -3241,49 +3241,45 @@ function ReleaseDetailsContent() {
       {/* Content Protection — visible to ALL users */}
       <ReleaseContentProtection releaseId={release.id} />
 
-      {/* Report content (#2664): the plain notice form, no account or stake needed. */}
+      {/* Reporting, for visitors only. "Report this release" is the plain
+          notice form (#2664): no account or stake needed, so it is the main
+          action. The curator-judged ownership dispute needs a counter-stake,
+          so it is offered only while publishing itself takes a deposit; with
+          the deposit off (#2659) a second, money-backed report path would
+          only confuse. */}
       {!isOwner && (
-        <Link
-          href={`/report?release=${encodeURIComponent(release.id)}`}
-          prefetch={false}
-          style={{ display: 'inline-block', margin: '12px 0 0', color: 'var(--color-muted)', fontSize: '13px', textUnderlineOffset: '3px' }}
-        >
-          Report this release
-        </Link>
-      )}
-
-      {/* Report Button — visible to non-owners only */}
-      {!isOwner && (
-        <>
+        <div className="release-report-actions">
           <style>{`
-            .report-btn { background: rgba(239, 68, 68, 0.06); }
-            .report-btn:hover { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.3); }
+            .release-report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 12px 0; }
+            .release-report-actions .report-btn {
+              display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px;
+              border: 1px solid rgba(239, 68, 68, 0.15); border-radius: 10px;
+              background: rgba(239, 68, 68, 0.06); color: #ef4444;
+              font-size: 13px; font-weight: 500; text-decoration: none; transition: all 0.2s;
+            }
+            .release-report-actions .report-btn:hover { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.3); }
+            .release-report-actions .report-dispute {
+              background: none; border: 0; padding: 0; cursor: pointer;
+              color: var(--color-muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px;
+            }
           `}</style>
-          <button
+          <Link
+            href={`/report?release=${encodeURIComponent(release.id)}`}
+            prefetch={false}
             className="report-btn"
-            onClick={() => setShowReportModal(true)}
-            style={{
-              border: '1px solid rgba(239, 68, 68, 0.15)',
-              borderRadius: '10px',
-              padding: '10px 18px',
-              color: '#ef4444',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              margin: '12px 0',
-              transition: 'all 0.2s',
-            }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
               <line x1="4" y1="22" x2="4" y2="15" />
             </svg>
-            Report stolen content
-          </button>
-        </>
+            Report this release
+          </Link>
+          {releaseProtection?.depositWaived ? null : (
+            <button type="button" className="report-dispute" onClick={() => setShowReportModal(true)}>
+              Report stolen content
+            </button>
+          )}
+        </div>
       )}
 
       {/* Modals rendered outside this container via fragment — see bottom of return */}
