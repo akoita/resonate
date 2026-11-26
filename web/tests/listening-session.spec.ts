@@ -276,3 +276,29 @@ test('queue rows multi-select with mouse and keyboard, and act on the whole sele
   await expect(row('Test a')).toBeVisible();
   await waitForPersistedQueueLength(page, 1);
 });
+
+test('phone player bar keeps every control inside the bar and the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedPlayer(page);
+  await page.goto('/library');
+  const bar = page.locator('.app-player');
+  await expect(bar).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  const queueButton = bar.getByRole('button', { name: /Queue, track 1 of 3/ });
+  await expect(queueButton).toBeVisible();
+  // Shuffle, repeat and Loop and repeat move to the Session sheet on phones.
+  await expect(bar.getByRole('button', { name: /shuffle/i })).toBeHidden();
+  await expect(bar.locator('.player-listening-menu')).toBeHidden();
+  const barBox = (await bar.boundingBox())!;
+  for (const control of [queueButton, bar.getByRole('button', { name: 'Next track' }), bar.getByRole('button', { name: /^(Play|Pause)$/ })]) {
+    const box = (await control.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(barBox.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(Math.min(barBox.x + barBox.width, 390) + 0.5);
+    expect(box.y).toBeGreaterThanOrEqual(barBox.y);
+  }
+  await queueButton.click();
+  const sheet = page.locator('.session-sheet__panel');
+  await expect(sheet.getByRole('button', { name: 'Shuffle off' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Shuffle off' }).click();
+  await expect(sheet.getByRole('button', { name: 'Shuffle on' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sheet.locator('details.listening-controls')).toBeVisible();
+});

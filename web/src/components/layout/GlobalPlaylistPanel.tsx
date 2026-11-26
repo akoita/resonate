@@ -26,6 +26,7 @@ import {
 } from "./playlistDrop";
 import { LocalTrack, getTrack } from "../../lib/localLibrary";
 import { offerQueueDrag } from "../../lib/queueDrag";
+import { queueableTracks } from "../library/trackAvailability";
 import { useUIStore } from "../../lib/uiStore";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
@@ -421,7 +422,8 @@ export function GlobalPlaylistPanel({ isOpen, onClose, variant = "drawer", autoO
                             resolve: async () => {
                                 const playlist = await getPlaylist(p.id);
                                 const tracks = await Promise.all((playlist?.trackIds ?? []).map((id) => getTrack(id)));
-                                return tracks.filter((t): t is LocalTrack => t !== null);
+                                // Unavailable tracks stay in the playlist, never in the queue (#1793).
+                                return queueableTracks(tracks.filter((t): t is LocalTrack => t !== null));
                             },
                         });
                     }}

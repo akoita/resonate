@@ -336,6 +336,31 @@ export function SessionDock({ stageRef }: { stageRef: RefObject<HTMLElement | nu
  * sheet up with now playing and the queue; tapping outside, the close button
  * or Escape slides it away.
  */
+/**
+ * Phones: the player bar keeps only previous, play and next, so shuffle and
+ * the repeat mode live here, in the Session sheet its queue button opens.
+ */
+function SheetPlayModes() {
+  const { shuffle, toggleShuffle, repeatMode, toggleRepeatMode } = usePlayer();
+  const repeatLabel = repeatMode === "one" ? "Repeat one" : repeatMode === "all" ? "Repeat all" : "Repeat off";
+  return (
+    <div className="session-sheet__modes" role="group" aria-label="Play modes">
+      <button type="button" className={`session-sheet__mode ${shuffle ? "is-on" : ""}`} aria-pressed={shuffle} onClick={toggleShuffle}>
+        Shuffle {shuffle ? "on" : "off"}
+      </button>
+      <button
+        type="button"
+        className={`session-sheet__mode ${repeatMode !== "none" ? "is-on" : ""}`}
+        aria-pressed={repeatMode !== "none"}
+        aria-label={`${repeatLabel}. Change repeat mode`}
+        onClick={toggleRepeatMode}
+      >
+        {repeatLabel}
+      </button>
+    </div>
+  );
+}
+
 export function SessionSheet() {
   const open = useUIStore((state) => state.isSessionSheetOpen);
   const setOpen = useUIStore((state) => state.setSessionSheetOpen);
@@ -389,6 +414,10 @@ export function SessionSheet() {
             </Link>
           </div>
           <SessionQueueList />
+          <SheetPlayModes />
+          <div className="session-dock__listening session-sheet__listening">
+            <ListeningControls />
+          </div>
         </div>
       ) : null}
     </dialog>

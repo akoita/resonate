@@ -741,11 +741,13 @@ html.is-resizing-sidebar .app-sidebar {
   flex-direction: column;
   gap: var(--space-2);
   max-height: 82vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px 8px calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 .session-sheet__panel .session-queue {
-  max-height: 52vh;
+  max-height: 44vh;
 }
 
 .session-sheet__head {
@@ -914,4 +916,135 @@ html.is-resizing-sidebar .app-sidebar {
 
 .global-playlist-panel--embedded .gpp-content {
   padding: 6px 2px;
+}
+
+/* ---- Phone: shuffle, repeat and Loop and repeat live in the sheet ------- */
+
+.session-sheet__modes {
+  display: flex;
+  gap: var(--space-2);
+  padding: 4px 4px 0;
+}
+
+.session-sheet__mode {
+  flex: 1;
+  min-height: 44px;
+  border-radius: var(--r-radius-full, 999px);
+  border: 1px solid var(--r-chrome-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--r-text-muted, rgba(240, 237, 255, 0.72));
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.session-sheet__mode.is-on {
+  border-color: color-mix(in srgb, var(--r-primary) 60%, transparent);
+  background: color-mix(in srgb, var(--r-primary) 18%, transparent);
+  color: #fff;
+}
+
+.session-sheet__mode:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+/* ---- Phone: a compact player bar -----------------------------------------
+ * Track, then previous, play and next, then the queue button, all inside the
+ * bar: nothing floats over the page or runs past the screen edge. Shuffle,
+ * repeat, Loop and repeat and add to playlist are one tap away in the
+ * Session sheet (the queue button) or the full player. */
+@media (max-width: 767px) {
+  .app-player {
+    justify-content: flex-start;
+    padding: 0 6px 0 10px;
+    gap: 4px;
+  }
+
+  .app-player .player-listening-menu,
+  .app-player .player-btn-shuffle,
+  .app-player .player-btn-repeat,
+  .app-player .player-btn-add {
+    display: none;
+  }
+
+  .app-player .player-track-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+  }
+
+  .app-player .player-controls {
+    flex: none;
+    width: auto;
+    margin: 0;
+  }
+
+  .app-player .player-buttons {
+    gap: 2px;
+  }
+
+  .app-player .player-btn-play {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* The queue button joins the row (it was a chip floating above the bar):
+   * the progress container stops being a box, so its line and its slider
+   * sit on the bar's top edge and the button becomes a flex item. */
+  .app-player .player-progress-container {
+    display: contents;
+  }
+
+  .app-player .player-progress-input {
+    inset: auto;
+    top: -16px;
+    left: 0;
+    height: 26px;
+  }
+
+  .app-player:has(.player-progress-input:focus-visible) {
+    outline: 2px solid var(--r-primary);
+    outline-offset: 3px;
+  }
+
+  .app-player .queue-indicator {
+    position: static;
+    order: 3;
+    transform: none;
+    flex: none;
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: 13px;
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--r-chrome-border);
+    backdrop-filter: none;
+  }
+
+  .app-player .queue-indicator .queue-icon,
+  .app-player .queue-indicator .queue-count__prefix {
+    display: none;
+  }
+
+  /* Page content scrolls under the floating bar; a fade behind it keeps
+   * anything from peeking out beside or below it. */
+  .app-main:has(> .app-player)::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 112px;
+    background: linear-gradient(180deg, transparent, var(--r-canvas, #08080f) 55%);
+    pointer-events: none;
+    z-index: 999;
+  }
+}
+
+@media (max-width: 359px) {
+  .app-player .player-btn-prev {
+    display: none;
+  }
 }

@@ -427,14 +427,21 @@ payloads the playlists panel already understands (library rows and selections,
 library album and artist cards, release rows, selections and artwork, playlist
 rows) plus an in-memory offer for sources that hold or fetch their tracks:
 catalog and Home cards (resolved on drop with `resolveCardQueueTracks`) and
-whole playlists from the playlists panel (`web/src/lib/queueDrag.ts`). Only
+whole playlists from the playlists panel and from the playlist cards on the
+Library Playlists tab (`web/src/lib/queueDrag.ts`; unavailable tracks are left
+out, as when a playlist is played). Only
 drags that started in the page are accepted, so drag data from another site
 cannot point the player at an arbitrary URL. Queue rows drag with a `track`
 payload and a queue-row marker type, so they copy onto playlists and are never
 offered back to the queue.
 
-Phones get no floating panel: the queue chip opens a Session sheet (native
-`<dialog>`) with now playing and the queue.
+Phones get no floating panel: the queue button opens a Session sheet (native
+`<dialog>`) with now playing, the queue, shuffle and repeat mode, and Loop and
+repeat. Below 768px the player bar keeps only the track, previous, play, next
+and that queue button, all inside the bar (previous drops below 360px), and a
+fade behind the bar keeps page content from showing around it. On wide screens
+the bar's floating queue chip shows only while the dock is folded, since the
+open dock already shows the place in the queue.
 
 Slice 2 (#2699): the dock has **Session** and **Playlists** tabs. Where the
 dock can show (off `/player`, wide enough for it), the top bar's playlists
