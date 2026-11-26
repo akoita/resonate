@@ -155,4 +155,4 @@ make local-aa-down   # Stop Anvil + Alto
 
 ## 📄 License
 
-MIT © 2024-2026
+Copyright © 2024-2026 Aboubakar Koïta. All rights reserved. The source is public to read, not licensed for reuse. See [LICENSE](LICENSE); third-party components keep their own licences ([NOTICE](NOTICE)).
