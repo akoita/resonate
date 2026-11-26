@@ -2465,7 +2465,8 @@ a {
 }
 
 .tab.active {
-  color: var(--color-accent);
+  /* The light violet keeps 4.5:1 on the tinted tab over the dark canvas. */
+  color: var(--r-primary-soft, #a48cff);
   background: rgba(124, 92, 255, 0.1);
 }
 
