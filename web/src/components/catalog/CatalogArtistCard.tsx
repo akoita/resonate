@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { artistProfileHref, catalogArtistHref } from "../../lib/artistRoutes";
-import { formatCount, type CatalogArtistSummary } from "../../lib/catalogDisplay";
+import { displayGenre, formatCount, type CatalogArtistSummary } from "../../lib/catalogDisplay";
 import { CardQueueButton } from "../ui/CardQueueButton";
 import { CatalogMonogram, CatalogReleaseArtwork } from "./CatalogReleaseCard";
 
@@ -20,7 +20,7 @@ export function CatalogArtistCard({
   /** Offer Play Next / Add to Queue from the card. Needs the player provider. */
   queueable?: boolean;
 }) {
-  const genre = artist.latestRelease?.genre?.trim() || Array.from(artist.genres)[0];
+  const genre = displayGenre(artist.latestRelease?.genre) ?? displayGenre(Array.from(artist.genres)[0]);
   const meta = `${formatCount(artist.releaseCount, "release")} · ${formatCount(artist.stemCount, "stem")}`;
 
   const link = (

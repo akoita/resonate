@@ -305,12 +305,55 @@ export function groupCatalogStemsByTrack(stems: CatalogStemSummary[]): CatalogSt
   }));
 }
 
-/** Most frequent release genres (ties alphabetical), deduped case-insensitively
- *  and keeping the first spelling seen. */
+/*
+ * One display name per genre. Releases carry the genre label their artist or
+ * import gave them, so one genre can arrive under several spellings or
+ * languages ("Hip-hop/Rap", "Rap", "Hip Hop"; "World", "Musiques du monde").
+ * Listeners see and filter by one name; the stored labels are left as they are.
+ */
+const GENRE_DISPLAY_ALIASES: Record<string, string> = {
+  "hip hop": "Hip-Hop",
+  "hip-hop": "Hip-Hop",
+  "hiphop": "Hip-Hop",
+  "hip-hop/rap": "Hip-Hop",
+  "hip hop/rap": "Hip-Hop",
+  "hip-hop / rap": "Hip-Hop",
+  "rap": "Hip-Hop",
+  "rap/hip-hop": "Hip-Hop",
+  "rap français": "Hip-Hop",
+  "french rap": "Hip-Hop",
+  "world": "World",
+  "world music": "World",
+  "musiques du monde": "World",
+  "musique du monde": "World",
+  "r&b": "R&B",
+  "rnb": "R&B",
+  "r'n'b": "R&B",
+  "r&b/soul": "R&B",
+  "afrobeats": "Afrobeat",
+  "afro beat": "Afrobeat",
+  "electronica": "Electronic",
+  "electro": "Electronic",
+};
+
+/** The name a release genre is shown and filtered under, or null when absent. */
+export function displayGenre(raw: string | null | undefined): string | null {
+  const label = raw?.trim().replace(/\s+/g, " ");
+  if (!label) return null;
+  return GENRE_DISPLAY_ALIASES[label.toLowerCase()] ?? label;
+}
+
+/** Whether a release belongs under a genre chip (compared by display name). */
+export function releaseInGenre(release: Pick<Release, "genre">, genre: string): boolean {
+  return displayGenre(release.genre)?.toLowerCase() === genre.toLowerCase();
+}
+
+/** Most frequent release genres by display name (ties alphabetical), deduped
+ *  case-insensitively and keeping the first spelling seen. */
 export function topCatalogGenres(releases: Release[], limit: number) {
   const byKey = new Map<string, { label: string; count: number }>();
   for (const release of releases) {
-    const label = release.genre?.trim();
+    const label = displayGenre(release.genre);
     if (!label) continue;
     const key = label.toLowerCase();
     const existing = byKey.get(key);
