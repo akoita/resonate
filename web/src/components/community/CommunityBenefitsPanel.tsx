@@ -8,6 +8,9 @@ import {
   type CommunityBenefitsResponse,
 } from "../../lib/api";
 import { Button } from "../ui/Button";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
+
+const BENEFITS_REFRESH_MS = 5 * 60_000;
 
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message?: string }) => void;
 
@@ -22,7 +25,6 @@ type CommunityBenefitsContentProps = {
   error: string | null;
   redeemingId: string | null;
   actionsDisabled?: boolean;
-  onRefresh: () => void;
   onRedeem: (benefit: CommunityBenefit) => void;
 };
 
@@ -112,13 +114,15 @@ export default function CommunityBenefitsPanel({ token, addToast }: Props) {
   const listRequestIdRef = useRef(0);
   const mutationVersionRef = useRef(0);
 
-  const load = async () => {
+  const load = async ({ quiet = false }: { quiet?: boolean } = {}) => {
     if (!token) return;
     const requestId = listRequestIdRef.current + 1;
     const requestMutationVersion = mutationVersionRef.current;
     listRequestIdRef.current = requestId;
-    setLoading(true);
-    setError(null);
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const nextResponse = await getMyCommunityBenefits(token);
       if (shouldApplyCommunityBenefitList(
@@ -130,12 +134,14 @@ export default function CommunityBenefitsPanel({ token, addToast }: Props) {
         setResponse(nextResponse);
       }
     } catch {
+      // A background refresh fails silently; what is on screen stays.
+      if (quiet) return;
       if (requestId === listRequestIdRef.current) {
-        setError("Could not load your unlocked benefits.");
+        setError("Could not load your perks. They will load again shortly.");
         addToast({
           type: "error",
-          title: "Benefits unavailable",
-          message: "Please refresh and try again.",
+          title: "Perks unavailable",
+          message: "They will load again in a few minutes.",
         });
       }
     } finally {
@@ -161,6 +167,9 @@ export default function CommunityBenefitsPanel({ token, addToast }: Props) {
     setError(null);
     setRedeemingId(null);
     void load();
+    // No Refresh button: re-read every few minutes while the tab is visible,
+    // and once when the listener comes back to it.
+    return registerVisibleInterval(() => void load({ quiet: true }), BENEFITS_REFRESH_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- token changes are the reload boundary.
   }, [token]);
 
@@ -198,10 +207,17 @@ export default function CommunityBenefitsPanel({ token, addToast }: Props) {
       error={error}
       redeemingId={redeemingId}
       actionsDisabled={loading}
-      onRefresh={load}
       onRedeem={handleRedeem}
     />
   );
+}
+
+/** One plain sentence on what claiming reveals, from the listener's own settings. */
+export function communityBenefitPrivacyNote(privacy: CommunityBenefitsResponse["privacy"] | undefined) {
+  if (privacy?.walletAddressVisible || privacy?.ownershipDisplayVisible) {
+    return "Claiming stays private. Your profile settings currently show your wallet or collection to others.";
+  }
+  return "Claiming stays private: nobody sees your wallet or what you own.";
 }
 
 export function CommunityBenefitsContent({
@@ -210,7 +226,6 @@ export function CommunityBenefitsContent({
   error,
   redeemingId,
   actionsDisabled = false,
-  onRefresh,
   onRedeem,
 }: CommunityBenefitsContentProps) {
   const grouped = useMemo(
@@ -219,44 +234,41 @@ export function CommunityBenefitsContent({
   );
   const totalBenefits = response?.benefits.length ?? 0;
 
-  return (
-    <div className="community-benefits">
-      <div className="community-benefits__header">
-        <div>
-          <span className="settings-kicker">Unlocked benefits</span>
-          <h2>Benefits for your listener account</h2>
-          <p>
-            Claim private holder, supporter, collector, and role-based benefits without exposing wallet or proof details.
-          </p>
-        </div>
-        <Button variant="ghost" onClick={onRefresh} disabled={loading}>
-          {loading ? "Refreshing..." : "Refresh"}
-        </Button>
+  // Nothing to show yet: one quiet line instead of a whole panel.
+  if (!error && totalBenefits === 0) {
+    return (
+      <div className="community-perks-strip" aria-busy={loading}>
+        <span className="community-perks-strip__icon" aria-hidden>
+          <span className="ms-icon">workspace_premium</span>
+        </span>
+        <p>
+          <strong>{loading && !response ? "Checking your perks..." : "No perks unlocked yet"}</strong>
+          <span>
+            When an artist offers perks to their listeners, the ones you qualify for show up here.
+            {" "}
+            {communityBenefitPrivacyNote(response?.privacy)}
+          </span>
+        </p>
       </div>
+    );
+  }
 
-      {response ? (
-        <div className="community-benefits__privacy" aria-label="Benefit privacy">
-          <span>Proofs private</span>
-          <span>Wallet {response.privacy.walletAddressVisible ? "visible by profile setting" : "hidden"}</span>
-          <span>Ownership {response.privacy.ownershipDisplayVisible ? "visible by profile setting" : "hidden"}</span>
+  return (
+    <div className="community-benefits" aria-busy={loading}>
+      <div className="community-benefits__header">
+        <span className="community-perks-strip__icon" aria-hidden>
+          <span className="ms-icon">workspace_premium</span>
+        </span>
+        <div>
+          <h2>Your perks</h2>
+          <p>{communityBenefitPrivacyNote(response?.privacy)}</p>
         </div>
-      ) : null}
-
-      {loading && !response ? (
-        <div className="listener-cohorts-state">Loading unlocked benefits...</div>
-      ) : null}
+      </div>
 
       {error ? (
         <div className="listener-cohorts-state listener-cohorts-state--locked">
-          <strong>Benefits unavailable</strong>
+          <strong>Perks unavailable</strong>
           <p>{error}</p>
-        </div>
-      ) : null}
-
-      {!loading && response && totalBenefits === 0 ? (
-        <div className="listener-cohorts-state">
-          <strong>No unlocked benefits yet</strong>
-          <p>Benefits appear here when artists or operators activate rules that your private community proofs satisfy.</p>
         </div>
       ) : null}
 
@@ -362,6 +374,7 @@ function BenefitCard({
       <div className="community-benefit-card__actions">
         {state === "redeemable" ? (
           <Button onClick={() => onRedeem(benefit)} disabled={busy || actionsDisabled}>
+            {busy ? null : <span className="ms-icon" aria-hidden>redeem</span>}
             {busy ? "Claiming..." : "Claim benefit"}
           </Button>
         ) : null}

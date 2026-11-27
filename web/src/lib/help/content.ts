@@ -4729,14 +4729,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Cohorts group listeners with similar taste, and city scenes group fans by place. Browse suggestions, join the ones that fit, and leave or hide any you don't want. Cohorts are opt-in and only form once enough people are in them.",
+            text: "Cohorts group listeners with similar taste, and city scenes group fans by place. The Community page shows the ones you joined first, then suggestions for you, each as a tile. Use the chips at the top to show only genres, artists, scenes or shows, and Show all to open a long group. Press Join on a suggestion, or the hide button if it is not for you. Press a tile, or Open, to see who is there, talk in its room, or leave. The page keeps itself up to date while it is open. Cohorts are opt-in and only form once enough people are in them.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/community.png`,
-              alt: "The Community page showing an unlocked Test Artist holder room benefit and a joined Groove Track listeners cohort, with privacy indicators for proofs, wallet, and ownership.",
-              caption: "Community: review private benefits and join privacy-safe listener cohorts from one hub.",
+              alt: "The Community page showing a Test Artist holder room perk ready to claim, filter chips for genres, artists, scenes and shows, and joined cohort tiles such as Groove Track listeners.",
+              caption: "Community: claim your perks privately and browse your cohorts as tiles, joined first.",
               width: 1440,
               height: 1200,
               source: LOCAL,

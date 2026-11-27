@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   getCommunityCohortDetail,
   getCommunityCohortRoom,
@@ -19,8 +19,19 @@ import {
 } from "../../lib/api";
 import { Button } from "../ui/Button";
 import CohortRoomConversation from "../community/CohortRoomConversation";
-import { RoomCard } from "../community/RoomCard";
 import { roomAccessLockedReason } from "../community/roomAccess";
+import {
+  cohortBlurb,
+  cohortCoverHues,
+  cohortInitials,
+  cohortKind,
+  cohortKindCounts,
+  cohortKindFilterLabel,
+  cohortKindLabel,
+  groupCohorts,
+  type CohortKind,
+} from "../community/cohortPresentation";
+import { registerVisibleInterval } from "../../lib/visibleInterval";
 
 type ToastFn = (toast: { type: "success" | "error" | "info" | "warning"; title: string; message: string }) => void;
 
@@ -30,6 +41,8 @@ type Props = {
 };
 
 type CohortAction = "join" | "leave" | "hide";
+
+const COHORT_REFRESH_MS = 5 * 60_000;
 
 type ListenerCohortsContentProps = {
   suggestions: CommunityCohortSuggestionsResponse | null;
@@ -43,7 +56,6 @@ type ListenerCohortsContentProps = {
   roomError: string | null;
   consentEnabled: boolean;
   actionId: string | null;
-  onRefresh: () => void;
   onOpenDetail: (cohort: CommunityCohort) => void;
   onCloseDetail: () => void;
   onLoadRoom: (cohort: CommunityCohort) => void;
@@ -68,17 +80,6 @@ export function cohortPrimaryAction(cohort: CommunityCohort): CohortAction | nul
   if (cohort.membership.status === "joined") return "leave";
   if (cohort.membership.status === "suggested" || cohort.membership.status === "left") return "join";
   return null;
-}
-
-export function cohortReasonLabel(cohort: CommunityCohort) {
-  const reasonLabels: Record<string, string> = {
-    taste: "Shared listening signal",
-    artist_affinity: "Artist affinity signal",
-    city_scene: "Scene discovery signal",
-    collector: "Collector signal",
-    campaign: "Campaign community signal",
-  };
-  return reasonLabels[cohort.cohortType] ?? "Community signal";
 }
 
 export function cohortStatusLabel(status: string) {
@@ -136,9 +137,9 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
     setRoomLoading(false);
   };
 
-  const load = async () => {
+  const load = async ({ quiet = false }: { quiet?: boolean } = {}) => {
     if (!token) return;
-    setLoading(true);
+    if (!quiet) setLoading(true);
     try {
       const [nextSuggestions, profile] = await Promise.all([
         getCommunityCohortSuggestions(token),
@@ -151,6 +152,8 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
         clearDetailSelection();
       }
     } catch {
+      // A background refresh fails silently; the list on screen stays.
+      if (quiet) return;
       addToast({
         type: "error",
         title: "Cohorts unavailable",
@@ -163,6 +166,10 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
 
   useEffect(() => {
     void load();
+    if (!token) return undefined;
+    // Keep the list current without a Refresh button: re-read every few
+    // minutes while the tab is visible, and once when the listener returns.
+    return registerVisibleInterval(() => void load({ quiet: true }), COHORT_REFRESH_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- token changes are the reload boundary.
   }, [token]);
 
@@ -283,7 +290,6 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
       roomError={roomError}
       consentEnabled={consentEnabled}
       actionId={actionId}
-      onRefresh={load}
       onOpenDetail={(cohort) => void loadDetail(cohort.id)}
       onCloseDetail={clearDetailSelection}
       onLoadRoom={(cohort) => void loadCohortRoom(cohort.id)}
@@ -294,6 +300,18 @@ export default function ListenerCohortsPanel({ token, addToast }: Props) {
     />
   );
 }
+
+/** Tiles shown per group before "Show all": two rows on a laptop. */
+const COHORT_PREVIEW_COUNT = 8;
+
+const KIND_ICONS: Record<CohortKind, ReactNode> = {
+  taste: <span className="ms-icon" aria-hidden>graphic_eq</span>,
+  artist_affinity: <span className="ms-icon" aria-hidden>mic</span>,
+  city_scene: <span className="ms-icon" aria-hidden>location_on</span>,
+  collector: <span className="ms-icon" aria-hidden>album</span>,
+  campaign: <span className="ms-icon" aria-hidden>campaign</span>,
+  other: <span className="ms-icon" aria-hidden>group</span>,
+};
 
 export function ListenerCohortsContent({
   suggestions,
@@ -307,7 +325,6 @@ export function ListenerCohortsContent({
   roomError,
   consentEnabled,
   actionId,
-  onRefresh,
   onOpenDetail,
   onCloseDetail,
   onLoadRoom,
@@ -324,39 +341,47 @@ export function ListenerCohortsContent({
     () => cohorts.find((cohort) => cohort.id === selectedCohortId) ?? null,
     [cohorts, selectedCohortId],
   );
-  const detailPanelRef = useRef<HTMLElement | null>(null);
+  const [kindFilter, setKindFilter] = useState<CohortKind | "all">("all");
+  const kinds = useMemo(() => cohortKindCounts(cohorts), [cohorts]);
+  // A filter whose last cohort went away falls back to everything.
+  const activeFilter = kindFilter !== "all" && kinds.some((entry) => entry.kind === kindFilter) ? kindFilter : "all";
+  const groups = useMemo(
+    () => groupCohorts(activeFilter === "all" ? cohorts : cohorts.filter((cohort) => cohortKind(cohort.cohortType) === activeFilter)),
+    [cohorts, activeFilter],
+  );
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const detailOpen = consentEnabled && Boolean(selectedCohortId);
 
+  // The detail is a modal side sheet (a bottom sheet on phones). `showModal`
+  // gives focus containment, Escape, and the top layer; `closedby="any"` adds
+  // a backdrop click where supported, with a click fallback for Safari.
   useEffect(() => {
-    if (!selectedCohortId) return;
-    const node = detailPanelRef.current;
-    if (!node) return;
-    node.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    node.focus({ preventScroll: true });
-  }, [selectedCohortId]);
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.setAttribute("closedby", "any");
+    if (detailOpen && !dialog.open) {
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    } else if (!detailOpen && dialog.open) {
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.removeAttribute("open");
+    }
+  }, [detailOpen]);
 
-  useEffect(() => {
-    if (!selectedCohortId) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseDetail();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectedCohortId, onCloseDetail]);
+  const handleDialogClick = (event: React.MouseEvent<HTMLDialogElement>) => {
+    const dialog = dialogRef.current;
+    if (!dialog || event.target !== dialog) return;
+    if (typeof HTMLDialogElement !== "undefined" && "closedBy" in HTMLDialogElement.prototype) return;
+    const rect = dialog.getBoundingClientRect();
+    const inside = rect.top <= event.clientY && event.clientY <= rect.bottom
+      && rect.left <= event.clientX && event.clientX <= rect.right;
+    if (!inside) onCloseDetail();
+  };
+
+  const tileHandlers = { actionId, selectedCohortId, onOpenDetail, onCloseDetail, onJoin, onHide };
 
   return (
-    <div className="settings-section">
-      <div className="settings-section-header">
-        <div>
-          <h3 className="settings-section-title">Listener Cohorts</h3>
-          <p className="home-subtitle">
-            Join privacy-safe groups shaped by shared music signals, artist affinity, scene context, collecting, or campaigns.
-          </p>
-        </div>
-        <Button variant="ghost" onClick={onRefresh} disabled={loading}>
-          {loading ? "Refreshing..." : "Refresh"}
-        </Button>
-      </div>
-
+    <div className="cohorts">
       {!consentEnabled && !loading ? (
         <div className="listener-cohorts-state listener-cohorts-state--locked">
           <strong>Community matching is off</strong>
@@ -365,7 +390,16 @@ export function ListenerCohortsContent({
       ) : null}
 
       {consentEnabled && loading && !suggestions ? (
-        <div className="listener-cohorts-state">Loading listener cohorts...</div>
+        <div className="cohort-grid cohort-grid--loading" aria-busy="true">
+          <span className="visually-hidden">Loading listener cohorts...</span>
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="cohort-tile cohort-tile--skeleton" aria-hidden>
+              <span className="cohort-tile__art" />
+              <span className="cohort-tile__skeleton-line" />
+              <span className="cohort-tile__skeleton-line cohort-tile__skeleton-line--short" />
+            </div>
+          ))}
+        </div>
       ) : null}
 
       {consentEnabled && suggestions && cohorts.length === 0 ? (
@@ -376,43 +410,167 @@ export function ListenerCohortsContent({
       ) : null}
 
       {consentEnabled && cohorts.length > 0 ? (
-        <div className="listener-cohort-list" aria-label="Listener cohort suggestions">
-          {cohorts.map((cohort) => (
-            <ListenerCohortCard
-              key={cohort.id}
-              cohort={cohort}
-              actionId={actionId}
-              selected={cohort.id === selectedCohortId}
-              onOpenDetail={onOpenDetail}
-              onCloseDetail={onCloseDetail}
-              onJoin={onJoin}
-              onLeave={onLeave}
-              onHide={onHide}
-            />
-          ))}
-        </div>
+        <>
+          {kinds.length > 1 ? (
+            <div className="cohort-filters" role="group" aria-label="Show communities by kind">
+              <button
+                type="button"
+                className="cohort-filter"
+                aria-pressed={activeFilter === "all"}
+                onClick={() => setKindFilter("all")}
+              >
+                All <span className="cohort-filter__count">{cohorts.length}</span>
+              </button>
+              {kinds.map(({ kind, count }) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className="cohort-filter"
+                  aria-pressed={activeFilter === kind}
+                  onClick={() => setKindFilter(kind)}
+                >
+                  {KIND_ICONS[kind]}
+                  {cohortKindFilterLabel(kind)} <span className="cohort-filter__count">{count}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="listener-cohort-list" aria-label="Listener cohort suggestions">
+            {groups.joined.length > 0 ? (
+              <CohortGroup
+                id="cohorts-joined"
+                title="Joined"
+                hint="Open one to see who is there and talk in its room."
+                cohorts={groups.joined}
+                resetKey={activeFilter}
+                {...tileHandlers}
+              />
+            ) : null}
+            {groups.suggested.length > 0 ? (
+              <CohortGroup
+                id="cohorts-suggested"
+                title="Suggested for you"
+                hint="Based on what you play. Nobody sees you here until you join."
+                cohorts={groups.suggested}
+                resetKey={activeFilter}
+                {...tileHandlers}
+              />
+            ) : null}
+          </div>
+        </>
       ) : null}
 
-      {consentEnabled && selectedCohortId ? (
-        <ListenerCohortDetailPanel
-          panelRef={detailPanelRef}
-          cohort={selectedCohort}
-          detail={detail}
-          cohortRoom={cohortRoom}
-          loading={detailLoading}
-          roomLoading={roomLoading}
-          error={detailError}
-          roomError={roomError}
-          actionId={actionId}
-          onClose={onCloseDetail}
-          onLoadRoom={onLoadRoom}
-          onJoinRoom={onJoinRoom}
-          onJoin={onJoin}
-          onLeave={onLeave}
-          onHide={onHide}
-        />
-      ) : null}
+      <dialog
+        ref={dialogRef}
+        id="listener-cohort-detail"
+        className="cohort-sheet"
+        aria-label="Listener cohort detail"
+        onClose={() => {
+          if (selectedCohortId) onCloseDetail();
+        }}
+        onClick={handleDialogClick}
+      >
+        {detailOpen ? (
+          <ListenerCohortDetailPanel
+            cohort={selectedCohort}
+            detail={detail}
+            cohortRoom={cohortRoom}
+            loading={detailLoading}
+            roomLoading={roomLoading}
+            error={detailError}
+            roomError={roomError}
+            actionId={actionId}
+            onClose={onCloseDetail}
+            onLoadRoom={onLoadRoom}
+            onJoinRoom={onJoinRoom}
+            onJoin={onJoin}
+            onLeave={onLeave}
+            onHide={onHide}
+          />
+        ) : null}
+      </dialog>
     </div>
+  );
+}
+
+type CohortTileHandlers = {
+  actionId: string | null;
+  selectedCohortId: string | null;
+  onOpenDetail: (cohort: CommunityCohort) => void;
+  onCloseDetail: () => void;
+  onJoin: (cohort: CommunityCohort) => void;
+  onHide: (cohort: CommunityCohort) => void;
+};
+
+function CohortGroup({
+  id,
+  title,
+  hint,
+  cohorts,
+  resetKey,
+  ...handlers
+}: CohortTileHandlers & {
+  id: string;
+  title: string;
+  hint: string;
+  cohorts: CommunityCohort[];
+  resetKey: string;
+}) {
+  const [expandedFor, setExpandedFor] = useState<string | null>(null);
+  const expanded = expandedFor === resetKey;
+  const overflow = cohorts.length > COHORT_PREVIEW_COUNT;
+  const shown = expanded || !overflow ? cohorts : cohorts.slice(0, COHORT_PREVIEW_COUNT);
+
+  return (
+    <section className="cohort-group" aria-labelledby={`${id}-title`}>
+      <header className="cohort-group__header">
+        <h3 id={`${id}-title`}>
+          {title}
+          <span className="cohort-group__count">{cohorts.length}</span>
+        </h3>
+        <p>{hint}</p>
+      </header>
+      <ul className="cohort-grid" id={`${id}-grid`}>
+        {shown.map((cohort) => (
+          <li key={cohort.id}>
+            <ListenerCohortCard
+              cohort={cohort}
+              selected={cohort.id === handlers.selectedCohortId}
+              {...handlers}
+            />
+          </li>
+        ))}
+      </ul>
+      {overflow ? (
+        <button
+          type="button"
+          className="cohort-group__more"
+          aria-expanded={expanded}
+          aria-controls={`${id}-grid`}
+          onClick={() => setExpandedFor(expanded ? null : resetKey)}
+        >
+          {expanded ? "Show fewer" : `Show all ${cohorts.length}`}
+          <span className="ms-icon" aria-hidden>expand_more</span>
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function CohortCover({ cohort }: { cohort: CommunityCohort }) {
+  const kind = cohortKind(cohort.cohortType);
+  const { base, accent } = cohortCoverHues(`${cohort.cohortType}:${cohort.title}`);
+  return (
+    <span
+      className={`cohort-cover cohort-cover--${kind}`}
+      style={{ "--cover-h1": base, "--cover-h2": accent } as React.CSSProperties}
+      aria-hidden
+    >
+      <span className="cohort-cover__rings" />
+      <span className="cohort-cover__glyph">{KIND_ICONS[kind]}</span>
+      <span className="cohort-cover__initials">{cohortInitials(cohort.title)}</span>
+    </span>
   );
 }
 
@@ -423,76 +581,87 @@ function ListenerCohortCard({
   onOpenDetail,
   onCloseDetail,
   onJoin,
-  onLeave,
   onHide,
-}: {
+}: Omit<CohortTileHandlers, "selectedCohortId"> & {
   cohort: CommunityCohort;
-  actionId: string | null;
   selected: boolean;
-  onOpenDetail: (cohort: CommunityCohort) => void;
-  onCloseDetail: () => void;
-  onJoin: (cohort: CommunityCohort) => void;
-  onLeave: (cohort: CommunityCohort) => void;
-  onHide: (cohort: CommunityCohort) => void;
 }) {
+  const kind = cohortKind(cohort.cohortType);
+  const status = cohort.membership.status;
   const primaryAction = cohortPrimaryAction(cohort);
   const cohortPending = actionId?.endsWith(`:${cohort.id}`) ?? false;
-  const primaryPending = primaryAction ? actionId === `${primaryAction}:${cohort.id}` : false;
+  const joinPending = actionId === `join:${cohort.id}`;
   const hidePending = actionId === `hide:${cohort.id}`;
-  const isJoined = cohort.membership.status === "joined";
+  const toggleDetail = () => (selected ? onCloseDetail() : onOpenDetail(cohort));
 
   return (
-    <RoomCard
-      className={`room-card--cohort listener-cohort-card--${cohort.membership.status}`}
-      accessModel="consent"
-      eyebrow={cohortTypeLabel(cohort.cohortType)}
-      title={cohort.title}
-      selected={selected}
-      meta={
-        <>
-          <span>{cohort.memberCountLabel}</span>
-          <span className={`listener-cohort-card__status listener-cohort-card__status--${cohort.membership.status}`}>
-            {cohortStatusLabel(cohort.membership.status)}
-          </span>
-        </>
-      }
-      actions={
-        <>
-          <Button
-            variant="ghost"
-            onClick={() => (selected ? onCloseDetail() : onOpenDetail(cohort))}
-            disabled={cohortPending}
-            aria-expanded={selected}
-            aria-controls="listener-cohort-detail"
-          >
-            {selected ? "Hide details" : "Details"}
-          </Button>
-          {primaryAction === "join" ? (
-            <Button onClick={() => onJoin(cohort)} disabled={cohortPending}>
-              {primaryPending ? "Joining..." : cohort.membership.status === "left" ? "Rejoin" : "Join"}
-            </Button>
-          ) : null}
-          {primaryAction === "leave" ? (
-            <Button variant="ghost" onClick={() => onLeave(cohort)} disabled={cohortPending}>
-              {primaryPending ? "Leaving..." : "Leave"}
-            </Button>
-          ) : null}
-          {!isJoined && cohort.membership.status !== "hidden" ? (
-            <Button variant="ghost" onClick={() => onHide(cohort)} disabled={cohortPending}>
-              {hidePending ? "Hiding..." : "Hide"}
-            </Button>
-          ) : null}
-        </>
-      }
+    <article
+      className={`cohort-tile listener-cohort-card--${status}${selected ? " is-selected" : ""}`}
+      aria-busy={cohortPending}
     >
-      <p>{cohort.safeExplanation}</p>
-      <div className="listener-cohort-card__reason">{cohortReasonLabel(cohort)}</div>
-    </RoomCard>
+      <div className="cohort-tile__art">
+        <button
+          type="button"
+          className="cohort-tile__open"
+          onClick={toggleDetail}
+          aria-expanded={selected}
+          aria-controls="listener-cohort-detail"
+          aria-label={`${selected ? "Hide details" : "Details"}: ${cohort.title}`}
+        >
+          <CohortCover cohort={cohort} />
+        </button>
+        <span className="cohort-tile__kind">{cohortKindLabel(kind)}</span>
+        {status === "joined" || status === "left" ? (
+          <span className={`cohort-tile__status listener-cohort-card__status--${status}`}>
+            {status === "joined" ? <span className="ms-icon" aria-hidden>check</span> : null}
+            {cohortStatusLabel(status)}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="cohort-tile__body">
+        <h4 className="cohort-tile__title">
+          <button type="button" onClick={toggleDetail} tabIndex={-1}>
+            {cohort.title}
+          </button>
+        </h4>
+        <p className="cohort-tile__blurb">{cohortBlurb(cohort)}</p>
+        <p className="cohort-tile__meta">
+          <span className="ms-icon" aria-hidden>group</span>
+          {cohort.memberCountLabel}
+        </p>
+      </div>
+
+      <div className="cohort-tile__actions">
+        {primaryAction === "join" ? (
+          <Button className="ui-btn-sm" onClick={() => onJoin(cohort)} disabled={cohortPending}>
+            {joinPending ? null : <span className="ms-icon" aria-hidden>add</span>}
+            {joinPending ? "Joining..." : status === "left" ? "Rejoin" : "Join"}
+          </Button>
+        ) : (
+          <Button variant="ghost" className="ui-btn-sm" onClick={toggleDetail} disabled={cohortPending}>
+            <span className="ms-icon" aria-hidden>forum</span>
+            Open
+          </Button>
+        )}
+        {status !== "joined" ? (
+          <button
+            type="button"
+            className="cohort-tile__icon-btn"
+            onClick={() => onHide(cohort)}
+            disabled={cohortPending}
+            aria-label={hidePending ? `Hiding ${cohort.title}` : `Hide ${cohort.title}`}
+            title="Not for me"
+          >
+            <span className="ms-icon" aria-hidden>visibility_off</span>
+          </button>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
 function ListenerCohortDetailPanel({
-  panelRef,
   cohort,
   detail,
   cohortRoom,
@@ -508,7 +677,6 @@ function ListenerCohortDetailPanel({
   onLeave,
   onHide,
 }: {
-  panelRef: React.RefObject<HTMLElement | null>;
   cohort: CommunityCohort | null;
   detail: CommunityCohortDetailResponse | null;
   cohortRoom: CommunityCohortRoomResponse | null;
@@ -530,22 +698,21 @@ function ListenerCohortDetailPanel({
   const hidePending = cohort ? actionId === `hide:${cohort.id}` : false;
 
   return (
-    <aside
-      ref={panelRef}
-      id="listener-cohort-detail"
-      className="listener-cohort-detail"
-      role="region"
-      aria-label="Listener cohort detail"
-      aria-busy={loading}
-      tabIndex={-1}
-    >
+    <div className="listener-cohort-detail" aria-busy={loading}>
       <div className="listener-cohort-detail__header">
+        {cohort ? (
+          <span className="listener-cohort-detail__cover">
+            <CohortCover cohort={cohort} />
+          </span>
+        ) : null}
         <div>
           <span className="settings-kicker">Cohort detail</span>
           <h4>{detail?.cohort.title ?? cohort?.title ?? "Listener cohort"}</h4>
           <p>{detail?.cohort.safeExplanation ?? "Loading privacy-safe cohort context..."}</p>
         </div>
-        <Button variant="ghost" onClick={onClose}>Close</Button>
+        <button type="button" className="cohort-sheet__close" onClick={onClose} aria-label="Close">
+          <span className="ms-icon" aria-hidden>close</span>
+        </button>
       </div>
 
       {loading ? (
@@ -659,7 +826,7 @@ function ListenerCohortDetailPanel({
           </div>
         </>
       ) : null}
-    </aside>
+    </div>
   );
 }
 

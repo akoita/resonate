@@ -28,6 +28,7 @@ const ROUTES = [
   "/shows/create",
   "/settings",
   "/listening",
+  "/community",
   "/support",
   "/artist/catalog",
   "/release/e2e-release-000-0000-0000-000000000001",

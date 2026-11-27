@@ -158,7 +158,7 @@ export default function RootLayout({
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=album,arrow_forward,auto_awesome,chevron_left,chevron_right,close,error,folder,graphic_eq,hourglass_top,insights,library_add,library_music,lock,mic,person_add,person_search,play_arrow,playlist_add,progress_activity,public,queue_music,rocket_launch,search,search_off,table_rows,tune,upload_file&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add,album,arrow_forward,auto_awesome,campaign,check,chevron_left,chevron_right,close,error,expand_more,folder,forum,graphic_eq,group,hourglass_top,insights,library_add,library_music,location_on,lock,mic,person_add,person_search,play_arrow,playlist_add,progress_activity,public,queue_music,redeem,rocket_launch,search,search_off,table_rows,tune,upload_file,visibility_off,workspace_premium&display=swap"
         />
       </head>
       <body>

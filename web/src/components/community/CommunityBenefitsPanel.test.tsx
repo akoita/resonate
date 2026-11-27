@@ -51,7 +51,6 @@ function content(overrides: Partial<React.ComponentProps<typeof CommunityBenefit
       loading={false}
       error={null}
       redeemingId={null}
-      onRefresh={vi.fn()}
       onRedeem={vi.fn()}
       {...overrides}
     />
@@ -86,7 +85,7 @@ describe("CommunityBenefitsPanel", () => {
     }));
 
     expect(html).toContain("Holder listening room");
-    expect(html).toContain("Proofs private");
+    expect(html).toContain("Claiming stays private: nobody sees your wallet or what you own.");
     expect(html).toContain("Claim benefit");
     expect(html).toContain("Artist benefit");
     expect(html).not.toContain("stem_nft_holder");
@@ -120,8 +119,8 @@ describe("CommunityBenefitsPanel", () => {
       actionsDisabled: true,
     }));
 
-    expect(html).toContain("Refreshing...");
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>Claim benefit<\/button>/);
+    expect(html).toContain("aria-busy=\"true\"");
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>(<span[^>]*>redeem<\/span>)?Claim benefit<\/button>/);
   });
 
   it("renders redeemed and locked benefits separately from claimable benefits", () => {
@@ -152,7 +151,8 @@ describe("CommunityBenefitsPanel", () => {
   it("renders the empty state", () => {
     const html = renderToStaticMarkup(content());
 
-    expect(html).toContain("No unlocked benefits yet");
-    expect(html).toContain("private community proofs");
+    expect(html).toContain("No perks unlocked yet");
+    expect(html).toContain("community-perks-strip");
+    expect(html).not.toContain("Ready to claim");
   });
 });
