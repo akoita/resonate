@@ -528,3 +528,27 @@ The Library selection bar offers **Play now**, **Play next** and **Add to
 queue** for the ticked tracks (unavailable tracks are skipped), and dragging
 a ticked track carries the whole selection to the dock's Play now / Up next /
 Later lanes.
+
+### Collection Play buttons follow playback
+
+The Play button at the top of a playlist (own or public), a release, a library
+album, and the catalog, profile and library artist pages is one shared
+component, `CollectionPlayButton` (`web/src/components/player/CollectionPlayButton.tsx`).
+While that collection is what the player is playing it shows Pause; once paused
+it shows Resume, which calls `togglePlay` and continues the current track from
+its position instead of restarting the collection.
+
+The match rule lives in `isCollectionActive` (`web/src/lib/collectionPlayback.ts`):
+
+- A playlist matches by the queue source the player recorded when it was
+  started, as long as the current track belongs to the playlist. Adding,
+  removing or reordering queue tracks keeps the link; a track added from
+  elsewhere returns the button to Play while it plays.
+- Albums, releases and artists have no recorded source, so they match when
+  the queue holds exactly their tracks, in any order (shuffle keeps the match).
+- Replacing the queue with anything else, or clearing it, returns the button
+  to Play, which starts the collection from the top. Queue edits never change
+  a saved playlist.
+
+Covered by `web/src/lib/collectionPlayback.test.ts` and
+`web/tests/collection-play-button.spec.ts`.

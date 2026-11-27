@@ -23,6 +23,7 @@ import { catalogArtistPlaybackTracks } from "../../../lib/catalogArtistPlayback"
 import { usePlayer } from "../../../lib/playerContext";
 import { QueueActionsButton } from "../../../components/player/QueueActionsButton";
 import { ArtistCampaignLink } from "../../../components/shows/ArtistCampaignLink";
+import { CollectionPlayButton } from "../../../components/player/CollectionPlayButton";
 
 type ArtistTab = "discography" | "community";
 
@@ -263,9 +264,12 @@ export default function ArtistPage() {
                             <div className="library-artist-actions">
                                 {playbackTracks.length > 0 ? (
                                     <>
-                                        <Button variant="primary" onClick={() => void playQueue(playbackTracks, 0)}>
-                                            ▶ Play all
-                                        </Button>
+                                        <CollectionPlayButton
+                                            trackIds={playbackTracks.map((track) => track.id)}
+                                            collectionName={artist?.displayName}
+                                            onPlay={() => void playQueue(playbackTracks, 0)}
+                                            label="Play all"
+                                        />
                                         <QueueActionsButton
                                             tracks={playbackTracks}
                                             label="Queue artist"

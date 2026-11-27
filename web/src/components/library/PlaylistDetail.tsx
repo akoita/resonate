@@ -47,6 +47,7 @@ import { FeatureTip } from "../ui/FeatureTip";
 import { useListSelection } from "../../lib/useListSelection";
 import { PlaylistHero, PlaylistMetaDot, PlaylistTrackRow, RowMenuButton, menuPositionFor } from "./PlaylistLayout";
 import { useUIStore } from "../../lib/uiStore";
+import { CollectionPlayButton } from "../player/CollectionPlayButton";
 
 interface PlaylistDetailProps {
     playlistId: string;
@@ -91,6 +92,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     );
     // What may actually go into a queue. Never used for rendering the list.
     const playableTracks = useMemo(() => queueableTracks(tracks), [tracks]);
+    const playableTrackIds = useMemo(() => playableTracks.map((track) => track.id), [playableTracks]);
 
     const { playQueue, currentTrack, setRepeatMode } = usePlayer();
     const queueActions = useQueueActions();
@@ -414,9 +416,13 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                 }
                 actions={
                     <>
-                        <Button variant="primary" onClick={handlePlayAll} disabled={playableTracks.length === 0}>
-                            <PlayIcon /> Play
-                        </Button>
+                        <CollectionPlayButton
+                            trackIds={playableTrackIds}
+                            playlistId={playlistId}
+                            collectionName={playlist?.name}
+                            onPlay={handlePlayAll}
+                            disabled={playableTracks.length === 0}
+                        />
                         <QueueActionsButton
                             tracks={playableTracks}
                             label="Add to queue"

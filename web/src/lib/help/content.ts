@@ -1023,7 +1023,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog", "album", "go to album", "go to artist", "dock", "undock", "minimize", "fold the dock", "hide the queue", "queue chip", "move console", "float", "console layout", "session dock", "session", "capsule", "drag and drop", "drag to queue", "drop", "play now", "up next", "later", "every page", "reorder queue", "move in queue", "insert", "playlists tab"],
+    keywords: ["A–B", "passage", "finite repeats", "set repeats", "select", "multi-select", "select several tracks", "shift click", "range", "loop these", "bulk", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal", "ai dj queue", "steer", "outside your request", "picked by your ai dj", "add to queue", "play next", "queue from catalog", "album", "go to album", "go to artist", "dock", "undock", "minimize", "fold the dock", "hide the queue", "queue chip", "move console", "float", "console layout", "session dock", "session", "capsule", "drag and drop", "drag to queue", "drop", "play now", "up next", "later", "every page", "reorder queue", "move in queue", "insert", "playlists tab", "pause playlist", "resume", "play all"],
     sections: [
       {
         id: "playing",
@@ -1043,6 +1043,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 900,
               source: STAGING,
             },
+          },
+          {
+            kind: "paragraph",
+            text: "Playlists, albums, releases and artist pages have a Play button at the top. While that playlist or album is what's playing, the button turns into Pause, and once paused it says Resume, which carries on from where you stopped instead of starting over. Adding, removing or reordering tracks in your queue keeps a playlist linked to it. When a track you added from elsewhere is playing, or you start something else, the button says Play again and starts the playlist from the top.",
           },
         ],
       },

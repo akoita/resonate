@@ -36,6 +36,15 @@ export function PlayIcon() {
   );
 }
 
+export function PauseIcon() {
+  return (
+    <Glyph>
+      <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none" />
+      <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none" />
+    </Glyph>
+  );
+}
+
 export function PlayNextIcon() {
   return (
     <Glyph>

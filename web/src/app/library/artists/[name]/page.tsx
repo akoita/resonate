@@ -18,6 +18,7 @@ import { usePlayer } from "../../../../lib/playerContext";
 import { useQueueActions } from "../../../../lib/useQueueActions";
 import { getArtworkUrl, listTracks, type LocalTrack } from "../../../../lib/localLibrary";
 import { AddToPlaylistIcon } from "../../../../components/ui/MenuIcons";
+import { CollectionPlayButton } from "../../../../components/player/CollectionPlayButton";
 
 const UNKNOWN_ALBUM = "Unknown Album";
 
@@ -167,9 +168,12 @@ export default function LibraryArtistPage() {
 
               {!loading && tracks.length > 0 && (
                 <div className="library-artist-actions">
-                  <Button variant="primary" onClick={() => void playQueue(tracks, 0)}>
-                    ▶ Play all
-                  </Button>
+                  <CollectionPlayButton
+                    trackIds={tracks.map((track) => track.id)}
+                    collectionName={artistName}
+                    onPlay={() => void playQueue(tracks, 0)}
+                    label="Play all"
+                  />
                   <QueueActionsButton
                     tracks={tracks}
                     label="Queue artist"
