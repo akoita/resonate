@@ -997,14 +997,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Press play on any track in Discover, the catalog, a release page, or your library. The Player opens a Now Playing console with full transport controls and your live queue. For a catalog track, click the album name or the artwork to open the album, or the artist name to open the artist's page. Artist names in the queue, and album and artist names on playlist rows, are links too.",
+            text: "Press play on any track in Discover, the catalog, a release page, or your library. The Player opens a Now Playing console with your live queue and actions for the track; play, pause, skip, the progress bar and volume stay on the player bar along the bottom of the screen, which the console and the Session dock always end above. For a catalog track, click the album name or the artwork to open the album, or the artist name to open the artist's page. Artist names in the queue, and album and artist names on playlist rows, are links too.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/player.png`,
               alt: "The Player page with a large play control, progress and output sliders, and a 'Queue' panel for an AI DJ set: a strip naming the AI DJ and its request, World Music and Afrobeats, with a Steer link, a sparkle mark on each pick the DJ chose, and a muted 'Outside your request' note on one pick.",
-              caption: "The Now Playing console: transport controls, per-track actions, and a queue that shows when it is an AI DJ set.",
+              caption: "The Now Playing console: per-track actions, and a queue that shows when it is an AI DJ set.",
               width: 1440,
               height: 900,
               source: STAGING,
