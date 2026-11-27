@@ -9,6 +9,7 @@ import {
   RemixStudioEditor,
 } from "../../../../components/remix/RemixStudioEditor";
 import { getRemixProject, type RemixProject } from "../../../../lib/api";
+import { useRecordRecentView } from "../../../../components/home/RecordRecentView";
 
 type LoadState =
   | { kind: "loading" }
@@ -44,6 +45,21 @@ export default function RemixStudioPage() {
       cancelled = true;
     };
   }, [token, projectId]);
+
+  // #2735: an unpublished draft is remembered on this device for Home's
+  // "Jump back in". A published remix appears there as its release instead.
+  const project = state.kind === "loaded" ? state.project : null;
+  useRecordRecentView(
+    project && !project.publishedReleaseId
+      ? {
+        kind: "remixDraft",
+        id: project.id,
+        title: project.title,
+        subtitle: `Remix of ${project.source.trackTitle}`,
+        href: `/remix/studio/${encodeURIComponent(project.id)}`,
+      }
+      : null,
+  );
 
   if (!token) {
     return (

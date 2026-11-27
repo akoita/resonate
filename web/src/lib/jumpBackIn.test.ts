@@ -58,6 +58,12 @@ describe("mergeJumpBackIn", () => {
     expect(item.play).toMatchObject({ resumeTrackId: "r1-t3" });
   });
 
+  it("reopens a Remix Studio draft without a play button", () => {
+    const [draft] = mergeJumpBackIn([], [{ ...view("remixDraft", "p1", HOUR), href: "/remix/studio/p1" }]);
+    expect(draft).toMatchObject({ badge: "Remix draft", href: "/remix/studio/p1", last: "opened" });
+    expect(draft.play).toBeUndefined();
+  });
+
   it("keeps the release and its mixer apart", () => {
     const items = mergeJumpBackIn([], [view("release", "r1", HOUR), view("mixer", "r1", 2 * HOUR)]);
     expect(items.map((item) => item.badge)).toEqual(["Release", "Stems"]);

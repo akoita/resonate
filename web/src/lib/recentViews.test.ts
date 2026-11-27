@@ -73,6 +73,7 @@ describe("recentViews", () => {
     expect(normalizeRecentView({ ...artist, href: "//evil.example/x", viewedAt: 1 })).toBeNull();
     expect(normalizeRecentView({ ...artist, viewedAt: 1, imageUrl: "javascript:alert(1)" })?.imageUrl).toBeUndefined();
     expect(normalizeRecentView({ ...artist, kind: "device_file", viewedAt: 1 })).toBeNull();
+    expect(normalizeRecentView({ kind: "remixDraft", id: "p1", title: "My flip", href: "/remix/studio/p1", viewedAt: 1 })?.kind).toBe("remixDraft");
     window.localStorage.setItem(RECENT_VIEWS_STORAGE_PREFIX + "u1", "not json");
     expect(readRecentViews("u1")).toEqual([]);
   });
