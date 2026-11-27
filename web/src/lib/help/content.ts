@@ -840,7 +840,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "When you're signed in, a \"Jump back in\" row sits right under the featured campaign, before the catalog. It gathers what you played or opened lately, from the last few hours to the last few months, newest first: albums, singles and EPs, remixes, playlists, artists, shows, stems and a release's stem mixer. Each tile says what it is and when you last played or opened it. Press its play button to start it; an album or playlist you played picks up at the track you were on. A show or a stem opens its page instead.",
+            text: "When you're signed in, a \"Jump back in\" row sits right under the featured campaign, before the catalog. It gathers what you played or opened lately, from the last few hours to the last few months, newest first: albums, singles and EPs, remixes, playlists, artists, shows, stems, a release's stem mixer and your own Remix Studio drafts. Each tile says what it is and when you last played or opened it. Press its play button to start it; an album or playlist you played picks up at the track you were on. A show, a stem or a remix draft opens its page instead; a draft reopens in Remix Studio, and once it is published it shows up as a remix you can play.",
           },
           {
             kind: "paragraph",

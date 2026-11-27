@@ -108,6 +108,7 @@ export function jumpBackInRecentMock(apiBase = "http://localhost:3000", now = Da
 export function jumpBackInViewsMock(apiBase = "http://localhost:3000", now = Date.now()) {
   return [
     { kind: "artist", id: "jbi-kora-waves", title: "Kora Waves", subtitle: "Afro-soul", imageUrl: art(apiBase, 190, "kora-waves"), href: "/artist/jbi-kora-waves", artistId: "jbi-kora-waves", viewedAt: now - 5 * HOUR },
+    { kind: "remixDraft", id: "jbi-draft-low-tide", title: "Low Tide flip", subtitle: "Remix of Low Tide", href: "/remix/studio/jbi-draft-low-tide", viewedAt: now - 9 * HOUR },
     { kind: "show", id: "jbi-mara-sol-lisbon", title: "Mara Sol in Lisbon", subtitle: "Mara Sol · Lisbon", imageUrl: art(apiBase, 24, "mara-sol"), href: "/shows/jbi-mara-sol-lisbon", viewedAt: now - 26 * HOUR },
     { kind: "mixer", id: "jbi-glass-harbour", title: "Glass Harbour", subtitle: "The Night Orchard", imageUrl: art(apiBase, 280, "glass-harbour"), href: "/release/jbi-glass-harbour?mixer=true", viewedAt: now - 4 * DAY },
     { kind: "stem", id: "4127", title: "Blue Hour — Vocals", subtitle: "vocals · Mara Sol", imageUrl: art(apiBase, 200, "blue-hour"), href: "/stem/4127", viewedAt: now - 21 * DAY },

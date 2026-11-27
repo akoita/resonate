@@ -32,10 +32,11 @@ title, an artist or owner line, "Played …" or "Opened …", and a one-click pl
 | Stems (a release's stem mixer) | opened `/release/:id?mixer=true` | plays the release; the tile opens the mixer |
 | Show | opened campaign pages (never drafts) | none; opens the campaign |
 | Stem | opened stem pages | none; opens the stem |
+| Remix draft (your own) | opened Remix Studio projects that are not published | none; reopens the studio |
 
 A release played and later opened is one tile at its latest moment and keeps
-the resume point. Remix Studio drafts are deliberately left out: they are work
-in progress, listed in the studio, not listening.
+the resume point. A published remix draft is not recorded as a draft: it
+appears as its Remix release.
 
 ## How it works
 
@@ -50,7 +51,7 @@ in progress, listed in the studio, not listening.
   never sends their ids. Release tiles carry the release's AI disclosure.
 - **Opened pages:** recorded in this browser only (`localStorage`,
   `resonate.recentViews.v1.<userId>`, 30 entries max) by the artist, release,
-  playlist, show and stem pages, for signed-in listeners only. Never sent to
+  playlist, show, stem and Remix Studio pages, for signed-in listeners only. Never sent to
   the server and not telemetry. Entries are validated on read (same-origin
   links, http(s) or same-origin images). A full local reset removes them.
 - **Clear** empties this device's list and hides everything up to that moment,

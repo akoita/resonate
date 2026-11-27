@@ -1,6 +1,7 @@
 /**
  * Home's "Jump back in" (#2735): the pages a signed-in listener opened lately
- * (artists, releases, mixers, playlists, shows, stems), kept in THIS browser
+ * (artists, releases, mixers, playlists, shows, stems, the listener's own
+ * Remix Studio drafts), kept in THIS browser
  * only. Nothing here is sent to the server: what someone looks at is not
  * listening history and is not telemetry. Plays come from the server's
  * consented play history instead (`getRecentListening`).
@@ -11,7 +12,7 @@
  *   included, from the row on this device.
  */
 
-export type RecentViewKind = "release" | "mixer" | "artist" | "playlist" | "show" | "stem";
+export type RecentViewKind = "release" | "mixer" | "artist" | "playlist" | "show" | "stem" | "remixDraft";
 
 export type RecentView = {
   kind: RecentViewKind;
@@ -36,7 +37,7 @@ export const RECENT_VIEWS_CLEARED_PREFIX = "resonate.recentViews.clearedAt.v1.";
 export const RECENT_VIEWS_CHANGED_EVENT = "resonate:recent-views-changed";
 export const RECENT_VIEWS_CAP = 30;
 
-const KINDS = new Set<RecentViewKind>(["release", "mixer", "artist", "playlist", "show", "stem"]);
+const KINDS = new Set<RecentViewKind>(["release", "mixer", "artist", "playlist", "show", "stem", "remixDraft"]);
 const MAX_TEXT = 200;
 
 function storage(): Storage | null {

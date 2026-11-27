@@ -45,6 +45,7 @@ const KIND_ICON: Record<JumpBackInKind, JumpBackInIcon> = {
   playlist: "queue_music",
   show: "rocket_launch",
   stem: "graphic_eq",
+  remixDraft: "library_music",
 };
 
 function releaseBadge(type: string | undefined, isRemix: boolean | undefined): string {
@@ -121,6 +122,9 @@ function fromView(view: RecentView): JumpBackInItem {
       return { ...base, badge: "Show" };
     case "stem":
       return { ...base, badge: "Stem" };
+    case "remixDraft":
+      // A draft has no master to play yet: the tile reopens it in the studio.
+      return { ...base, badge: "Remix draft" };
   }
 }
 
