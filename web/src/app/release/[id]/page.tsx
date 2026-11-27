@@ -52,7 +52,9 @@ import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { artistCreditHref, libraryAlbumHref } from "../../../lib/artistRoutes";
+import { artistCreditHref, libraryAlbumHref, publicReleaseHref } from "../../../lib/artistRoutes";
+import { getCatalogReleaseArtworkUrl } from "../../../lib/catalogDisplay";
+import { useRecordRecentView } from "../../../components/home/RecordRecentView";
 import { isCatalogReleaseFullySaved, releaseActionNoun } from "../../../lib/libraryNavigation";
 import { buildTrackStreamUrl } from "../../../lib/urlUtils";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
@@ -1751,6 +1753,32 @@ function ReleaseDetailsContent() {
       setIsSavingCreditedArtist(false);
     }
   };
+
+  // #2735: a public release (or its stem mixer) is remembered on this device
+  // for Home's "Jump back in". Drafts and restricted releases are not.
+  const recentReleaseView =
+    !loading && release && ["ready", "published"].includes(release.status) && isPublicReleaseRoute(release.rightsRoute)
+      ? searchParams.get("mixer") === "true"
+        ? {
+          kind: "mixer" as const,
+          id: release.id,
+          title: release.title,
+          subtitle: getReleaseArtistCredit(release),
+          imageUrl: getCatalogReleaseArtworkUrl(release) ?? null,
+          href: `${publicReleaseHref(release.id)}?mixer=true`,
+        }
+        : {
+          kind: "release" as const,
+          id: release.id,
+          title: release.title,
+          subtitle: getReleaseArtistCredit(release),
+          imageUrl: getCatalogReleaseArtworkUrl(release) ?? null,
+          href: publicReleaseHref(release.id),
+          releaseType: release.type,
+          isRemix: release.type?.toLowerCase() === "remix" || Boolean(release.remix),
+        }
+      : null;
+  useRecordRecentView(recentReleaseView);
 
   if (loading) return <div className="loading-state">Initializing Studio...</div>;
   if (!release) return <div className="error-state">Release not found.</div>;

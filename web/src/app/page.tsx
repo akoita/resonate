@@ -51,6 +51,7 @@ import { usePopularityRefreshTick } from "../components/home/usePopularityRefres
 import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
 import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
 import { HomeTuner } from "../components/home/HomeTuner";
+import { JumpBackIn } from "../components/home/JumpBackIn";
 import { LiveEventRail } from "../components/home/LiveEventRail";
 import { StemLab, selectStemLabEntries } from "../components/home/StemLab";
 import { HomeHeroEmpty, HomeHeroMotif, HomeHeroSkeleton } from "../components/home/HomeHeroEmpty";
@@ -986,6 +987,11 @@ export default function Home() {
         <div className="ng-section ng-section--tight ng-section--prompt">
           <EmailPromptCard context="onboarding" />
         </div>
+
+        {/* 1b. JUMP BACK IN (#2735) — what the signed-in listener played or
+            opened lately, before the catalog. Absent for newcomers and
+            signed-out visitors, so they still meet the catalog first. */}
+        <JumpBackIn />
 
         {/* 2. THE CATALOG — the main way into music, right after the hero
             (owner, 2026-11-27): newest releases, artists, stems and public

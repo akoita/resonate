@@ -1,5 +1,6 @@
 "use client";
 
+import { useRecordRecentView } from "../../../components/home/RecordRecentView";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -380,6 +381,21 @@ export default function StemDetailPage() {
                 .catch(() => { /* clipboard unavailable */ });
         }
     }, []);
+
+    // #2735: remembered on this device for Home's "Jump back in".
+    const stemArtist = attr("Artist") ?? primaryListing?.stem?.artist ?? null;
+    useRecordRecentView(
+        tokenIdValid && displayTitle && metaState === "ok"
+            ? {
+                kind: "stem",
+                id: tokenIdStr,
+                title: displayTitle,
+                subtitle: [stemType, stemArtist].filter(Boolean).join(" · ") || undefined,
+                imageUrl: meta?.image ?? null,
+                href: `/stem/${tokenIdStr}`,
+            }
+            : null,
+    );
 
     if (!tokenIdValid) {
         return (

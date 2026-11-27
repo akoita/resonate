@@ -84,6 +84,31 @@ function toTrackInfo(track: StatsTrackRow): StatsTrackInfo {
 }
 
 /**
+ * Whether the listener's plays are being remembered right now, and the taste
+ * reset (if any) before which nothing is read. Shared by "Your listening" and
+ * Home's "Jump back in".
+ */
+export async function readListeningMemory(
+  userId: string,
+): Promise<{ recording: boolean; resetAt: Date | null }> {
+  const [consent, settings] = await Promise.all([
+    prisma.analyticsConsent.findUnique({
+      where: { userId },
+      select: { productAnalytics: true, policyVersion: true },
+    }),
+    prisma.listenerTasteMemorySettings.findUnique({
+      where: { userId },
+      select: { agentPlaybackTrainingEnabled: true, resetAt: true },
+    }),
+  ]);
+  const recording =
+    consent?.productAnalytics === true &&
+    consent.policyVersion === ANALYTICS_CONSENT_POLICY_VERSION &&
+    settings?.agentPlaybackTrainingEnabled !== false;
+  return { recording, resetAt: settings?.resetAt ?? null };
+}
+
+/**
  * The signed-in listener's own listening stats, computed on read from their
  * own AgentSignal rows (the plays they allowed Resonate to remember). It never
  * reads another listener's data and stores nothing new. A taste reset forgets
@@ -99,21 +124,7 @@ export class ListeningStatsService {
     const windowStart = new Date(now.getTime() - options.windowDays * DAY_MS);
     const readFrom = new Date(now.getTime() - 2 * options.windowDays * DAY_MS);
 
-    const [consent, settings] = await Promise.all([
-      prisma.analyticsConsent.findUnique({
-        where: { userId },
-        select: { productAnalytics: true, policyVersion: true },
-      }),
-      prisma.listenerTasteMemorySettings.findUnique({
-        where: { userId },
-        select: { agentPlaybackTrainingEnabled: true, resetAt: true },
-      }),
-    ]);
-    const recording =
-      consent?.productAnalytics === true &&
-      consent.policyVersion === ANALYTICS_CONSENT_POLICY_VERSION &&
-      settings?.agentPlaybackTrainingEnabled !== false;
-    const resetAt = settings?.resetAt ?? null;
+    const { recording, resetAt } = await readListeningMemory(userId);
     // From `start` up to now, and never at or before a taste reset.
     const after = (start: Date): Prisma.DateTimeFilter =>
       resetAt && resetAt >= start ? { gt: resetAt, lte: now } : { gte: start, lte: now };

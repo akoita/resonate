@@ -10240,3 +10240,56 @@ export async function getListeningStats(
     topTracks: stats.topTracks.map(resolveStatsArtwork),
   };
 }
+
+// ========== Jump back in (Home: recently played) ==========
+
+export type RecentArtwork = {
+  releaseId: string;
+  artworkUrl: string | null;
+  hasUploadedArtwork: boolean;
+  artworkRevision: number;
+};
+
+export type RecentPlayItem =
+  | (RecentArtwork & {
+      kind: "release";
+      title: string;
+      releaseType: string;
+      isRemix: boolean;
+      artistId: string | null;
+      artistName: string;
+      aiDisclosure: AiDisclosure | null;
+      lastTrackId: string;
+      lastTrackTitle: string;
+      lastPlayedAt: string;
+    })
+  | {
+      kind: "playlist";
+      playlistId: string;
+      name: string;
+      isOwner: boolean;
+      visibility: string;
+      trackCount: number;
+      covers: RecentArtwork[];
+      lastTrackId: string;
+      lastTrackTitle: string;
+      lastPlayedAt: string;
+    };
+
+export type ListeningRecent = {
+  schemaVersion: string;
+  recording: boolean;
+  items: RecentPlayItem[];
+};
+
+/** A recent item's cover URL: the explicit artwork, else the canonical artwork endpoint. */
+export function recentArtworkUrl(art: RecentArtwork): string | null {
+  if (art.artworkUrl) return art.artworkUrl;
+  return art.hasUploadedArtwork ? getReleaseArtworkUrl(art.releaseId, { artworkRevision: art.artworkRevision }) : null;
+}
+
+/** The releases and playlists the signed-in listener played most recently (newest first). */
+export async function getRecentListening(token: string, options: { limit?: number } = {}): Promise<ListeningRecent> {
+  const query = options.limit ? `?limit=${options.limit}` : "";
+  return apiRequest<ListeningRecent>(`/listening/recent${query}`, { cache: "no-store" }, token);
+}

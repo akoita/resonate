@@ -25,6 +25,8 @@ import {
 } from "../../lib/api";
 import { publicPlaylistTrackToLocal as toLocalTrack } from "../../lib/publicPlaylistTracks";
 import { catalogArtistHref, playerReleaseHref } from "../../lib/artistRoutes";
+import { useRecordRecentView } from "../home/RecordRecentView";
+import { publicPlaylistCoverUrls } from "../catalog/CatalogPlaylistCard";
 import { TrackCredits } from "../content/TrackCredits";
 import {
   TrackUnavailableNote,
@@ -158,6 +160,23 @@ export function PublicPlaylistView({ playlistId, onBack }: PublicPlaylistViewPro
   useEffect(() => {
     void load();
   }, [load]);
+
+  // #2735: remembered on this device for Home's "Jump back in". Another
+  // listener's playlist only while it is public.
+  useRecordRecentView(
+    playlist && (playlist.isOwner || playlist.visibility === "public")
+      ? {
+        kind: "playlist",
+        id: playlist.id,
+        title: playlist.name,
+        subtitle: playlist.isOwner ? "Your playlist" : playlist.ownerDisplayName ? `by ${playlist.ownerDisplayName}` : "Public playlist",
+        imageUrl: publicPlaylistCoverUrls(playlist.tracks)[0] ?? null,
+        href: playlist.isOwner && playlist.visibility !== "public"
+          ? `/library?tab=playlists&playlist=${encodeURIComponent(playlist.id)}`
+          : `/playlist/${encodeURIComponent(playlist.id)}`,
+      }
+      : null,
+  );
 
   // Only the queue is filtered. The rendered list below keeps every entry —
   // an unavailable track a listener saved must not quietly disappear (#1793).
