@@ -695,9 +695,10 @@ export function campaignTerms(campaign: Campaign): CampaignTerm[] {
     },
     {
       label: "Payment",
+      // The wallet first; the token and network are the detail (#2724).
       value: campaign.chainId
-        ? `${campaign.paymentAssetSymbol ?? "USDC"} on ${chainName(campaign.chainId)}`
-        : campaign.paymentAssetSymbol ?? "USDC",
+        ? `From your Resonate wallet (${campaign.paymentAssetSymbol ?? "USDC"} on ${chainName(campaign.chainId)})`
+        : `From your Resonate wallet (${campaign.paymentAssetSymbol ?? "USDC"})`,
     },
     { label: "Booking deadline", value: fmtDate(campaign.bookingDeadline) },
     { label: "Deposit released on booking", value: depositPct },

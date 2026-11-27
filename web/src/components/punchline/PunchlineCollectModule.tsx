@@ -803,8 +803,8 @@ export function DropShareAction({
 
 /** Phase → label while a paid x402 collect is in flight (#1462). */
 const PAID_PHASE_LABEL: Record<string, string> = {
-  signing: "Confirm in wallet…",
-  settling: "Verifying payment…",
+  signing: "Confirm with your passkey…",
+  settling: "Confirming your payment…",
   downloading: "Finishing…",
 };
 
@@ -869,7 +869,7 @@ export function CollectButton({
           onClick={onCollect}
           disabled={busy}
           aria-disabled={busy}
-          title="Buy this edition with your Resonate passkey wallet (USDC)."
+          title="Pay from your Resonate wallet with your passkey."
         >
           {busy
             ? (phase && PAID_PHASE_LABEL[phase]) || "Collecting…"

@@ -320,6 +320,27 @@
   line-height: 1.4;
 }
 
+/* Payment details (#2724): the token and network, folded under the price */
+.buy-modal__payment-details {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.buy-modal__payment-details > summary {
+  cursor: pointer;
+  color: var(--color-muted);
+  font-size: 12px;
+  width: fit-content;
+}
+
+.buy-modal__payment-details > summary:focus-visible {
+  outline: 2px solid var(--color-accent, currentColor);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Error / Success alerts */
 .buy-modal__alert {
   padding: 12px 16px;

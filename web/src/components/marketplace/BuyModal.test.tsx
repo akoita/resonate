@@ -99,10 +99,12 @@ describe("X402QuoteBreakdown (#1581)", () => {
       />,
     );
     expect(html).toContain("Platform fee (included)");
-    expect(html).toContain("1.025 USDC");
+    expect(html).toContain("$1.03");
     expect(html).toContain("Total");
-    expect(html).toContain("10.25 USDC");
-    expect(html).not.toContain("11.275 USDC");
+    expect(html).toContain("$10.25");
+    expect(html).not.toContain("$11.28");
+    // Dollars first: the token amount belongs under Payment details (#2724).
+    expect(html).not.toContain("USDC");
   });
 
   it("renders an explicit unavailable state without guessed amounts", () => {

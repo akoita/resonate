@@ -1927,7 +1927,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Preview and collect licensed audio stems from artists worldwide, choosing the license tier that fits how you'll use them.",
     category: "marketplace",
     audiences: ["listener", "producer"],
-    keywords: ["marketplace", "buy", "collect", "stem", "official stems", "separated", "lossless", "wav", "flac", "stem source", "license", "personal", "remix", "commercial", "purchase", "checkout", "x402", "receipt", "nft", "library", "my purchased stems", "my purchases", "where are my stems", "upgrade", "share", "share license"],
+    keywords: ["marketplace", "buy", "collect", "stem", "official stems", "separated", "lossless", "wav", "flac", "stem source", "license", "personal", "remix", "commercial", "purchase", "checkout", "quick checkout", "standard checkout", "payment details", "x402", "receipt", "nft", "library", "my purchased stems", "my purchases", "where are my stems", "upgrade", "share", "share license"],
     sections: [
       {
         id: "browse",
@@ -2014,7 +2014,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "steps",
             items: [
               "Open a listing and choose its license tier.",
-              "Choose x402 or direct wallet checkout when both are available. In x402 checkout, review the platform fee marked as included and the unchanged stablecoin total.",
+              "Choose Quick checkout or Standard checkout when both are offered. Both pay from your Resonate wallet. Quick checkout is for the personal license and gives you the file right away; Standard checkout works for every license and adds the stem to your library. Prices are shown in dollars, with the platform fee marked as included; Payment details shows the digital-dollar amount and network that actually pay.",
               "Choose how you want it delivered: Deliver now, which ends your 14-day right to withdraw once you tick the box, or Wait 14 days, which keeps it. Payment stays disabled until you choose. See Delivery and your right to withdraw.",
               "Confirm the total and pay from your wallet balance. Resonate disables payment if it cannot verify the current quote details.",
               "Approve with your passkey — your collected stem and receipt appear in your wallet and library. If your stablecoin payments come from a separate payment wallet, you approve one extra passkey prompt first, before anything is paid; it confirms that the payment is yours.",
@@ -2028,7 +2028,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Stems you buy live in your library, in the Stems tab. When a purchase goes through, the confirmation offers View in your library, plus Open in Remix Studio when you bought a Remix or Commercial license; choose Done to close it. My purchased stems at the top of Browse stems always takes you there too. A new purchase can take a few minutes to appear. A stablecoin (x402) payment shows up there when it settles through the marketplace; otherwise you get the file and a receipt to keep.",
+            text: "Stems you buy live in your library, in the Stems tab. When a purchase goes through, the confirmation offers View in your library, plus Open in Remix Studio when you bought a Remix or Commercial license; choose Done to close it. My purchased stems at the top of Browse stems always takes you there too. A new purchase can take a few minutes to appear. A Quick checkout purchase shows up there when it is recorded through the marketplace; otherwise you get the file and a receipt to keep.",
           },
           {
             kind: "paragraph",
@@ -4203,7 +4203,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: 'On a release with a published drop, everyone sees a "Collect moments" section: lyric-first cards you can play, with how many editions are left. Sign in, tap Collect, and the edition number is yours. Free moments are claimed instantly; priced moments show their price and check out with your Resonate passkey wallet — you pay in USDC and the edition is granted the moment the payment clears. Each fan can collect one edition per moment, and when they are gone, they are gone.',
+            text: 'On a release with a published drop, everyone sees a "Collect moments" section: lyric-first cards you can play, with how many editions are left. Sign in, tap Collect, and the edition number is yours. Free moments are claimed instantly; priced moments show their price in dollars and you pay from your Resonate wallet with your passkey; the edition is granted the moment the payment clears. Each fan can collect one edition per moment, and when they are gone, they are gone.',
           },
           {
             kind: "paragraph",
@@ -4240,7 +4240,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Priced moments (paid collecting)",
-            text: "Artists set each moment's price — free, or between $0.50 and $9.99 per edition. Priced moments check out in USDC from your Resonate passkey wallet; the artist keeps at least 85% of every sale. Only you can redeem your payment, so if it comes from a separate payment wallet you approve one extra passkey prompt before paying. If a payment clears but the edition just sold out or you already own it, no edition is granted and support will refund you.",
+            text: "Artists set each moment's price — free, or between $0.50 and $9.99 per edition. Priced moments are paid from your Resonate wallet (in a digital dollar, USDC); the artist keeps at least 85% of every sale. Only you can redeem your payment, so if it comes from a separate payment wallet you approve one extra passkey prompt before paying. If a payment clears but the edition just sold out or you already own it, no edition is granted and support will refund you.",
           },
         ],
       },

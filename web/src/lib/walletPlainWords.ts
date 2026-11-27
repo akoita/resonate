@@ -1,4 +1,5 @@
 import type { PaymentAssetBalance } from "../hooks/usePaymentAssets";
+import { formatDollars as formatSharedDollars } from "./money";
 
 /**
  * Plain words for the wallet (newcomer pass): money is shown in dollars, test
@@ -31,8 +32,9 @@ export function dollarBalance(balances: PaymentAssetBalance[]): number {
     .reduce((total, { asset, balanceUnits }) => total + Number(balanceUnits) / 10 ** asset.decimals, 0);
 }
 
+/** The wallet balance in the shared checkout format (#2724). */
 export function formatDollars(amount: number) {
-  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatSharedDollars(amount);
 }
 
 /** "$20" for a whole amount, "$2.50" otherwise. */

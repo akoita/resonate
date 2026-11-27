@@ -13,7 +13,7 @@ import {
 } from "../../hooks/useShowPledgeExecution";
 import { isProductAnalyticsAllowed, subscribeToAnalyticsConsent } from "../../lib/analyticsConsent";
 import { getExplorerTxUrl } from "../../lib/explorer";
-import { formatPaymentAmountWithSymbol } from "../../lib/payments";
+import { formatUnitsForPeople, isUsdStablecoinSymbol } from "../../lib/money";
 import {
   campaignPledgeAvailability,
   campaignFeeNotice,
@@ -88,11 +88,11 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     refundExecution?.transactionHash ?? refundTxHash ?? latestPledge?.transactionHash,
   );
   const latestPledgeAmount = latestPledge
-    ? formatPaymentAmountWithSymbol(
-      latestPledge.amountUnits,
-      latestPledge.paymentAssetDecimals,
-      latestPledge.paymentAssetSymbol ?? latestPledge.currency,
-    )
+    ? formatUnitsForPeople(BigInt(latestPledge.amountUnits), {
+      decimals: latestPledge.paymentAssetDecimals,
+      symbol: latestPledge.paymentAssetSymbol ?? latestPledge.currency,
+      usdPegged: isUsdStablecoinSymbol(latestPledge.paymentAssetSymbol ?? latestPledge.currency),
+    })
     : null;
   const latestPledgeCampaignStatus = latestPledge?.campaign?.status ?? campaign.rawStatus;
   const feeNotice = campaignFeeNotice(campaign);

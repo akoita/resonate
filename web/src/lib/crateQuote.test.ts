@@ -83,8 +83,8 @@ describe("money display", () => {
 
   it("splits an item's price into the artist side and the platform fee", () => {
     const item = quoteItem("q1");
-    expect(itemPriceText(item)).toBe("2 USDC");
-    expect(itemSplitText(item)).toEqual({ artist: "1.8 USDC", platform: "0.2 USDC" });
+    expect(itemPriceText(item)).toBe("$2.00");
+    expect(itemSplitText(item)).toEqual({ artist: "$1.80", platform: "$0.20" });
     expect(itemPriceText(quoteItem("q1", { totalUnits: null }))).toBeNull();
     expect(itemSplitText(quoteItem("q1", { platformFeeUnits: null }))).toBeNull();
   });
@@ -286,7 +286,7 @@ describe("receipts", () => {
       ],
     });
     expect(receiptRows(quote)).toEqual([
-      expect.objectContaining({ quoteLineId: "q1", outcome: "settled", reason: null, transactionHash: hash, price: "2 USDC" }),
+      expect.objectContaining({ quoteLineId: "q1", outcome: "settled", reason: null, transactionHash: hash, price: "$2.00" }),
       expect.objectContaining({ quoteLineId: "q2", outcome: "dropped", reason: "Left out: the listing changed" }),
       expect.objectContaining({ quoteLineId: "q3", outcome: "failed", reason: "Not part of the purchase" }),
     ]);
@@ -298,8 +298,8 @@ describe("stem labels and totals", () => {
     const quote = makeQuote();
     expect(stemLabel(quote, "q2")).toMatchObject({ trackTitle: "Track t1", stemType: "vocals" });
     expect(stemLabel(quote, "nope")).toBeNull();
-    expect(totalsForStems(quote, ["q1", "q3"])).toEqual(["4 USDC"]);
-    expect(totalsForStems(quote, ["q1", "q2", "q3"])).toEqual(["7 USDC"]);
+    expect(totalsForStems(quote, ["q1", "q3"])).toEqual(["$4.00"]);
+    expect(totalsForStems(quote, ["q1", "q2", "q3"])).toEqual(["$7.00"]);
     expect(totalsForStems(quote, [])).toEqual([]);
   });
 
@@ -312,7 +312,7 @@ describe("stem labels and totals", () => {
         ]),
       ],
     });
-    expect(totalsForStems(quote, ["q1", "q2"])).toEqual(["1.5 ETH", "2 USDC"]);
+    expect(totalsForStems(quote, ["q1", "q2"])).toEqual(["1.5 ETH", "$2.00"]);
   });
 });
 

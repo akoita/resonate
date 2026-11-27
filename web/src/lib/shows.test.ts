@@ -561,7 +561,7 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
     } as unknown as Campaign);
     const byLabel = Object.fromEntries(terms.map((t) => [t.label, t.value]));
     expect(byLabel["Minimum backers"]).toBe("100");
-    expect(byLabel["Payment"]).toBe("USDC on Base Sepolia");
+    expect(byLabel["Payment"]).toBe("From your Resonate wallet (USDC on Base Sepolia)");
     expect(byLabel["Deposit released on booking"]).toBe("10%");
     expect(byLabel["Dispute window"]).toBe("7 days");
     expect(byLabel["Refund policy"]).toContain("Part paid at booking");
@@ -756,7 +756,7 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
     const summary = pledgeConfirmSummary(campaign, tier);
     expect(summary).toContain("$75");
     expect(summary).toContain("Ticket intent");
-    expect(summary).toContain("Payment: USDC on Base Sepolia");
+    expect(summary).toContain("Payment: From your Resonate wallet (USDC on Base Sepolia)");
     expect(summary).toContain("Deposit released on booking: 10%");
     expect(summary).toContain("Dispute window: 7 days");
     expect(summary).toContain("Refund policy: Part paid at booking");

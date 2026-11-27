@@ -18,6 +18,7 @@ import {
   type LineChoice,
 } from "../../lib/crateQuote";
 import { StemSourceBadge } from "../stem/StemSourceBadge";
+import { isUsdStablecoinSymbol, paidAsText } from "../../lib/money";
 import type { PreflightDrop } from "../../lib/crateQuotePreflight";
 import {
   NO_STANDARD_TERMS_TEXT,
@@ -40,7 +41,9 @@ function domId(prefix: string, value: string): string {
 function ItemRow({ item }: { item: CrateQuoteItem }) {
   const price = itemPriceText(item);
   const split = itemSplitText(item);
-  const usd = item.totalUsd === null ? null : formatUsdDecimal(item.totalUsd);
+  // A dollar stablecoin already reads as dollars; another token adds its rough dollar value.
+  const usd =
+    item.totalUsd === null || isUsdStablecoinSymbol(item.symbol) ? null : formatUsdDecimal(item.totalUsd);
   const dropped = item.status === "dropped";
   return (
     <li
@@ -223,25 +226,46 @@ export function QuoteTotals({ quote, label = "Quote total" }: { quote: CrateQuot
             <dd>Nothing to buy</dd>
           </div>
         ) : (
-          quote.totals.map((total) => (
-            <div key={total.paymentToken}>
-              <dt>Total in {total.symbol}</dt>
-              <dd>
-                {total.total} {total.symbol}
-                {total.totalUsd ? ` (about ${formatUsdDecimal(total.totalUsd)})` : ""}
-              </dd>
-            </div>
-          ))
+          quote.totals.map((total) =>
+            isUsdStablecoinSymbol(total.symbol) ? (
+              <div key={total.paymentToken}>
+                <dt>{quote.totals.length > 1 ? "In dollars" : "Total"}</dt>
+                <dd>
+                  {formatUsdDecimal(total.totalUsd ?? total.total)}
+                </dd>
+              </div>
+            ) : (
+              <div key={total.paymentToken}>
+                <dt>Total in {total.symbol}</dt>
+                <dd>
+                  {total.total} {total.symbol}
+                  {total.totalUsd ? ` (about ${formatUsdDecimal(total.totalUsd)})` : ""}
+                </dd>
+              </div>
+            ),
+          )
         )}
         {quote.totals.length > 1 ? (
           <div>
-            <dt>Total in USD</dt>
+            <dt>Total, all currencies</dt>
             <dd>
               {quote.totalUsd === null ? "Not known for every currency" : formatUsdDecimal(quote.totalUsd)}
             </dd>
           </div>
         ) : null}
       </dl>
+      {quote.totals.some((total) => isUsdStablecoinSymbol(total.symbol)) ? (
+        <details className="crates-hint crates-payment-details">
+          <summary>Payment details</summary>
+          {quote.totals
+            .filter((total) => isUsdStablecoinSymbol(total.symbol))
+            .map((total) => (
+              <p key={total.paymentToken}>
+                {paidAsText({ amount: total.total, symbol: total.symbol })} from your Resonate wallet.
+              </p>
+            ))}
+        </details>
+      ) : null}
     </section>
   );
 }
