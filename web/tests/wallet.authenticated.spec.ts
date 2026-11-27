@@ -150,7 +150,7 @@ test.describe("Wallet for newcomers", () => {
     await expect(card).not.toContainText("$");
   });
 
-  test("WALLET-04: the sidebar account card opens Profile, Wallet, Settings and Sign out", async ({ authenticatedPage: page }) => {
+  test("WALLET-04: the sidebar account card opens Profile, Your listening, Wallet, Settings and Sign out", async ({ authenticatedPage: page }) => {
     await answerSurfaces(page);
     await page.goto("/player");
 
@@ -162,7 +162,7 @@ test.describe("Wallet for newcomers", () => {
 
     const menu = page.getByRole("menu", { name: "Account" });
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem")).toHaveText(["Profile", "Wallet", "Settings", "Sign out"]);
+    await expect(menu.getByRole("menuitem")).toHaveText(["Profile", "Your listening", "Wallet", "Settings", "Sign out"]);
     await expect(accountButton).toHaveAttribute("aria-expanded", "true");
     await expect(menu.getByRole("menuitem", { name: "Profile" })).toBeFocused();
 
@@ -183,6 +183,7 @@ test.describe("Wallet for newcomers", () => {
     await page.keyboard.press("Enter");
     await expect(page.getByRole("menu", { name: "Account" }).getByRole("menuitem")).toHaveText([
       "Profile",
+      "Your listening",
       "Settings",
       "Sign out",
     ]);
