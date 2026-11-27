@@ -1,6 +1,10 @@
 # Vision Sprint 54: Traceable remixes
 
-**Status:** 🟡 Approved by the owner and started on 2026-11-04.
+**Status:** ✅ Closed on 2026-11-27. All five slices shipped. Release notes:
+[`releases/milestone-52.md`](releases/milestone-52.md). The robustness re-run
+on real renders and the catalog false-positive run moved to #2614 (no
+milestone), so #2566 stays open for it.
+**Started:** approved by the owner on 2026-11-04.
 **Milestone:** [Vision Sprint 54](https://github.com/akoita/resonate/milestone/52).
 Each item is a sub-issue of #2566, so the milestone can close when the
 feature works end to end.
