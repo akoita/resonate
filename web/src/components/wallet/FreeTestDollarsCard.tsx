@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useFundingOptions } from "../../hooks/usePaymentAssets";
 import { testDollarFaucet } from "../../lib/walletPlainWords";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { useToast } from "../ui/Toast";
@@ -15,6 +16,10 @@ export default function FreeTestDollarsCard({ address, onRefresh }: { address: s
   const { addToast } = useToast();
   const [copied, setCopied] = useState(false);
   const faucet = testDollarFaucet(chainId);
+  // Prefer the deployment's configured USDC faucet link; Circle's public page otherwise.
+  const { options } = useFundingOptions({ chainId: chainId ?? undefined, wallet: address });
+  const configuredUrl = options.find((option) => option.kind === "testnet_faucet" && /usdc/i.test(option.assetId))?.url;
+  const faucetUrl = configuredUrl ?? faucet?.url;
 
   const copy = useCallback(async () => {
     if (!address) return;
@@ -47,8 +52,8 @@ export default function FreeTestDollarsCard({ address, onRefresh }: { address: s
         </li>
         <li>
           <strong>Open Circle&apos;s test faucet.</strong>{" "}
-          <a href={faucet.url} target="_blank" rel="noopener noreferrer" data-testid="wallet-faucet-link">
-            Open faucet.circle.com
+          <a href={faucetUrl} target="_blank" rel="noopener noreferrer" data-testid="wallet-faucet-link">
+            Open the test faucet
           </a>
         </li>
         <li>

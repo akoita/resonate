@@ -26,7 +26,8 @@ infrastructure/quality (ADR-BM-6): test money only, no real-money flow.
   walks the newcomer through Circle's public test-USDC faucet: copy the
   address, open faucet.circle.com, pick USDC and the network, paste the address
   under "Send to", press Send, refresh. This is the main way to get more test
-  dollars; our own welcome top-up stays small so its faucet wallet can keep up.
+  dollars. On staging our own welcome top-up sends only a little test ETH for
+  fees (the USDC leg is off), and the Start here card points to this card.
   The card only links out and copies the address; it signs and moves nothing.
 - **Account menu.** The sidebar account card opens a menu: Profile (artist
   page for artists, Settings > Community for listeners), Wallet (only while the
@@ -61,4 +62,4 @@ Deployment values live in `resonate-iac`.
 - `backend/src/tests/welcome_funds.controller.spec.ts`
 - `backend/src/tests/product_surface_routes.spec.ts` (wallet switch gate)
 - `web/src/lib/walletPlainWords.test.ts`
-- `web/tests/wallet.authenticated.spec.ts` (WALLET-01..05)
+- `web/tests/wallet.authenticated.spec.ts` (WALLET-01..06)
