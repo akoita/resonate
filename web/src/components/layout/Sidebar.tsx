@@ -30,6 +30,18 @@ const PRIMARY_ITEMS = [
     )
   },
   {
+    // Owner choice (2026-11-27): the public catalog (releases, artists, stems
+    // and public playlists) gets a sidebar link for everyone,
+    // right after Home: it is where listeners find music to play.
+    name: "Catalog",
+    href: "/catalog",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+      </svg>
+    )
+  },
+  {
     name: "Player",
     href: "/player",
     icon: (
@@ -79,17 +91,6 @@ const PRIMARY_ITEMS = [
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" /><path d="m4 7 8 4 8-4" /><path d="M12 11v10" />
-      </svg>
-    )
-  },
-  {
-    // Owner choice (2026-11-27): the public catalog (releases, artists, stems
-    // and public playlists) gets a sidebar link for everyone.
-    name: "Catalog",
-    href: "/catalog",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
       </svg>
     )
   },
