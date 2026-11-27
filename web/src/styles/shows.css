@@ -266,7 +266,7 @@
 }
 
 .shows-page__title {
-  font-size: clamp(40px, 6vw, 68px);
+  font-size: clamp(40px, 6cqi, 68px);
   font-weight: 900;
   color: #fff;
   letter-spacing: -0.04em;
