@@ -94,6 +94,7 @@ import {
   watchingWatch,
 } from "../tests/fixtures/crate-digger-mock.mjs";
 import { GUIDE_FEATURED_CAMPAIGN_SLUG, startGuideSeedApi } from "../tests/fixtures/guide-seed-mock.mjs";
+import { listeningStatsMock } from "../tests/fixtures/listening-stats-mock.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "https://staging.resonate.pydes.xyz";
 const API_BASE_URL = (process.env.API_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -323,6 +324,12 @@ const AUTH_TARGETS = [
     // Taller so the new-releases and "Almost there" shelves and the journal all show.
     mockDiscoveries: true,
     viewportHeight: 2300,
+    prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); },
+  }],
+  ["/listening", "your-listening.png", {
+    // Your listening over 30 days, from invented plays (no real listener data).
+    mockListening: true,
+    selectors: [".ls-trend"],
     prepare: async (page) => { await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }); },
   }],
   ["/library", "library.png", {
@@ -685,6 +692,12 @@ async function capture(page, targets, passName) {
         minTracks: 3,
         topFamilyId: "r&b-soul",
       } }));
+    }
+    if (ready?.mockListening) {
+      await page.route("**/listening/stats**", (request) => {
+        const days = Number(new URL(request.request().url()).searchParams.get("days") ?? 30);
+        return request.fulfill({ json: listeningStatsMock(days) });
+      });
     }
     if (ready?.mockDiscoveries) {
       const item = (trackId, title, artistName, extra) => ({

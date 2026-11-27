@@ -212,6 +212,7 @@ export function accountMenuDestinations(input: { artistProfileId: string | null;
       label: "Profile",
       href: input.artistProfileId ? `/artist/${input.artistProfileId}` : "/settings?section=community",
     },
+    { label: "Your listening", href: "/listening" },
     ...(input.walletOn ? [{ label: "Wallet", href: "/wallet" }] : []),
     { label: "Settings", href: "/settings" },
   ];

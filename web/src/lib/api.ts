@@ -10148,3 +10148,95 @@ export function resolveTakedownNotice(
     token,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Your listening: the signed-in listener's own stats, from the plays they let
+// Resonate remember. Local files send no play events, so they never count.
+// ---------------------------------------------------------------------------
+
+export const LISTENING_STATS_WINDOWS = [7, 30, 90, 365] as const;
+export type ListeningStatsWindow = (typeof LISTENING_STATS_WINDOWS)[number];
+export type ListeningMoment = "morning" | "afternoon" | "evening" | "night";
+
+interface ListeningStatsArtwork {
+  releaseId: string;
+  artworkUrl: string | null;
+  hasUploadedArtwork: boolean;
+  artworkRevision: number;
+}
+
+export interface ListeningStatsArtist extends ListeningStatsArtwork {
+  artistId: string | null;
+  name: string;
+  plays: number;
+  minutes: number;
+  tracks: number;
+}
+
+export interface ListeningStatsTrack extends ListeningStatsArtwork {
+  trackId: string;
+  title: string;
+  artistId: string | null;
+  artistName: string;
+  releaseTitle: string;
+  plays: number;
+  minutes: number;
+  available: boolean;
+}
+
+export interface ListeningStatsTag {
+  name: string;
+  plays: number;
+  share: number;
+}
+
+export interface ListeningStats {
+  schemaVersion: "listening-stats/v1";
+  windowDays: ListeningStatsWindow;
+  from: string;
+  to: string;
+  recording: boolean;
+  truncated: boolean;
+  summary: {
+    plays: number;
+    minutes: number;
+    tracks: number;
+    artists: number;
+    newArtists: number;
+    playedThroughRate: number | null;
+    saves: number;
+    previous: { plays: number; minutes: number };
+  };
+  /**
+   * Plays in 15-minute UTC slots, oldest first: [slot since the epoch, plays,
+   * listened seconds]. The browser groups them into local days, so the server
+   * never needs the listener's time zone.
+   */
+  activity: Array<[slot: number, plays: number, seconds: number]>;
+  topArtists: ListeningStatsArtist[];
+  topTracks: ListeningStatsTrack[];
+  genres: ListeningStatsTag[];
+  moods: ListeningStatsTag[];
+  moments: Record<ListeningMoment, number>;
+  weekdayPlays: number;
+  weekendPlays: number;
+}
+
+function resolveStatsArtwork<T extends ListeningStatsArtwork>(item: T): T {
+  if (!item.artworkUrl && item.hasUploadedArtwork) {
+    return { ...item, artworkUrl: getReleaseArtworkUrl(item.releaseId, { artworkRevision: item.artworkRevision }) };
+  }
+  return item;
+}
+
+export async function getListeningStats(
+  token: string,
+  options: { days: ListeningStatsWindow },
+): Promise<ListeningStats> {
+  const stats = await apiRequest<ListeningStats>(`/listening/stats?days=${options.days}`, { cache: "no-store" }, token);
+  return {
+    ...stats,
+    topArtists: stats.topArtists.map(resolveStatsArtwork),
+    topTracks: stats.topTracks.map(resolveStatsArtwork),
+  };
+}

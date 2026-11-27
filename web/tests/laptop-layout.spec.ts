@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { guideSeedResponse } from "./fixtures/guide-seed-mock.mjs";
+import { listeningStatsMock } from "./fixtures/listening-stats-mock.mjs";
 
 /*
  * Laptop layout guard. On a laptop the page column is the window minus the
@@ -26,6 +27,7 @@ const ROUTES = [
   "/shows",
   "/shows/create",
   "/settings",
+  "/listening",
   "/support",
   "/artist/catalog",
   "/release/e2e-release-000-0000-0000-000000000001",
@@ -242,6 +244,9 @@ for (const width of LAPTOP_WIDTHS) {
       const response = guideSeedResponse(route.request().method(), new URL(route.request().url()));
       return route.fulfill({ status: response.status, contentType: response.type, body: response.body });
     });
+
+    // Your listening with a full month of invented plays, so every section is drawn.
+    await page.route(/:3000\/listening\/stats(\?|$)/, (route) => route.fulfill({ json: listeningStatsMock(30) }));
 
     await page.goto("/library");
     await page.waitForLoadState("networkidle");

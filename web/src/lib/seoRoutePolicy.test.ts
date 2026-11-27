@@ -27,6 +27,7 @@ const PRIVATE_LAYOUTS = [
   "shows/[campaignId]/edit/layout.tsx",
   "shows/create/layout.tsx",
   "sonic-radar/layout.tsx",
+  "listening/layout.tsx",
   "wallet/layout.tsx",
 ];
 

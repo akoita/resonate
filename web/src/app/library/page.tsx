@@ -1295,6 +1295,10 @@ function LibraryPageContent() {
                                     </button>
                                 )}
                             </div>
+                            <Link href="/listening" className="library-settings-link">
+                                <span className="ms-icon" aria-hidden="true">insights</span>
+                                Your listening
+                            </Link>
                             <Link href="/settings" className="library-settings-link">
                                 <span className="ms-icon" aria-hidden="true">tune</span>
                                 Library settings

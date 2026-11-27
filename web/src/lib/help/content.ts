@@ -1780,6 +1780,71 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["discover-music", "ai-dj", "settings-privacy"],
   },
   {
+    slug: "your-listening",
+    title: "Your listening",
+    summary:
+      "See how you listen: time listened, top artists and tracks, the genres and moods you play, when in the day you listen, and your listening streak. Only you can see it.",
+    category: "library",
+    audiences: ["listener"],
+    status: "available",
+    keywords: ["stats", "statistics", "listening stats", "listening time", "minutes listened", "top artists", "top tracks", "most played", "recap", "insights", "analytics", "streak", "genres", "moods", "history", "listening history"],
+    sections: [
+      {
+        id: "overview",
+        heading: "What the page shows",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Open Your listening from the account menu at the bottom of the sidebar, or from the Your listening button in your Library. Pick 7 days, 30 days, 90 days or Year at the top; the page remembers your choice on this device.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/your-listening.png`,
+              alt: "The Your listening page: a large number of hours listened with the change against the period before, a one-line summary naming the top artist and the time of day you listen most, tiles for plays, tracks, artists and streak, a bar chart of minutes listened each day, the top artists with the first one highlighted, the top tracks with a Play these button, genre and mood bars, and a breakdown by morning, afternoon, evening and night.",
+              caption: "Your listening over 30 days.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "list",
+            items: [
+              "Time listened, with how it compares with the period just before. Time is counted from how far each play got, so it is a careful estimate rather than an exact stopwatch.",
+              "Plays, tracks, artists (with how many were new to you) and your streak: the days in a row you have listened, up to today.",
+              "Your rhythm: minutes listened each day (each week for a year). Point at or tab to a bar to see that day.",
+              "Top artists and top tracks. Press Play these to queue your top tracks, or a cover to play one track.",
+              "Your sound profile: the share of your plays by genre and by mood, as the artists described their releases.",
+              "When you listen: morning, afternoon, evening and night by your device's clock, weekdays against weekends, how often you play tracks to the end, and how many tracks you saved.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "what-counts",
+        heading: "What counts as a play",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A play counts once a track has played for 30 seconds, the same rule artists see. Plays the AI DJ starts for you count too. Files from your own device are not counted, because Resonate never learns what you play from them.",
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Your history, your choice",
+            text: "The page is built from the plays you let Resonate remember. If usage measurement is off, new plays are not remembered and the page says so. Resetting your taste memory also starts this page fresh. See Settings & privacy controls.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Your listening", href: "/listening", description: "Your listening time, top artists, tracks, genres and moods." },
+      { label: "Privacy settings", href: "/settings?section=privacy", description: "Choose whether Resonate remembers your plays." },
+    ],
+    related: ["library-playlists", "settings-privacy", "product-analytics", "ai-dj"],
+  },
+  {
     slug: "library-playlists",
     title: "Your library & playlists",
     summary:
