@@ -2033,3 +2033,16 @@
   flex: 1 1 20rem;
   min-width: min(100%, 20rem);
 }
+
+/* Phones stack the header as a column, where that 20rem basis would become
+   a 20rem HEIGHT: an empty block between the subtitle and the button that
+   pushed the covers below the fold. The title sizes to its text there. */
+@media (max-width: 767px) {
+  .home-ng .ng-catalog-home .ng-catalog-header > :first-child {
+    flex: 0 0 auto;
+  }
+  .home-ng .ng-catalog-home .ng-catalog-header {
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+}
