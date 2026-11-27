@@ -3885,6 +3885,8 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
 
 .vault-welcome-steps a {
   color: #b9a8ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .vault-welcome-claim {
