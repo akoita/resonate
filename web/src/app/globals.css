@@ -825,6 +825,14 @@ button.user-profile {
   /* Added for absolute child containment */
 }
 
+/* The page column is a size container: pages lay out by the room they
+ * actually get beside the sidebar and the Session Dock (`@container page`),
+ * not by the window width, which counts both. */
+.app-page {
+  container: page / inline-size;
+  min-width: 0;
+}
+
 /* Library page: fill content area, minimal outer gap */
 .app-content:has(.library-page-main) {
   padding: var(--space-4);
@@ -1523,9 +1531,10 @@ button.user-profile {
 .player-floating-console {
   position: absolute;
   top: var(--space-3);
-  right: var(--space-4);
-  bottom: 110px;
-  /* Absolute clearance of the floating player bar */
+  /* Same outer edge as the player bar, and a gap above the bar and the queue
+     chip on its top edge (--player-bar-clearance, session-layout.css). */
+  right: var(--space-6);
+  bottom: calc(var(--player-bar-clearance, 106px) + var(--space-3));
   width: clamp(320px, 30vw, 500px);
   /* Make console width more dynamic */
   background: rgba(10, 10, 15, 0.6);
@@ -16488,6 +16497,9 @@ tr[draggable="true"]:hover {
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--r-radius-md);
   padding: 24px;
+  /* A wide table scrolls inside its card instead of pushing the whole page
+     sideways when the sidebar and the Session Dock leave little room. */
+  overflow-x: auto;
 }
 
 .premium-table-wrapper h2 {

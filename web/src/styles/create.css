@@ -21,8 +21,10 @@
   position: absolute;
   top: 10%;
   left: 50%;
-  width: 60vw;
-  height: 60vw;
+  /* Sized by the page column (cqi), not the window: 60vw beside the sidebar
+     and the Session Dock was wider than the page and scrolled it sideways. */
+  width: min(60vw, 100cqi);
+  height: min(60vw, 100cqi);
   transform: translateX(-50%);
   background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 70%);
   z-index: -1;

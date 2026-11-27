@@ -25,6 +25,11 @@ async function waitForPersistedQueueLength(page: Page, length: number) {
   }), { timeout: 10000 }).toBe(length);
 }
 
+/** The player bar: the one home for play, progress and volume while a session runs. */
+function playerBar(page: Page) {
+  return page.locator('.app-player');
+}
+
 async function seedPlayer(page: Page, source = false, local = false) {
   await injectMockAuth(page);
   await page.addInitScript(() => {
@@ -84,7 +89,7 @@ async function seedPlayer(page: Page, source = false, local = false) {
   }, { source, local });
   await page.reload();
   await expect(page.getByRole('main').getByText('Test a', { exact: true }).first()).toBeVisible({ timeout: HYDRATION_TIMEOUT });
-  await page.getByRole('main').getByRole('button', { name: 'Play', exact: true }).click();
+  await playerBar(page).getByRole('button', { name: 'Play', exact: true }).click();
 }
 async function endTrack(page: Page) {
   await page.evaluate(() => { const audio = (window as unknown as { sessionAudio: HTMLAudioElement }).sessionAudio; audio.currentTime = 30; });
@@ -106,7 +111,7 @@ test('queue snapshot saves once in manifest order and preserves active playback'
   await expect(page.getByRole('link', { name: 'Open playlist' })).toBeVisible();
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({ trackIds: ['a','b','c'], queueContext: { origin: 'player_queue', sourceKind: 'ad_hoc', queueCount: 3 } });
-  await expect(page.getByRole('main').getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await expect(playerBar(page).getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
 });
 
 test('source provenance survives reload and queue removal makes a new snapshot eligible', async ({ page }) => {
@@ -127,13 +132,13 @@ test('clear queue keeps the playing track, and undo restores the list and its so
   await expect(page.getByRole('status').filter({ hasText: 'Cleared 2 tracks from the queue.' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Remove Test b/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Remove Test a/ })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await expect(playerBar(page).getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
   await expect(main.getByRole('button', { name: 'Clear queue' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(page.getByRole('button', { name: /Remove Test c/ })).toBeVisible();
   await expect(page.getByRole('link', { name: 'View playlist' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
-  await expect(main.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await expect(playerBar(page).getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
   // Undo lives with the page; the cleared queue is what persists.
   await main.getByRole('button', { name: 'Clear queue' }).click();
   await waitForPersistedQueueLength(page, 1);
@@ -191,7 +196,7 @@ test('finite queue repeats finish after the last full pass on mobile', async ({ 
     await expect(page.getByRole('main').getByText(`Test ${expected}`, { exact: true }).first()).toBeVisible();
   }
   await endTrack(page);
-  await expect(page.getByRole('main').getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+  await expect(playerBar(page).getByRole('button', { name: 'Play', exact: true })).toBeVisible();
   await expect(controls.getByText(/remaining/)).toHaveCount(0);
 });
 
@@ -235,12 +240,12 @@ test('finite plans survive navigation and seeking but track selection cancels th
   await controls.getByRole('button', { name: 'Increase repeat count' }).click();
   await expect(controls.getByLabel('Additional repeats')).toHaveValue('2');
   await controls.getByRole('button', { name: 'Set repeats', exact: true }).click();
-  await page.getByRole('main').getByRole('slider', { name: 'Playback position' }).fill('50');
+  await playerBar(page).getByRole('slider', { name: 'Playback position' }).fill('50');
   await expect(controls.getByText(/2 remaining/)).toBeVisible();
   await page.getByRole('link', { name: 'User Guide', exact: true }).first().click();
   await page.getByRole('link', { name: 'Player', exact: true }).first().click();
   await expect(controls.locator('summary')).toContainText('2 repeats left');
-  await page.getByRole('main').getByRole('button', { name: 'Next', exact: true }).click();
+  await playerBar(page).getByRole('button', { name: 'Next track', exact: true }).click();
   await expect(page.getByRole('main').getByText('Test b', { exact: true }).first()).toBeVisible();
   await expect(controls.locator('summary')).not.toContainText('repeats left');
 });

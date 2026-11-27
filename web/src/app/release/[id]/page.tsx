@@ -3368,6 +3368,10 @@ function ReleaseDetailsContent() {
 
         .release-header {
           display: flex;
+          /* Beside the sidebar and the Session Dock the page column can be
+             narrow: the details then move under the artwork instead of
+             squeezing the title to a word per line. */
+          flex-wrap: wrap;
           gap: clamp(28px, 3vw, 52px);
           /* center (not flex-end) so a long, multi-line title doesn't
              strand the artwork at the bottom and look unbalanced. */
@@ -3449,7 +3453,8 @@ function ReleaseDetailsContent() {
         }
 
         .header-info {
-          flex: 1;
+          flex: 1 1 340px;
+          min-width: 0;
           display: flex;
           flex-direction: column;
         }
@@ -3480,7 +3485,7 @@ function ReleaseDetailsContent() {
           /* Was a fixed 84px — a long title then wrapped into a giant block
              that dwarfed the artwork. Now it scales and caps sensibly, and
              long words wrap instead of forcing the artwork to shrink. */
-          font-size: clamp(40px, 4.6vw, 68px);
+          font-size: clamp(36px, 4.6cqi, 68px);
           font-weight: 900;
           line-height: 0.98;
           margin-bottom: 28px;
@@ -4241,7 +4246,7 @@ function ReleaseDetailsContent() {
           }
 
           .release-title-lg {
-            font-size: 56px;
+            font-size: clamp(36px, 5cqi, 56px);
             margin-bottom: 24px;
           }
 

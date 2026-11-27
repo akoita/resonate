@@ -1776,8 +1776,10 @@
   content: "";
   position: absolute;
   top: -120px;
-  left: -10%;
-  right: -10%;
+  /* Within the page column: a glow wider than the page made the whole page
+     scroll sideways beside the sidebar and the Session Dock. */
+  left: 0;
+  right: 0;
   height: 480px;
   pointer-events: none;
   z-index: 0;
