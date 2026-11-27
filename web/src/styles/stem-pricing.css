@@ -751,3 +751,32 @@
   .official-stems-panel__actions .ui-btn { flex: 1 1 100%; }
   .official-stems-panel__track-head > .ui-btn { flex: 1 1 100%; }
 }
+
+/* The pricing grid sits in a page column that the sidebar and the Session
+   Dock narrow, so its rows step down by the grid's own width. */
+.stem-pricing-grid {
+  container: stem-pricing / inline-size;
+}
+
+@container stem-pricing (max-width: 760px) {
+  .stem-pricing-row {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3, 1rem);
+  }
+
+  .stem-pricing-row .stem-label,
+  .computed-prices-inline {
+    grid-column: 1 / -1;
+  }
+
+  .computed-prices-inline {
+    justify-content: flex-start;
+  }
+}
+
+@container stem-pricing (max-width: 440px) {
+  .stem-pricing-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-2, 0.5rem);
+  }
+}

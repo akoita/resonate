@@ -1202,17 +1202,25 @@
 
 /* ---------- Responsive ---------------------------------------- */
 
-@media (max-width: 1279px) {
+/* Home sizes by the page column (`@container page`), not the window: with the
+   sidebar and the Session Dock open, a laptop leaves the page far less room
+   than the window width says. Phones keep the window queries below. */
+@container page (max-width: 1240px) {
   .home-ng .ng-hero { aspect-ratio: 16 / 9; padding: 32px; }
   .home-ng .ng-hero__title { font-size: 44px; }
   .home-ng .ng-hero__body { -webkit-line-clamp: 5; }
   .home-ng .ng-hero__campaign-rail { width: min(340px, 34%); }
 }
 
-@media (max-width: 1023px) {
+@container page (max-width: 900px) {
   .home-ng .ng-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-ng .ng-ops-grid { grid-template-columns: 1fr; }
   .home-ng .ng-section { padding: 0 24px; }
+}
+
+/* The featured card and the campaign list sit side by side only when both
+   fit; below that the list moves under the card. */
+@container page (max-width: 1120px) {
   .home-ng .ng-hero {
     aspect-ratio: auto;
     min-height: 360px;

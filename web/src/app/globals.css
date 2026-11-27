@@ -815,6 +815,14 @@ a {
   /* Added for absolute child containment */
 }
 
+/* The page column is a size container: pages lay out by the room they
+ * actually get beside the sidebar and the Session Dock (`@container page`),
+ * not by the window width, which counts both. */
+.app-page {
+  container: page / inline-size;
+  min-width: 0;
+}
+
 /* Library page: fill content area, minimal outer gap */
 .app-content:has(.library-page-main) {
   padding: var(--space-4);
@@ -16402,6 +16410,9 @@ tr[draggable="true"]:hover {
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--r-radius-md);
   padding: 24px;
+  /* A wide table scrolls inside its card instead of pushing the whole page
+     sideways when the sidebar and the Session Dock leave little room. */
+  overflow-x: auto;
 }
 
 .premium-table-wrapper h2 {

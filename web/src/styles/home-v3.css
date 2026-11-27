@@ -1154,9 +1154,27 @@
 
 /* ---------- Responsive ----------------------------------------------- */
 
-@media (max-width: 1023px) {
+@container page (max-width: 900px) {
   .home-ng .ng-tuner { margin: 0 24px 48px; }
   .home-ng .ng-filter-deck { margin: 0 24px 32px; }
+}
+
+/* Beside a narrow page the energy meter and the AI DJ button move under the
+   greeting instead of squeezing it to a word per line. */
+@container page (max-width: 980px) {
+  .home-ng .ng-tuner {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "intro"
+      "deck"
+      "groups";
+  }
+
+  .home-ng .ng-tuner__deck {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 14px 22px;
+  }
 }
 
 @media (max-width: 767px) {

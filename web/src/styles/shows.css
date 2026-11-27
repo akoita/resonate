@@ -3400,17 +3400,19 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════
- * RESPONSIVE MEDIA QUERIES
+ * RESPONSIVE QUERIES
+ * The desktop steps size by the page column (`@container page`), so the
+ * sidebar and the Session Dock count; phones keep window queries.
  * ══════════════════════════════════════════════════════════════════ */
 
-@media (max-width: 1280px) {
+@container page (max-width: 1000px) {
   .shows-page {
     padding: 48px 36px 100px;
     gap: 56px;
   }
 }
 
-@media (max-width: 1180px) {
+@container page (max-width: 900px) {
   .campaign-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
@@ -3444,7 +3446,7 @@
   }
 }
 
-@media (max-width: 1023px) {
+@container page (max-width: 743px) {
   .shows-page__intro {
     grid-template-columns: 1fr;
     padding: 56px;
