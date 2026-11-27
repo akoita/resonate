@@ -34,7 +34,7 @@ These hide entry points to surfaces that are not ready to show newcomers. Their 
 | Disputes | `DISPUTES_ENABLED` | The Disputes item in the artist group |
 | Community rooms and cohorts | `COMMUNITY_ENABLED` | The Community sidebar item; the Community tab on artist pages; the Open Community card in Settings |
 | Scene Scout cards | `SCENE_SCOUT_ENABLED` | The Scene Scout panel in artist analytics |
-| Sonic Radar | `SONIC_RADAR_ENABLED` | Reserved; Sonic Radar has no sidebar item since #2663 and is reached from the AI DJ |
+| Sonic Radar | `SONIC_RADAR_ENABLED` | The sidebar item, shown under Library only once the listener's journal has discoveries (checked once per page load, after the page settles); otherwise Sonic Radar is reached from the AI DJ |
 | Desktop app link | `DESKTOP_APP_ENABLED` | The desktop app suggestion in Settings → Library |
 
 ## How it works

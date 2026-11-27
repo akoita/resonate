@@ -1,7 +1,9 @@
 # Vision Sprint 56: Marked and honest remixes
 
-**Status:** 🟡 Proposed on 2026-11-09. The three defect fixes are in review;
-the plan waits for the owner's approval.
+**Status:** ✅ Closed on 2026-11-27. All six items shipped, and #2606 item 1
+(account erasure) with them. #2606 items 2 and 3 moved to the backlog: they wait
+until sales are back in scope, and for a quarantine-clear action. Release
+notes: [`releases/milestone-54.md`](releases/milestone-54.md).
 **Milestone:** [Vision Sprint 56: Marked and honest remixes](https://github.com/akoita/resonate/milestone/54).
 Issues also carry the `sprint:vision-56` label and are sub-issues of epic #2589.
 **Goal:** By 2026-12-02, every piece of generated audio that leaves Resonate
@@ -45,7 +47,7 @@ fixes are independent of it and of each other.
 infrastructure repository (resonate-iac#333). The operator writes the secret.
 Items 1–3 only take effect where that is done, so it has the same deadline.
 
-**Sprint 54 stays open** for #2566 and #2576. Items 1 and 3 keep their
+**Sprint 54 stayed open** for #2566 and #2576 (closed 2026-11-27). Items 1 and 3 keep their
 Sprint 54 milestone; they are listed here because this sprint's goal depends
 on them.
 
