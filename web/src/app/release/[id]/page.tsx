@@ -99,6 +99,7 @@ import {
 } from "../../../lib/audioReplacement";
 import "../../../styles/license-badges.css";
 import { ReleaseCompositionSection } from "../../../components/catalog/ReleaseCompositionSection";
+import { CollectionPlayButton } from "../../../components/player/CollectionPlayButton";
 
 // Helper to get duration from track's first stem
 const getTrackDuration = (track: { stems?: Array<{ durationSeconds?: number | null }> }): number => {
@@ -1447,6 +1448,7 @@ function ReleaseDetailsContent() {
   );
 
   const handlePlayAll = () => handlePlayTrack(0);
+  const releaseTrackIds = release?.tracks?.map((track) => track.id) ?? [];
 
   const handleAddReleaseToPlaylist = async () => {
     if (!release?.tracks) return;
@@ -2105,9 +2107,14 @@ function ReleaseDetailsContent() {
 
           <div className="header-actions">
             <div className="header-action-group header-action-group--primary">
-              <Button onClick={handlePlayAll} className="btn-play-all">
-                Play All
-              </Button>
+              <CollectionPlayButton
+                trackIds={releaseTrackIds}
+                collectionName={release.title}
+                onPlay={handlePlayAll}
+                label="Play all"
+                className="btn-play-all"
+                disabled={releaseTrackIds.length === 0}
+              />
               <QueueActionsButton
                 tracks={queueSelectionTracks}
                 label={selectedTrackIds.size > 0 ? `Queue ${selectedTrackIds.size} selected` : `Queue ${releaseNoun}`}

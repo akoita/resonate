@@ -366,6 +366,12 @@ select:focus-visible {
   transform: translateY(0);
 }
 
+/* Collection headers swap Play for Pause or Resume while that collection
+ * plays; a shared minimum width keeps the buttons beside it from shifting. */
+.collection-play-btn {
+  min-inline-size: 8rem;
+}
+
 /* Ghost = glass secondary per design.md: 6% white fill, 16% white border,
  * backdrop-blur 12px. */
 .ui-btn-ghost {

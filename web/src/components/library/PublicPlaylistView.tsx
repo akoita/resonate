@@ -9,7 +9,6 @@ import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
 import { QueueActionsButton } from "../player/QueueActionsButton";
 import { ContextMenu } from "../ui/ContextMenu";
-import { PlayIcon } from "../ui/MenuIcons";
 import { PlaylistHero, PlaylistMetaDot, PlaylistTrackRow, RowMenuButton, menuPositionFor } from "./PlaylistLayout";
 import { useAuth } from "../auth/AuthProvider";
 import { formatDuration } from "../../lib/metadataExtractor";
@@ -34,6 +33,7 @@ import {
   queueableTracks,
   resolveAvailability,
 } from "./trackAvailability";
+import { CollectionPlayButton } from "../player/CollectionPlayButton";
 
 interface PublicPlaylistViewProps {
   playlistId: string;
@@ -184,6 +184,7 @@ export function PublicPlaylistView({ playlistId, onBack }: PublicPlaylistViewPro
     () => queueableTracks(playlist?.tracks ?? []).map(toLocalTrack),
     [playlist]
   );
+  const playableTrackIds = useMemo(() => playableTracks.map((track) => track.id), [playableTracks]);
 
   const handlePlayAll = useCallback(() => {
     if (playableTracks.length === 0) return;
@@ -328,9 +329,13 @@ export function PublicPlaylistView({ playlistId, onBack }: PublicPlaylistViewPro
         }
         actions={
           <>
-            <Button variant="primary" onClick={handlePlayAll} disabled={playableTracks.length === 0}>
-              <PlayIcon /> Play
-            </Button>
+            <CollectionPlayButton
+              trackIds={playableTrackIds}
+              playlistId={playlistId}
+              collectionName={playlist?.name}
+              onPlay={handlePlayAll}
+              disabled={playableTracks.length === 0}
+            />
             <QueueActionsButton
               tracks={playableTracks}
               label="Add to queue"

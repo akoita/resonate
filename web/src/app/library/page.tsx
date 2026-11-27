@@ -98,6 +98,7 @@ import {
     sharedLibraryReleaseId,
 } from "../../lib/artistRoutes";
 import { AddToPlaylistIcon, DeleteIcon, DownloadIcon, InfoIcon, PlayIcon, SellIcon, StemsIcon } from "../../components/ui/MenuIcons";
+import { CollectionPlayButton } from "../../components/player/CollectionPlayButton";
 
 type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations" | "moments";
 
@@ -1214,13 +1215,13 @@ function LibraryPageContent() {
                             {year && ` • ${year}`} • {albumTracks.length} track{albumTracks.length !== 1 ? "s" : ""}
                         </div>
                         <div className="detail-hero-actions" style={{ marginTop: "var(--space-4)" }}>
-                            <Button
-                                variant="primary"
-                                onClick={() => playQueue(albumTracks, 0)}
+                            <CollectionPlayButton
+                                trackIds={albumTracks.map((track) => track.id)}
+                                collectionName={selectedAlbum.name}
+                                onPlay={() => void playQueue(albumTracks, 0)}
+                                label="Play album"
                                 disabled={albumTracks.length === 0}
-                            >
-                                ▶ Play Album
-                            </Button>
+                            />
                             <QueueActionsButton
                                 tracks={albumTracks}
                                 label="Queue album"
