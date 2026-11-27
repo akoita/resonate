@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MIXER_STEM_ORDER, StemLab, selectStemLabEntries, stemMeterBars } from "./StemLab";
+import { MIXER_STEM_ORDER, StemLab, selectStemLabEntries } from "./StemLab";
 import type { Release, Track } from "../../lib/api";
 
 type Stem = NonNullable<Track["stems"]>[number];
@@ -120,21 +120,6 @@ describe("selectStemLabEntries", () => {
 
   it("covers exactly the release mixer channels", () => {
     expect([...MIXER_STEM_ORDER]).toEqual(["vocals", "drums", "bass", "piano", "guitar", "other"]);
-  });
-});
-
-describe("stemMeterBars", () => {
-  it("is deterministic and shaped per stem type", () => {
-    expect(stemMeterBars("stem-1", "drums")).toEqual(stemMeterBars("stem-1", "drums"));
-    const drums = stemMeterBars("stem-1", "drums");
-    expect(drums).toHaveLength(12);
-    // On-beat kicks tower over the ghost notes between them.
-    expect(drums[0]).toBeGreaterThan(drums[1]);
-    expect(drums[4]).toBeGreaterThan(drums[3]);
-    for (const height of stemMeterBars("stem-2", "vocals")) {
-      expect(height).toBeGreaterThanOrEqual(12);
-      expect(height).toBeLessThanOrEqual(100);
-    }
   });
 });
 

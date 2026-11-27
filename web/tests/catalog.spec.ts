@@ -86,7 +86,8 @@ test.describe("Catalog & Home Page", () => {
         await expect(page.getByRole("tab", { name: "releases" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "artists" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "stems" })).toBeVisible();
-        await expect(page.getByLabel("Search the catalog")).toBeVisible();
+        // One search bar: the top bar. The catalog section has no second one.
+        await expect(page.locator("#catalog").getByRole("search")).toHaveCount(0);
         // Scoped to the snapshot footer: the Stem Lab shelf also links to /catalog.
         await expect(
             page.locator(".ng-catalog-footer").getByRole("link", { name: /See the whole catalog/i }),

@@ -921,7 +921,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Right under the featured campaign, the catalog section (Find something to play) shows the newest releases, artists, stems and public playlists. Pick a genre to narrow the releases, search them as you type (press Enter to search the full catalog), or choose Open the catalog. Catalog is also second in the sidebar, right under Home. Further down, Your studio shows the artists and releases you manage once you are signed in.",
+            text: "Right under the featured campaign, the catalog section (Find something to play) shows the newest releases, artists, stems and public playlists. Pick a genre to narrow the releases, or choose Open the catalog to see everything. To look for something specific, use the search bar at the top of every page. Catalog is also second in the sidebar, right under Home. Further down, Your studio shows the artists and releases you manage once you are signed in.",
           },
         ],
       },

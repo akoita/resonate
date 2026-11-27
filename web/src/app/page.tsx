@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,6 @@ import {
 } from "../lib/api";
 import { artistProfileHref } from "../lib/artistRoutes";
 import {
-  filterPublicPlaylists,
   flattenCatalogStems,
   formatCount,
   getArtistName,
@@ -391,7 +390,6 @@ export default function Home() {
   const [myReleases, setMyReleases] = useState<Release[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
-  const [catalogSearch, setCatalogSearch] = useState("");
   const [catalogGenre, setCatalogGenre] = useState<string | null>(null);
   // #1454 WS-7: multi-rail personalized feed. null = loading, [] rails = honest empty.
   // #2254: explicit loading / ready / error so a failed feed is not mistaken
@@ -407,7 +405,6 @@ export default function Home() {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [activeHeroCampaignId, setActiveHeroCampaignId] = useState("");
   const [heroPaused, setHeroPaused] = useState(false);
-  const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
   const { status, sessionChecked, token, userId, connectPrivy } = useAuth();
   const { addToast } = useToast();
   const { playQueue } = usePlayer();
@@ -666,26 +663,9 @@ export default function Home() {
     () => summarizeCreditedArtists(displayReleases),
     [displayReleases],
   );
-  const normalizedSearch = catalogSearch.trim().toLowerCase();
-  const catalogFilteredReleases = useMemo(
-    () => filterReleases(displayReleases, normalizedSearch),
-    [displayReleases, normalizedSearch],
-  );
-  const catalogFilteredArtists = useMemo(
-    () => filterArtists(catalogArtists, normalizedSearch),
-    [catalogArtists, normalizedSearch],
-  );
-  const catalogFilteredStems = useMemo(
-    () => filterStems(catalogStems, normalizedSearch),
-    [catalogStems, normalizedSearch],
-  );
-  const catalogFilteredPlaylists = useMemo(
-    () => filterPublicPlaylists(publicPlaylists, normalizedSearch),
-    [publicPlaylists, normalizedSearch],
-  );
-  const catalogFilteredStemTracks = useMemo(
-    () => groupCatalogStemsByTrack(catalogFilteredStems),
-    [catalogFilteredStems],
+  const catalogStemTracks = useMemo(
+    () => groupCatalogStemsByTrack(catalogStems),
+    [catalogStems],
   );
   // Genre chips (the most common genres in the snapshot) narrow the releases.
   const catalogGenres = useMemo(
@@ -694,27 +674,25 @@ export default function Home() {
   );
   const catalogGenreReleases = useMemo(
     () => catalogGenre
-      ? catalogFilteredReleases.filter((release) => release.genre?.trim().toLowerCase() === catalogGenre.toLowerCase())
-      : catalogFilteredReleases,
-    [catalogFilteredReleases, catalogGenre],
+      ? displayReleases.filter((release) => release.genre?.trim().toLowerCase() === catalogGenre.toLowerCase())
+      : displayReleases,
+    [displayReleases, catalogGenre],
   );
   const browseReleases = useMemo(
     () => catalogGenreReleases.slice(0, HOME_RELEASE_SNAPSHOT_LIMIT),
     [catalogGenreReleases],
   );
   const browseArtists = useMemo(
-    () => catalogFilteredArtists.slice(0, HOME_ARTIST_SNAPSHOT_LIMIT),
-    [catalogFilteredArtists],
+    () => catalogArtists.slice(0, HOME_ARTIST_SNAPSHOT_LIMIT),
+    [catalogArtists],
   );
   const browseStemTracks = useMemo(
-    () => catalogFilteredStemTracks.slice(0, HOME_STEM_TRACK_SNAPSHOT_LIMIT),
-    [catalogFilteredStemTracks],
+    () => catalogStemTracks.slice(0, HOME_STEM_TRACK_SNAPSHOT_LIMIT),
+    [catalogStemTracks],
   );
-  // Analytics keeps counting individual stems shown, not grouped track rows.
-  const browseStemCount = browseStemTracks.reduce((total, group) => total + group.stemCount, 0);
   const browsePlaylists = useMemo(
-    () => catalogFilteredPlaylists.slice(0, HOME_PLAYLIST_SNAPSHOT_LIMIT),
-    [catalogFilteredPlaylists],
+    () => publicPlaylists.slice(0, HOME_PLAYLIST_SNAPSHOT_LIMIT),
+    [publicPlaylists],
   );
   const catalogVisibleCount =
     catalogView === "releases"
@@ -728,10 +706,10 @@ export default function Home() {
     catalogView === "releases"
       ? catalogGenreReleases.length
       : catalogView === "artists"
-        ? catalogFilteredArtists.length
+        ? catalogArtists.length
         : catalogView === "stems"
-          ? catalogFilteredStemTracks.length
-          : catalogFilteredPlaylists.length;
+          ? catalogStemTracks.length
+          : publicPlaylists.length;
   // #1454 WS-7: feed items adapted to the legacy HomeRecommendation shape so
   // the AI DJ session seeding and vibe-queue building keep working unchanged.
   const feedRecommendations = useMemo<HomeRecommendation[]>(() => {
@@ -770,54 +748,6 @@ export default function Home() {
     .slice()
     .sort((a, b) => getCatalogSortTime(b) - getCatalogSortTime(a))
     .slice(0, 4);
-
-  useEffect(() => {
-    const query = catalogSearch.trim();
-    if (query.length < 2) return;
-    const timer = window.setTimeout(() => {
-      const analyticsKey = JSON.stringify({
-        query,
-        catalogView,
-        activeFilter,
-      });
-      if (lastCatalogSearchAnalyticsKeyRef.current === analyticsKey) return;
-      lastCatalogSearchAnalyticsKeyRef.current = analyticsKey;
-      void recordProductAnalytics(token, "search.submitted", {
-        source: "home_catalog",
-        subjectType: "catalog",
-        payload: {
-          surface: "home_catalog",
-          queryLength: query.length,
-          catalogView,
-          activeFilter,
-          releaseResultCount: browseReleases.length,
-          artistResultCount: browseArtists.length,
-          stemResultCount: browseStemCount,
-          playlistResultCount: browsePlaylists.length,
-        },
-      });
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [activeFilter, browseArtists.length, browsePlaylists.length, browseReleases.length, browseStemCount, catalogSearch, catalogView, token]);
-
-  const recordCatalogSearchResultClick = (
-    resultType: "release" | "artist" | "track" | "playlist",
-    subjectId: string,
-    resultRank: number,
-  ) => {
-    if (!catalogSearch.trim()) return;
-    void recordProductAnalytics(token, "search.result_clicked", {
-      source: "home_catalog",
-      subjectType: resultType,
-      subjectId,
-      payload: {
-        surface: "home_catalog",
-        resultType,
-        resultRank,
-        catalogView,
-      },
-    });
-  };
 
   // #1451 WS-4: Top Artists come from the engagement serving table only —
   // no recency fallback. `loading` hides the rail, `ready` with `[]` = the
@@ -1072,35 +1002,6 @@ export default function Home() {
                 ) : null}
               </div>
               <div className="ng-catalog-actions">
-                <form
-                  className="ng-catalog-search"
-                  role="search"
-                  onSubmit={(event) => {
-                    // Enter takes the words to the full catalog's search.
-                    event.preventDefault();
-                    const q = catalogSearch.trim();
-                    router.push(q ? `/catalog?q=${encodeURIComponent(q)}` : "/catalog");
-                  }}
-                >
-                  <span className="ms-icon" aria-hidden>search</span>
-                  <input
-                    value={catalogSearch}
-                    onChange={(event) => setCatalogSearch(event.target.value)}
-                    type="search"
-                    placeholder="Search releases, artists, stems"
-                    aria-label="Search the catalog"
-                  />
-                  {catalogSearch && (
-                    <button
-                      type="button"
-                      className="ng-catalog-search__clear"
-                      onClick={() => setCatalogSearch("")}
-                      aria-label="Clear search"
-                    >
-                      <span className="ms-icon" aria-hidden>close</span>
-                    </button>
-                  )}
-                </form>
                 <Link href="/catalog" className="ng-btn ng-btn--primary ng-catalog-open">
                   Open the catalog
                   <span className="ms-icon" aria-hidden>arrow_forward</span>
@@ -1156,11 +1057,10 @@ export default function Home() {
             {catalogView === "releases" && (
               browseReleases.length > 0 ? (
                 <div className="ng-cat-grid">
-                  {browseReleases.map((release, index) => (
+                  {browseReleases.map((release) => (
                     <CatalogReleaseCard
                       key={release.id}
                       release={release}
-                      onSelect={() => recordCatalogSearchResultClick("release", release.id, index + 1)}
                       onPlay={handlePlayCatalogRelease}
                       actions={releaseActions(release)}
                       queueable
@@ -1170,7 +1070,7 @@ export default function Home() {
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>album</span>
-                  <p>{normalizedSearch ? "No releases match your search." : "No releases in the global catalog."}</p>
+                  <p>{"No releases in the global catalog."}</p>
                 </div>
               )
             )}
@@ -1178,11 +1078,10 @@ export default function Home() {
             {catalogView === "artists" && (
               browseArtists.length > 0 ? (
                 <div className="ng-cat-grid">
-                  {browseArtists.map((artist, index) => (
+                  {browseArtists.map((artist) => (
                     <CatalogArtistCard
                       key={artist.key}
                       artist={artist}
-                      onSelect={() => recordCatalogSearchResultClick("artist", artist.artistId ?? artist.key, index + 1)}
                       queueable
                     />
                   ))}
@@ -1190,7 +1089,7 @@ export default function Home() {
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>person_search</span>
-                  <p>{normalizedSearch ? "No artists match your search." : "No artists in the global catalog."}</p>
+                  <p>{"No artists in the global catalog."}</p>
                 </div>
               )
             )}
@@ -1198,18 +1097,17 @@ export default function Home() {
             {catalogView === "stems" && (
               browseStemTracks.length > 0 ? (
                 <div className="ng-cat-stem-list">
-                  {browseStemTracks.map((group, index) => (
+                  {browseStemTracks.map((group) => (
                     <CatalogStemTrackRow
                       key={group.key}
                       group={group}
-                      onSelect={() => recordCatalogSearchResultClick("track", group.trackId, index + 1)}
                     />
                   ))}
                 </div>
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>graphic_eq</span>
-                  <p>{normalizedSearch ? "No stems match your search." : "No stems are exposed in this catalog slice yet."}</p>
+                  <p>{"No stems are exposed in this catalog slice yet."}</p>
                 </div>
               )
             )}
@@ -1217,11 +1115,10 @@ export default function Home() {
             {catalogView === "playlists" && (
               browsePlaylists.length > 0 ? (
                 <div className="ng-cat-grid">
-                  {browsePlaylists.map((playlist, index) => (
+                  {browsePlaylists.map((playlist) => (
                     <CatalogPlaylistCard
                       key={playlist.id}
                       playlist={playlist}
-                      onSelect={() => recordCatalogSearchResultClick("playlist", playlist.id, index + 1)}
                       queueable
                     />
                   ))}
@@ -1229,7 +1126,7 @@ export default function Home() {
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>queue_music</span>
-                  <p>{normalizedSearch ? "No playlists match your search." : "No public playlists in the global catalog yet."}</p>
+                  <p>{"No public playlists in the global catalog yet."}</p>
                 </div>
               )
             )}
@@ -1515,43 +1412,6 @@ function getReleaseResourceCount(release: Release) {
     0,
   ) ?? 0;
   return Math.max(1, 1 + stemCount);
-}
-
-function filterReleases(releases: Release[], query: string) {
-  if (!query) return releases;
-  return releases.filter((release) =>
-    [
-      release.title,
-      getArtistName(release),
-      release.genre,
-      release.label,
-      release.type,
-    ].some((value) => value?.toLowerCase().includes(query)),
-  );
-}
-
-function filterArtists(artists: CatalogArtistSummary[], query: string) {
-  if (!query) return artists;
-  return artists.filter((artist) =>
-    [
-      artist.name,
-      artist.latestRelease?.title,
-      ...Array.from(artist.genres),
-    ].some((value) => value?.toLowerCase().includes(query)),
-  );
-}
-
-function filterStems(stems: CatalogStemSummary[], query: string) {
-  if (!query) return stems;
-  return stems.filter((stem) =>
-    [
-      stem.title,
-      stem.trackTitle,
-      stem.type,
-      stem.releaseTitle,
-      stem.artistName,
-    ].some((value) => value.toLowerCase().includes(query)),
-  );
 }
 
 function releaseMatchesFilter(release: Release, filter: FilterOption) {

@@ -2009,14 +2009,6 @@
   font-size: 0.95rem;
 }
 
-.home-ng .ng-catalog-home .ng-catalog-search input[type="search"] {
-  appearance: none;
-}
-
-.home-ng .ng-catalog-home .ng-catalog-search input[type="search"]::-webkit-search-cancel-button {
-  display: none;
-}
-
 .home-ng .ng-catalog-home .ng-catalog-open {
   flex: none;
   white-space: nowrap;
@@ -2027,10 +2019,14 @@
 }
 
 /* The title keeps a readable width; in a narrow column (a laptop with the
-   Session Dock open) the search and button wrap below it instead of
-   squeezing the title to a word per line. */
+   Session Dock open) the button wraps below it instead of squeezing the
+   title to a word per line. */
 .home-ng .ng-catalog-home .ng-catalog-header {
   flex-wrap: wrap;
+}
+
+.home-ng .ng-catalog-home .ng-catalog-actions {
+  flex: 0 0 auto;
 }
 
 .home-ng .ng-catalog-home .ng-catalog-header > :first-child {
