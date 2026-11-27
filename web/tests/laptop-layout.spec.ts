@@ -31,15 +31,27 @@ const ROUTES = [
 ] as const;
 const E2E_USER = "e2e-user-00000000-0000-0000-0000-000000000001";
 
-type LayoutReport = { squeezed: string[]; overlapping: string[]; sideways: number };
+type LayoutReport = { squeezed: string[]; overlapping: string[]; sideways: number; widest: string[] };
 
 /** Runs in the page: finds squeezed, overlapping and sideways-scrolling content. */
 function measureLayout(): LayoutReport {
-  const report: LayoutReport = { squeezed: [], overlapping: [], sideways: 0 };
+  const report: LayoutReport = { squeezed: [], overlapping: [], sideways: 0, widest: [] };
   const page = document.querySelector(".app-page");
   const content = document.querySelector(".app-content");
   if (!page || !content) return report;
   report.sideways = Math.max(0, content.scrollWidth - content.clientWidth);
+  if (report.sideways > 2) {
+    // Name what reaches past the page column, so a failure says where to look.
+    const edge = content.getBoundingClientRect().right;
+    for (const element of page.querySelectorAll("*")) {
+      const box = element.getBoundingClientRect();
+      if (box.width > 0 && box.right > edge + 1) {
+        const label = typeof element.className === "string" ? element.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
+        report.widest.push(`${element.tagName.toLowerCase()}${label ? `.${label}` : ""} (right edge ${Math.round(box.right - edge)}px past the column)`);
+      }
+    }
+    report.widest = report.widest.slice(-4);
+  }
 
   const visible = (element: Element) => {
     const style = getComputedStyle(element);
@@ -205,7 +217,7 @@ for (const width of LAPTOP_WIDTHS) {
       const report = await page.evaluate(measureLayout);
       for (const item of report.squeezed) problems.push(`${route}: squeezed ${item}`);
       for (const item of report.overlapping) problems.push(`${route}: overlapping ${item}`);
-      if (report.sideways > 2) problems.push(`${route}: the page scrolls sideways by ${report.sideways}px`);
+      if (report.sideways > 2) problems.push(`${route}: the page scrolls sideways by ${report.sideways}px; widest: ${report.widest.join(", ") || "a pseudo-element or transform"}`);
     }
     expect(problems, problems.join("\n")).toEqual([]);
   });
