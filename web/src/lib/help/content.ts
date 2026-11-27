@@ -825,8 +825,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/discover-home.png`,
-              alt: "The Discover home page with a featured 'Aya Nakamura in Montréal' campaign over its banner artwork, a rail of other campaigns with their funding progress, a row of trending and mood chips, and the Recently Added grid of release cover art.",
-              caption: "Discover while signed out: a featured Shows campaign, trending and mood chips, and the Recently Added catalog snapshot. Signed in, your personalized rows appear under the chips.",
+              alt: "The Discover home page with a featured 'Aya Nakamura in Montréal' campaign over its banner artwork, a rail of other campaigns with their funding progress, and the catalog section with release cover art.",
+              caption: "Discover while signed out: a featured Shows campaign, then the catalog, where you find something to play. Signed in, your personalized rows appear under the chips.",
               width: 1440,
               height: 1200,
               source: STAGING,
@@ -921,7 +921,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Further down, Recently Added lets you browse and search the newest catalog releases, artists, stems, and playlists, and Your studio shows the artists and releases you manage once your wallet is connected.",
+            text: "Right under the featured campaign, the catalog section (Find something to play) shows the newest releases, artists, stems and public playlists. Pick a genre to narrow the releases, search them as you type (press Enter to search the full catalog), or choose Open the catalog. Catalog is also second in the sidebar, right under Home. Further down, Your studio shows the artists and releases you manage once you are signed in.",
           },
         ],
       },
@@ -939,7 +939,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Artists show their latest cover, how many releases and stems they have, and their main genre. Stems are grouped by track: each row lists the parts that track offers (Full mix, Vocals, Drums, Bass, and so on) and opens the release mixer. Each release cover also has buttons to add the release to a playlist or save it to your library, both here and in the smaller Recently Added preview on the home page.",
+            text: "Artists show their latest cover, how many releases and stems they have, and their main genre. Stems are grouped by track: each row lists the parts that track offers (Full mix, Vocals, Drums, Bass, and so on) and opens the release mixer. Each release cover also has buttons to add the release to a playlist or save it to your library, both here and in the catalog section on the home page.",
           },
           {
             kind: "figure",

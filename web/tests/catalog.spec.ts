@@ -5,10 +5,10 @@
  * No mocks. The database is seeded by global-setup.ts before the suite starts.
  * Seeded test data includes a published release with track and stems.
  *
- * The home page uses the "Home v3" shelf system. Sections are: Hero, Tuner
- * (genre/mood filter + vibe session), personalized feed shelves, Trending Now,
- * Top Artists, Stem Lab, Upcoming Live Events, Drops, Recently Added (catalog
- * browser), AI DJ presets, and Your studio (Managed Catalog + Your Releases).
+ * The home page uses the "Home v3" shelf system. Sections are: Hero, the
+ * catalog ("Find something to play"), Tuner (genre/mood filter + vibe session),
+ * personalized feed shelves, Trending Now, Top Artists, Stem Lab, Upcoming Live
+ * Events, Drops, AI DJ presets, and Your studio (Managed Catalog + Your Releases).
  * The old "Resume Playing" row and cosmetic "Trending Stems" cards no longer
  * exist — the assertions below map onto the current sections instead.
  *
@@ -79,16 +79,17 @@ test.describe("Catalog & Home Page", () => {
         await expect(channel).toHaveAttribute("href", /\/release\/[^?]+\?mixer=true&stem=(vocals|drums|bass|piano|guitar|other)$/);
     });
 
-    test("HOME-09: Global catalog snapshot exposes releases, artists, stems, and recent catalog navigation", async ({ page }) => {
+    test("HOME-09: The catalog section, right after the hero, exposes releases, artists, stems, and the full catalog", async ({ page }) => {
         await page.goto("/");
-        await expect(page.getByRole("heading", { name: "Recently Added" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Find something to play" })).toBeVisible();
+        await expect(page.locator("#catalog").getByRole("link", { name: "Open the catalog" })).toHaveAttribute("href", "/catalog");
         await expect(page.getByRole("tab", { name: "releases" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "artists" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "stems" })).toBeVisible();
-        await expect(page.getByLabel("Search catalog snapshot")).toBeVisible();
+        await expect(page.getByLabel("Search the catalog")).toBeVisible();
         // Scoped to the snapshot footer: the Stem Lab shelf also links to /catalog.
         await expect(
-            page.locator(".ng-catalog-footer").getByRole("link", { name: /Browse catalog/i }),
+            page.locator(".ng-catalog-footer").getByRole("link", { name: /See the whole catalog/i }),
         ).toHaveAttribute("href", "/catalog");
     });
 
