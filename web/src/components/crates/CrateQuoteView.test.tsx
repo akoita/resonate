@@ -70,9 +70,10 @@ describe("CrateQuoteView", () => {
     expect(html).toContain("Use in derivative works, publish remixes");
     expect(html).toContain("Includes personal rights");
     expect(html).toContain("Stems for Track t1");
-    expect(html).toContain("2 USDC (about $2.00)");
-    expect(html).toContain("Artist side 1.8 USDC");
-    expect(html).toContain("Platform fee 0.2 USDC");
+    expect(html).toContain("$2.00");
+    expect(html).not.toContain("(about $2.00)");
+    expect(html).toContain("Artist side $1.80");
+    expect(html).toContain("Platform fee $0.20");
     // The tiers on offer: the listed ones, not the unlisted sync tier.
     expect(html).toContain(">Personal</option>");
     expect(html).toContain(">Remix</option>");
@@ -114,10 +115,11 @@ describe("CrateQuoteView", () => {
       overBudget: true,
     });
     const html = render({ quote });
-    expect(html).toContain("Total in USDC");
-    expect(html).toContain("7 USDC (about $7.00)");
+    expect(html).toContain("In dollars");
+    expect(html).toContain("$7.00");
+    expect(html).toContain("Paid as 7 USDC from your Resonate wallet.");
     expect(html).toContain("0.001 ETH (about $3.50)");
-    expect(html).toContain("Total in USD");
+    expect(html).toContain("Total, all currencies");
     expect(html).toContain("$10.50");
     expect(html).toContain("Over your $10.00 budget");
 
@@ -198,7 +200,7 @@ describe("CrateQuoteReceipts", () => {
     expect(html).toContain("Receipts");
     expect(html).toContain("Bought 1 stem.");
     expect(html).toContain("not bought and you were not charged");
-    expect(html).toContain("Bought for 2 USDC");
+    expect(html).toContain("Bought for $2.00");
     expect(html).toContain("Left out");
     expect(html).toContain("Left out: it would have failed");
     expect(html).toContain("Not bought");

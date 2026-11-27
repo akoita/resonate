@@ -28,6 +28,7 @@ import {
   type CrateStemType,
 } from "./crates";
 import { formatListingPrice } from "./listingPricing";
+import { formatDollars, formatUnitsForPeople, isUsdStablecoinSymbol } from "./money";
 import type { CrateBatchLine } from "./onchainCheckout";
 import type { PaymentAsset } from "./payments";
 
@@ -146,26 +147,20 @@ export function formatTokenUnits(units: bigint, symbol: string, decimals: number
   });
 }
 
+/** Raw token units as people read them: dollars for a dollar stablecoin, else the token (#2724). */
+export function formatTokenUnitsForPeople(units: bigint, symbol: string, decimals: number): string {
+  return formatUnitsForPeople(units, { decimals, symbol, usdPegged: isUsdStablecoinSymbol(symbol) });
+}
+
 /** Parses a non-negative integer string (the backend's units) into a bigint, or null. */
 export function parseUnits(value: string | null | undefined): bigint | null {
   if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
   return BigInt(value);
 }
 
-/**
- * A canonical USD decimal string as dollars and cents, rounded half up, using
- * integer math only. Anything above zero but below a cent reads "under $0.01".
- */
+/** Dollars and cents from the backend's canonical USD decimal string (shared money format, #2724). */
 export function formatUsdDecimal(usd: string | null | undefined): string {
-  if (typeof usd !== "string" || !/^\d+(\.\d+)?$/.test(usd.trim())) return "price unknown";
-  const [whole, fraction = ""] = usd.trim().split(".");
-  const micros = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0").slice(0, 6));
-  if (micros === 0n) return "$0.00";
-  if (micros < 10_000n) return "under $0.01";
-  const cents = (micros + 5_000n) / 10_000n;
-  const dollars = cents / 100n;
-  const remainder = (cents % 100n).toString().padStart(2, "0");
-  return `$${dollars.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${remainder}`;
+  return formatDollars(usd);
 }
 
 /** "Over your $20.00 budget" for an over-budget quote, else null. */
@@ -448,7 +443,7 @@ export function titleCase(value: string): string {
 export function itemPriceText(item: CrateQuoteItem): string | null {
   const units = parseUnits(item.totalUnits);
   if (units === null || !item.symbol || item.decimals === null) return null;
-  return formatTokenUnits(units, item.symbol, item.decimals);
+  return formatTokenUnitsForPeople(units, item.symbol, item.decimals);
 }
 
 /** The artist side and the platform fee of an item, formatted from its units. */
@@ -459,8 +454,8 @@ export function itemSplitText(
   const platform = parseUnits(item.platformFeeUnits);
   if (artist === null || platform === null || !item.symbol || item.decimals === null) return null;
   return {
-    artist: formatTokenUnits(artist, item.symbol, item.decimals),
-    platform: formatTokenUnits(platform, item.symbol, item.decimals),
+    artist: formatTokenUnitsForPeople(artist, item.symbol, item.decimals),
+    platform: formatTokenUnitsForPeople(platform, item.symbol, item.decimals),
   };
 }
 
@@ -556,7 +551,7 @@ export function totalsForStems(quote: CrateQuote, quoteLineIds: readonly string[
     if (sum) sum.units += units;
     else sums.set(key, { symbol: item.symbol, decimals: item.decimals, units });
   }
-  return [...sums.values()].map((sum) => formatTokenUnits(sum.units, sum.symbol, sum.decimals));
+  return [...sums.values()].map((sum) => formatTokenUnitsForPeople(sum.units, sum.symbol, sum.decimals));
 }
 
 /* ------------------------------------------------------------------ */

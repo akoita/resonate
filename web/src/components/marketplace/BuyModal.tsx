@@ -16,6 +16,13 @@ import {
   getCheckoutRailSubLabel,
   type BuyPaymentMethod,
 } from "../../lib/buyPricing";
+import {
+  formatDollars,
+  formatTokenAmountForPeople,
+  formatUnitsForPeople,
+  isUsdPeggedAsset,
+  paidAsText,
+} from "../../lib/money";
 import { getExplorerTxUrl } from "../../lib/explorer";
 import {
   findPaymentAssetForToken,
@@ -57,7 +64,7 @@ type X402StatusPhase = "challenging" | "signing" | "settling" | "downloading";
 const X402_STATUS_LABEL: Record<X402StatusPhase, string> = {
   challenging: "Requesting payment quote…",
   signing: "Awaiting wallet signature…",
-  settling: "Verifying payment on-chain…",
+  settling: "Confirming your payment…",
   downloading: "Downloading stem…",
 };
 
@@ -66,7 +73,7 @@ function getX402WalletNote(
   assetSymbol: string,
 ) {
   const x402Chain = getX402ChainName(x402ChainId);
-  return `x402 checkout uses your Resonate passkey wallet with ${assetSymbol} on ${x402Chain}.`;
+  return `Paid from your Resonate wallet in ${assetSymbol} on ${x402Chain}.`;
 }
 
 type TierListings = Partial<Record<LicenseType, string>>;
@@ -296,7 +303,6 @@ export function BuyModal({
   const onchainSymbol = paymentAssetSymbol(onchainAsset, listing?.paymentToken);
   const onchainIsNative = isNativePaymentToken(listing?.paymentToken);
   const onchainDecimals = onchainAsset?.decimals ?? 18;
-  const onchainIsStablecoin = onchainAsset?.kind === "stablecoin";
   const stablecoinMarketplaceConfigured = hasStablecoinMarketplaceAsset({
     assets: paymentAssets,
     chainId,
@@ -316,8 +322,16 @@ export function BuyModal({
       ? "Native token"
       : `${listing.paymentToken.slice(0, 6)}…${listing.paymentToken.slice(-4)}`
     : "-";
+  const onchainUsdPegged = isUsdPeggedAsset(onchainAsset);
+  // People see dollars; the token amount lives under Payment details (#2724).
   const formatOnchainAmount = (amountUnits: bigint) =>
-    `${formatPaymentAmount(amountUnits, onchainDecimals)} ${onchainSymbol}`;
+    formatUnitsForPeople(amountUnits, {
+      decimals: onchainDecimals,
+      symbol: onchainSymbol,
+      usdPegged: onchainUsdPegged,
+    });
+  const formatOnchainTokenAmount = (amountUnits: bigint) =>
+    formatPaymentAmount(amountUnits, onchainDecimals);
   const protocolFeePercent = formatBpsPercent(protocolFeeBps);
   const royaltyPercent = formatBpsPercent(stemData?.royaltyBps);
   const x402DownloadUrl = useMemo(
@@ -645,11 +659,11 @@ export function BuyModal({
                   className={`buy-modal__pay-method${activePaymentMethod === "x402" ? " buy-modal__pay-method--active" : ""}`}
                   onClick={() => setPaymentMethod("x402")}
                   disabled={pending || x402Status !== null || selectedLicense !== "personal"}
-                  title={selectedLicense !== "personal" ? "x402 browser checkout currently settles the personal license tier only." : undefined}
+                  title={selectedLicense !== "personal" ? "Quick checkout is for the personal license only." : undefined}
                 >
                   <span>{getCheckoutRailLabel("x402")}</span>
                   <span className="buy-modal__pay-method-sub">
-                    {getCheckoutRailSubLabel({ method: "x402", symbol: x402Symbol })}
+                    {getCheckoutRailSubLabel({ method: "x402" })}
                   </span>
                 </button>
                 <button
@@ -663,21 +677,17 @@ export function BuyModal({
                     listingChainMismatch
                       ? `Switch your wallet to chain ${listingChainId} for direct wallet checkout.`
                       : isLegacyNativeListing
-                        ? "This listing was created with native ETH and must be relisted in stablecoin for wallet checkout."
+                        ? "This older listing must be listed again before it can be bought."
                         : undefined
                   }
                 >
                   <span>{getCheckoutRailLabel("onchain")}</span>
                   <span className="buy-modal__pay-method-sub">
                     {isLegacyNativeListing
-                      ? `Legacy listing · ${onchainSymbol}`
+                      ? "Older listing · not available"
                       : listingChainMismatch
-                        ? `Wrong chain · ${listingChainId}`
-                      : getCheckoutRailSubLabel({
-                          method: "onchain",
-                          symbol: onchainSymbol,
-                          isStablecoin: onchainIsStablecoin,
-                        })}
+                        ? "Wrong network for your wallet"
+                      : getCheckoutRailSubLabel({ method: "onchain" })}
                   </span>
                 </button>
               </div>
@@ -758,7 +768,7 @@ export function BuyModal({
                 </div>
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">
-                    Creator Royalty{royaltyPercent ? ` (${royaltyPercent})` : ""}
+                    Creator royalty{royaltyPercent ? ` (${royaltyPercent})` : ""}
                   </span>
                   <span className="buy-modal__breakdown-value buy-modal__breakdown-value--royalty">
                     {formatOnchainAmount(quote.royaltyAmount)}
@@ -766,7 +776,7 @@ export function BuyModal({
                 </div>
                 <div className="buy-modal__breakdown-row">
                   <span className="buy-modal__breakdown-label">
-                    Protocol Fee{protocolFeePercent ? ` (${protocolFeePercent})` : ""}
+                    Platform fee{protocolFeePercent ? ` (${protocolFeePercent})` : ""}
                   </span>
                   <span className="buy-modal__breakdown-value buy-modal__breakdown-value--fee">
                     {formatOnchainAmount(quote.protocolFee)}
@@ -791,24 +801,28 @@ export function BuyModal({
                     {selectedLicense}
                   </span>
                 </div>
-                <div className="buy-modal__breakdown-row">
-                  <span className="buy-modal__breakdown-label">Settlement asset</span>
-                  <span className="buy-modal__breakdown-value">
-                    {onchainAssetLabel} · {onchainTokenLabel}
-                  </span>
-                </div>
-                {!onchainIsNative && (
-                  <div className="buy-modal__breakdown-note">
-                    Direct on-chain checkout signs a wallet transaction that approves {onchainSymbol} and buys the listed stem in one smart-account operation.
+                <details className="buy-modal__payment-details">
+                  <summary>Payment details</summary>
+                  <div className="buy-modal__breakdown-row">
+                    <span className="buy-modal__breakdown-label">Settlement</span>
+                    <span className="buy-modal__breakdown-value">
+                      {paidAsText({ amount: formatOnchainTokenAmount(quote.totalPrice), symbol: onchainSymbol })}
+                    </span>
                   </div>
-                )}
-                {onchainIsNative && (
-                  <div className="buy-modal__breakdown-note">
-                    {isLegacyNativeListing
-                      ? `This listing was created with legacy native ${onchainSymbol}. Re-list it with the configured marketplace stablecoin to enable on-chain wallet checkout.`
-                      : `This legacy listing uses native ${onchainSymbol}; stablecoin listings use the same wallet rail with ERC-20 approval.`}
+                  <div className="buy-modal__breakdown-row">
+                    <span className="buy-modal__breakdown-label">Asset</span>
+                    <span className="buy-modal__breakdown-value">
+                      {onchainAssetLabel} · {onchainTokenLabel}
+                    </span>
                   </div>
-                )}
+                  <div className="buy-modal__breakdown-note">
+                    {onchainIsNative
+                      ? isLegacyNativeListing
+                        ? "This older listing was priced in the network's own coin. The seller needs to list it again before it can be bought."
+                        : `This older listing is priced in ${onchainSymbol}, the network's own coin.`
+                      : "You approve one payment from your Resonate wallet with your passkey; it pays for the stem and the license together."}
+                  </div>
+                </details>
               </div>
             )}
 
@@ -820,37 +834,40 @@ export function BuyModal({
                   <span>License</span>
                   <span>{selectedLicense}</span>
                 </div>
-                <div className="buy-modal__x402-row">
-                  <span>Stablecoin settlement</span>
-                  <span>
-                    {x402QuoteLoading
-                      ? "Loading..."
-                      : x402Quote
-                        ? `${x402Quote.totalAmount} ${x402Quote.totalCurrency}`
-                        : "Unavailable"}
-                  </span>
-                </div>
-                <div className="buy-modal__x402-row">
-                  <span>Asset</span>
-                  <span>{x402Asset ? `${x402Asset.name} (${x402Symbol})` : x402Symbol}</span>
-                </div>
-                {x402Quote?.payTo && (
+                <details className="buy-modal__payment-details">
+                  <summary>Payment details</summary>
                   <div className="buy-modal__x402-row">
-                    <span>Pay to</span>
+                    <span>Settlement</span>
                     <span>
-                      {x402Quote.payTo.slice(0, 6)}…{x402Quote.payTo.slice(-4)}
+                      {x402QuoteLoading
+                        ? "Loading..."
+                        : x402Quote
+                          ? paidAsText({ amount: x402Quote.totalAmount, symbol: x402Quote.totalCurrency })
+                          : "Unavailable"}
                     </span>
                   </div>
-                )}
-                {x402Payer && (
                   <div className="buy-modal__x402-row">
-                    <span>Paid by</span>
-                    <span>{x402Payer.slice(0, 6)}…{x402Payer.slice(-4)}</span>
+                    <span>Asset</span>
+                    <span>{x402Asset ? `${x402Asset.name} (${x402Symbol})` : x402Symbol}</span>
                   </div>
-                )}
-                <div className="buy-modal__breakdown-note">
-                  {x402WalletNote}
-                </div>
+                  {x402Quote?.payTo && (
+                    <div className="buy-modal__x402-row">
+                      <span>Pay to</span>
+                      <span>
+                        {x402Quote.payTo.slice(0, 6)}…{x402Quote.payTo.slice(-4)}
+                      </span>
+                    </div>
+                  )}
+                  {x402Payer && (
+                    <div className="buy-modal__x402-row">
+                      <span>Paid by</span>
+                      <span>{x402Payer.slice(0, 6)}…{x402Payer.slice(-4)}</span>
+                    </div>
+                  )}
+                  <div className="buy-modal__breakdown-note">
+                    {x402WalletNote}
+                  </div>
+                </details>
                 {x402Status && (
                   <div className="buy-modal__x402-status" role="status">
                     {X402_STATUS_LABEL[x402Status]}
@@ -867,17 +884,17 @@ export function BuyModal({
             )}
             {selectedLicense !== "personal" && x402Available && (
               <div className="buy-modal__alert">
-                x402 checkout is available for the personal license tier. This {selectedLicense} purchase uses the direct on-chain listing rail.
+                Quick checkout is for the personal license. A {selectedLicense} license uses standard checkout.
               </div>
             )}
             {activePaymentMethod === "onchain" && isLegacyNativeListing && (
               <div className="buy-modal__alert buy-modal__alert--error">
-                This listing is denominated in native {onchainSymbol}. Current on-chain marketplace checkout is stablecoin-native, so this item must be re-listed in the configured stablecoin before wallet purchase.
+                This older listing can&apos;t be bought as it is. The seller needs to list it again.
               </div>
             )}
             {activePaymentMethod === "onchain" && listingChainMismatch && (
               <div className="buy-modal__alert buy-modal__alert--error">
-                This listing is indexed on chain {listingChainId}. Switch your wallet to that chain before using direct wallet checkout.
+                This listing is on a different network from your wallet (network {listingChainId}). Switch your wallet to that network to buy it.
               </div>
             )}
             {activePaymentMethod === "x402" && x402Error && (
@@ -928,7 +945,7 @@ export function BuyModal({
                   }
                 >
                   {pending && <span className="buy-modal__spinner" />}
-                  {pending ? "Confirming…" : "Confirm wallet purchase"}
+                  {pending ? "Confirming…" : quote ? `Pay ${formatOnchainAmount(quote.totalPrice)}` : "Pay"}
                 </button>
               ) : (
                 <button
@@ -942,8 +959,8 @@ export function BuyModal({
                     : x402QuoteLoading
                       ? "Loading quote..."
                       : x402Quote
-                        ? `Pay ${x402Quote.totalAmount} ${x402Quote.totalCurrency}`
-                        : `Pay with ${x402Symbol}`}
+                        ? `Pay ${formatTokenAmountForPeople(x402Quote.totalAmount, x402Quote.totalCurrency)}`
+                        : "Pay"}
                 </button>
               )}
             </div>
@@ -1033,23 +1050,15 @@ export function PurchaseSuccessPanel({
               {x402Result.receipt?.payment && (
                 <span>
                   {" "}
-                  · {x402Result.receipt.payment.canonicalAmountUsd ?? x402Result.receipt.payment.amountUsd} USD
-                  {" "}
-                  settled as {x402Result.receipt.payment.settlementAmount ?? x402Result.receipt.payment.amount}
-                  {" "}
+                  · {formatDollars(x402Result.receipt.payment.canonicalAmountUsd ?? x402Result.receipt.payment.amountUsd)},{" "}
+                  paid as {x402Result.receipt.payment.settlementAmount ?? x402Result.receipt.payment.amount}{" "}
                   {x402Result.receipt.payment.asset?.symbol ?? x402Result.receipt.payment.currency}
                 </span>
               )}
               {settlementStatus === "contract_required_missing" && (
                 <span>
                   {" "}
-                  · contract settlement pending
-                </span>
-              )}
-              {settlementStatus === "contract_backed" && (
-                <span>
-                  {" "}
-                  · contract-backed
+                  · your library entry is still being recorded
                 </span>
               )}
             </div>
@@ -1098,7 +1107,7 @@ export function X402QuoteBreakdown({
   return (
     <>
       <div className="buy-modal__x402-row">
-        <span>Price (USD)</span>
+        <span>Price</span>
         <span>{loading ? "Loading..." : formatUsdPrice(quote?.amountUsd)}</span>
       </div>
       <div className="buy-modal__x402-row">
@@ -1107,7 +1116,7 @@ export function X402QuoteBreakdown({
           {loading
             ? "Loading..."
             : quote
-              ? `${quote.platformFee.amount} ${quote.platformFee.currency}`
+              ? formatTokenAmountForPeople(quote.platformFee.amount, quote.platformFee.currency)
               : "Unavailable"}
         </span>
       </div>
@@ -1117,7 +1126,7 @@ export function X402QuoteBreakdown({
           {loading
             ? "Loading..."
             : quote
-              ? `${quote.totalAmount} ${quote.totalCurrency}`
+              ? formatTokenAmountForPeople(quote.totalAmount, quote.totalCurrency)
               : "Unavailable"}
         </span>
       </div>

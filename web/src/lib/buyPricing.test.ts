@@ -8,26 +8,26 @@ import {
 } from "./buyPricing";
 
 describe("buy pricing helpers", () => {
-  it("defaults the purchase flow to stablecoin checkout when x402 is available", () => {
+  it("defaults the purchase flow to quick checkout when it is available", () => {
     expect(defaultBuyPaymentMethod(true)).toBe("x402");
     expect(defaultBuyPaymentMethod(false)).toBe("onchain");
   });
 
-  it("formats the user-facing price in USD and settlement amount in stablecoin units", () => {
-    expect(formatUsdPrice(0.05)).toBe("$0.05 USD");
+  it("formats the user-facing price in dollars and the settlement amount in token units", () => {
+    expect(formatUsdPrice(0.05)).toBe("$0.05");
+    expect(formatUsdPrice(1234.5)).toBe("$1,234.50");
+    expect(formatUsdPrice(null)).toBe("-");
     expect(formatStableAssetAmount(0.05, "USDC")).toBe("0.05 USDC");
   });
 
-  it("labels checkout choices as rails rather than currencies", () => {
-    expect(getCheckoutRailLabel("x402")).toBe("x402 rail");
-    expect(getCheckoutRailLabel("onchain")).toBe("On-chain rail");
-    expect(getCheckoutRailSubLabel({ method: "x402", symbol: "USDC" })).toBe(
-      "HTTP payment · USDC",
-    );
-    expect(getCheckoutRailSubLabel({
-      method: "onchain",
-      symbol: "USDC",
-      isStablecoin: true,
-    })).toBe("Wallet transaction · stablecoin USDC");
+  it("names checkout choices for what the buyer gets, never the protocol or token (#2724)", () => {
+    expect(getCheckoutRailLabel("x402")).toBe("Quick checkout");
+    expect(getCheckoutRailLabel("onchain")).toBe("Standard checkout");
+    expect(getCheckoutRailSubLabel({ method: "x402" })).toBe("Personal license · download right away");
+    expect(getCheckoutRailSubLabel({ method: "onchain" })).toBe("Every license · added to your library");
+    for (const method of ["x402", "onchain"] as const) {
+      const text = `${getCheckoutRailLabel(method)} ${getCheckoutRailSubLabel({ method })}`;
+      expect(text).not.toMatch(/x402|rail|on-chain|USDC|wallet transaction/i);
+    }
   });
 });
