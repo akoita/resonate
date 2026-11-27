@@ -1381,7 +1381,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Sonic Radar is your discovery journal — the tracks that resonated with you. A track resonates when you play it through to at least 90% and then replay it or save it within seven days. Sonic Radar only lists music you have actually listened to, and it never shows prices.",
+            text: "Sonic Radar is your discovery journal — the tracks that resonated with you. A track resonates when you play it through to at least 90% and then replay it or save it within seven days. Sonic Radar only lists music you have actually listened to, and it never shows prices. Sonic Radar appears in the sidebar, under Library, once it has something to show you; until then, open it from the AI DJ page.",
           },
           {
             kind: "figure",

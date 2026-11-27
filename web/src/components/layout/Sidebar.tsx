@@ -12,6 +12,7 @@ import { ContextMenu, type ContextMenuItem } from "../ui/ContextMenu";
 import { AUTH_COPY } from "../../lib/authCopy";
 import { BrandLogo } from "../brand/BrandLogo";
 import { useProductSurfaces } from "../../hooks/useProductSurfaces";
+import { useHasDiscoveries } from "../../hooks/useHasDiscoveries";
 import { useAccountName } from "../../hooks/useAccountName";
 import { SidebarFoldButton, SidebarResizeEdge, useRailTooltips, useSidebarLayout } from "./SidebarEdge";
 import type { ProductSurface } from "../../lib/productSurfaces";
@@ -43,6 +44,21 @@ const PRIMARY_ITEMS = [
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      </svg>
+    )
+  },
+  {
+    // Shown only once the listener's Sonic Radar has discoveries (see sidebarDestinations).
+    name: "Sonic Radar",
+    href: "/sonic-radar",
+    surface: "sonicRadar" as ProductSurface,
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="2" />
+        <path d="M16.24 7.76a6 6 0 0 1 0 8.49" />
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+        <path d="M7.76 16.24a6 6 0 0 1 0-8.49" />
+        <path d="M4.93 19.07a10 10 0 0 1 0-14.14" />
       </svg>
     )
   },
@@ -192,14 +208,17 @@ type NavItem = { name: string; href: string; surface?: ProductSurface; icon: Rea
  * The destinations the sidebar offers (#2663): the listening ones and the
  * account ones for everybody, the artist group only to accounts with an
  * artist profile, and nothing whose surface is switched off. A listener sees
- * eight. Operator links are added separately.
+ * eight, nine once Sonic Radar has discoveries. Operator links are added separately.
  */
 export function sidebarDestinations(
-  input: { isArtist: boolean; surfaces: Partial<Record<ProductSurface, boolean>> },
+  input: { isArtist: boolean; surfaces: Partial<Record<ProductSurface, boolean>>; hasDiscoveries?: boolean },
 ): { primary: NavItem[]; artist: NavItem[]; account: NavItem[] } {
   const offered = (item: NavItem) => !item.surface || input.surfaces[item.surface] === true;
+  // Sonic Radar joins once it has something to show, so a newcomer is never
+  // sent to an empty page.
+  const listed = (item: NavItem) => offered(item) && (item.href !== "/sonic-radar" || input.hasDiscoveries === true);
   return {
-    primary: PRIMARY_ITEMS.filter(offered),
+    primary: PRIMARY_ITEMS.filter(listed),
     artist: input.isArtist ? ARTIST_ITEMS.filter(offered) : [],
     account: ACCOUNT_ITEMS.filter(offered),
   };
@@ -259,7 +278,8 @@ export default function Sidebar() {
 
   const showAdminLink = mounted && role === "admin";
   const isArtist = mounted && status === "authenticated" && artistProfile !== null;
-  const destinations = sidebarDestinations({ isArtist, surfaces });
+  const hasDiscoveries = useHasDiscoveries(mounted && surfaces.sonicRadar);
+  const destinations = sidebarDestinations({ isArtist, surfaces, hasDiscoveries });
   const showManagementRecoveryLink = mounted && (role === "admin" || role === "operator");
   const showUserChip = mounted && status === "authenticated" && !!(smartAccountAddress ?? address);
 
