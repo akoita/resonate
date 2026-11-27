@@ -41,14 +41,24 @@ function measureLayout(): LayoutReport {
   if (!page || !content) return report;
   report.sideways = Math.max(0, content.scrollWidth - content.clientWidth);
   if (report.sideways > 2) {
-    // Name what reaches past the page column, so a failure says where to look.
-    const edge = content.getBoundingClientRect().right;
-    for (const element of page.querySelectorAll("*")) {
-      const box = element.getBoundingClientRect();
-      if (box.width > 0 && box.right > edge + 1) {
-        const label = typeof element.className === "string" ? element.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
-        report.widest.push(`${element.tagName.toLowerCase()}${label ? `.${label}` : ""} (right edge ${Math.round(box.right - edge)}px past the column)`);
-      }
+    // Name what widens the page, so a failure says where to look: walk down
+    // from the page column, each time into the child whose hiding removes the
+    // sideways scroll (this also finds pseudo-elements and transforms).
+    const overflow = () => content.scrollWidth - content.clientWidth;
+    let node: Element = content;
+    for (let depth = 0; depth < 40; depth += 1) {
+      const culprit = [...node.children].find((child) => {
+        const element = child as HTMLElement;
+        const previous = element.style.display;
+        element.style.display = "none";
+        const fixed = overflow() <= 2;
+        element.style.display = previous;
+        return fixed;
+      });
+      if (!culprit) break;
+      node = culprit;
+      const label = typeof node.className === "string" ? node.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
+      report.widest.push(`${node.tagName.toLowerCase()}${label ? `.${label}` : ""}`);
     }
     report.widest = report.widest.slice(-4);
   }
@@ -217,7 +227,7 @@ for (const width of LAPTOP_WIDTHS) {
       const report = await page.evaluate(measureLayout);
       for (const item of report.squeezed) problems.push(`${route}: squeezed ${item}`);
       for (const item of report.overlapping) problems.push(`${route}: overlapping ${item}`);
-      if (report.sideways > 2) problems.push(`${route}: the page scrolls sideways by ${report.sideways}px; widest: ${report.widest.join(", ") || "a pseudo-element or transform"}`);
+      if (report.sideways > 2) problems.push(`${route}: the page scrolls sideways by ${report.sideways}px; widest: ${report.widest.join(" > ") || "unknown"}`);
     }
     expect(problems, problems.join("\n")).toEqual([]);
   });
