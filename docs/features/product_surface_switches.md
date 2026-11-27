@@ -32,7 +32,7 @@ These hide entry points to surfaces that are not ready to show newcomers. Their 
 | Surface | Variable | Web entry points hidden when off |
 | --- | --- | --- |
 | Disputes | `DISPUTES_ENABLED` | The Disputes item in the artist group |
-| Community rooms and cohorts | `COMMUNITY_ENABLED` | The Community tab on artist pages; the Open Community card in Settings |
+| Community rooms and cohorts | `COMMUNITY_ENABLED` | The Community sidebar item; the Community tab on artist pages; the Open Community card in Settings |
 | Scene Scout cards | `SCENE_SCOUT_ENABLED` | The Scene Scout panel in artist analytics |
 | Sonic Radar | `SONIC_RADAR_ENABLED` | Reserved; Sonic Radar has no sidebar item since #2663 and is reached from the AI DJ |
 | Desktop app link | `DESKTOP_APP_ENABLED` | The desktop app suggestion in Settings → Library |
