@@ -385,9 +385,9 @@ test.describe("Crate quote (#1964)", () => {
 
     const neon = quoteLine(page, "track-neon-drift");
     await expect(neon.getByText("Vocals", { exact: true }).first()).toBeVisible();
-    await expect(neon.getByText("0.5 USDC (about $0.50)")).toBeVisible();
-    await expect(neon.getByText("Artist side 0.45 USDC")).toBeVisible();
-    await expect(neon.getByText(/Platform fee 0\.05 USDC/)).toBeVisible();
+    await expect(neon.getByText("$0.50", { exact: true }).first()).toBeVisible();
+    await expect(neon.getByText("Artist side $0.45")).toBeVisible();
+    await expect(neon.getByText(/Platform fee \$0\.05/)).toBeVisible();
     await expect(neon.getByText("Stream & collect — personal listening")).toBeVisible();
     await expect(neon.getByLabel("License for Neon Drift")).toHaveValue("personal");
 
@@ -398,8 +398,9 @@ test.describe("Crate quote (#1964)", () => {
     ).toBeVisible();
 
     // Four stems are on offer at $0.50 each.
-    await expect(panel(page).getByText("Total in USDC")).toBeVisible();
-    await expect(panel(page).getByLabel("Quote total").getByText("2 USDC (about $2.00)")).toBeVisible();
+    // Dollars first; the USDC amount sits under Payment details (#2724).
+    await expect(panel(page).getByLabel("Quote total").getByText("$2.00", { exact: true })).toBeVisible();
+    await expect(panel(page).getByLabel("Quote total").getByText("Payment details")).toBeVisible();
     await expect(panel(page).getByText(/^Prices are good for \d+:\d\d$/)).toBeVisible();
     await expect(panel(page).getByText(/Over your/)).toHaveCount(0);
 
@@ -407,7 +408,7 @@ test.describe("Crate quote (#1964)", () => {
     await panel(page).getByRole("button", { name: "Approve and buy" }).click();
     const confirm = panel(page).getByRole("group", { name: "Confirm your purchase" });
     await expect(confirm.getByText("You are about to buy 4 stems:")).toBeVisible();
-    await expect(confirm.getByText(/^Neon Drift: Vocals \(Personal\) for 0\.5 USDC$/)).toBeVisible();
+    await expect(confirm.getByText(/^Neon Drift: Vocals \(Personal\) for \$0\.50$/)).toBeVisible();
     await expect(confirm.getByText(/^Midnight Courier/)).toHaveCount(0);
     // Nothing is chosen for the buyer (#1776): signing waits for a delivery choice.
     await expect(confirm.getByRole("button", { name: "Confirm and sign" })).toBeDisabled();
@@ -426,7 +427,7 @@ test.describe("Crate quote (#1964)", () => {
 
     // A different license on one line: the request carries every line.
     await quoteLine(page, "track-neon-drift").getByLabel("License for Neon Drift").selectOption("remix");
-    await expect(quoteLine(page, "track-neon-drift").getByText("2 USDC (about $2.00)")).toBeVisible();
+    await expect(quoteLine(page, "track-neon-drift").getByText("$2.00", { exact: true }).first()).toBeVisible();
     expect(quoteRequests).toHaveLength(2);
     expect(quoteRequests[1].body.buyerAddress).toBe(MOCK_BUYER);
     expect(quoteRequests[1].body.lines).toHaveLength(6);
@@ -435,7 +436,7 @@ test.describe("Crate quote (#1964)", () => {
       licenseType: "remix",
       stemTypes: ["vocals"],
     });
-    await expect(panel(page).getByLabel("Quote total").getByText("3.5 USDC (about $3.50)")).toBeVisible();
+    await expect(panel(page).getByLabel("Quote total").getByText("$3.50", { exact: true })).toBeVisible();
     await expect(quoteLine(page, "track-neon-drift").getByText("Use in derivative works, publish remixes")).toBeVisible();
 
     // One more stem on another line.
@@ -446,7 +447,7 @@ test.describe("Crate quote (#1964)", () => {
     expect(glass).toEqual({ trackId: "track-glass-harbour", licenseType: "personal", stemTypes: ["vocals", "drums"] });
     // The earlier choice is kept.
     expect(quoteRequests[2].body.lines[0]).toMatchObject({ trackId: "track-neon-drift", licenseType: "remix" });
-    await expect(panel(page).getByLabel("Quote total").getByText("4 USDC (about $4.00)")).toBeVisible();
+    await expect(panel(page).getByLabel("Quote total").getByText("$4.00", { exact: true })).toBeVisible();
   });
 
   test("an expired quote cannot be approved and asks for a new one", async ({ authenticatedPage: page }) => {
@@ -506,7 +507,7 @@ test.describe("Crate quote (#1964)", () => {
     await expect(receipts.getByText(/^Bought 2 stems\./)).toBeVisible();
     await expect(receipts.getByText("Left out: the listing changed")).toBeVisible();
     await expect(receipts.getByText("Not part of the purchase")).toBeVisible();
-    await expect(receipts.getByText("Bought for 0.5 USDC").first()).toBeVisible();
+    await expect(receipts.getByText("Bought for $0.50").first()).toBeVisible();
     await expect(receipts.getByText(`Transaction ${MOCK_QUOTE_HASH.slice(0, 8)}`).first()).toBeVisible();
     // Nothing from a finished purchase can be approved again.
     await expect(panel(page).getByRole("button", { name: "Approve and buy" })).toHaveCount(0);
