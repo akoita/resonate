@@ -307,3 +307,44 @@ test('phone player bar keeps every control inside the bar and the screen', async
   await expect(sheet.getByRole('button', { name: 'Shuffle on' })).toHaveAttribute('aria-pressed', 'true');
   await expect(sheet.locator('details.listening-controls')).toBeVisible();
 });
+
+test('folding the queue panel moves the session into the player bar, and the bar brings it back', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 860 });
+  await seedPlayer(page);
+  await page.goto('/library');
+  const bar = playerBar(page);
+  const dock = page.locator('#session-dock');
+  const queueChip = bar.getByRole('button', { name: /Queue, track 1 of 3/ });
+  await expect(dock).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  await expect(queueChip).toHaveAttribute('aria-pressed', 'true');
+  // The open dock carries Loop and Repeat, so the bar does not repeat it.
+  await expect(bar.locator('.lc-bar-button')).toHaveCount(0);
+
+  // Fold: nothing is left floating over the page.
+  await queueChip.click();
+  await expect(dock).toHaveCount(0);
+  await expect(queueChip).toHaveAttribute('aria-pressed', 'false');
+
+  // Loop and Repeat opens above the bar, inside the screen, and closes on Escape and on a click elsewhere.
+  const loopButton = bar.locator('.lc-bar-button');
+  const panel = bar.locator('.listening-controls--bar > .lc-body');
+  await loopButton.click();
+  await expect(panel).toBeVisible();
+  const barBox = (await bar.boundingBox())!;
+  const panelBox = (await panel.boundingBox())!;
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(barBox.y - 8);
+  expect(panelBox.x).toBeGreaterThanOrEqual(0);
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await loopButton.click();
+  await expect(panel).toBeVisible();
+  await page.mouse.click(400, 300);
+  await expect(panel).toBeHidden();
+
+  // The choice is kept on this device, and the chip opens the dock again.
+  await page.reload();
+  await expect(queueChip).toHaveAttribute('aria-pressed', 'false', { timeout: HYDRATION_TIMEOUT });
+  await expect(dock).toHaveCount(0);
+  await queueChip.click();
+  await expect(dock).toBeVisible();
+});

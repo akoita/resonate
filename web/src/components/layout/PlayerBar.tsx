@@ -1,5 +1,6 @@
 "use client";
 import { ListeningControls } from "../player/ListeningControls";
+import { minutesLeft } from "../player/SessionDock";
 
 import { useRouter, usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
@@ -51,6 +52,7 @@ export default function PlayerBar() {
   const wideScreen = useSyncExternalStore(subscribeWide, isWide, () => true);
   const dockShowsListening = wideScreen && !consoleLayout.minimized;
   const isReleasePage = pathname?.startsWith('/release/');
+  const queueMinutes = minutesLeft(queue, currentIndex);
 
   const handleToggleRepeat = () => {
     toggleRepeatMode();
@@ -84,8 +86,6 @@ export default function PlayerBar() {
       style={{ cursor: "pointer" }}
       title="Double-click to open player"
     >
-      {/* The full player console owns these controls; a second copy there would float over it. */}
-      {!isPlayerPage && !dockShowsListening && <div className="player-listening-menu" onDoubleClick={e => e.stopPropagation()}><ListeningControls key={currentTrack?.id} /></div>}
       {/* Progress Line */}
       <div
         className="player-progress-container"
@@ -106,26 +106,6 @@ export default function PlayerBar() {
           aria-valuetext={`${Math.round(progress)} percent`}
         />
 
-        {/* Floating Queue Indicator. An open Session Dock already shows the
-          * place in the queue, so the chip only appears when the dock is folded
-          * (or on phones, where it opens the Session sheet). */}
-        {!dockShowsListening || isPlayerPage ? <button
-          type="button"
-          className="queue-indicator"
-          onClick={(event) => {
-            event.stopPropagation();
-            // Phones slide up the Session sheet; wider screens fold or
-            // unfold the dock (the console, on /player).
-            if (window.matchMedia?.("(max-width: 767px)").matches) setSessionSheetOpen(true);
-            else toggleConsoleMinimized();
-          }}
-          onDoubleClick={(event) => event.stopPropagation()}
-          aria-label={`Queue, track ${currentIndex + 1} of ${queue.length}. Show or hide the session.`}
-          title="Show or hide the queue"
-        >
-          <span className="queue-icon" aria-hidden="true">📋</span>
-          <span className="queue-count"><span className="queue-count__prefix">N° </span>{currentIndex + 1} / {queue.length}</span>
-        </button> : null}
       </div>
 
       <div className="player-track-info">
@@ -268,6 +248,37 @@ export default function PlayerBar() {
         </div>
       </div>
 
+      <div className="player-end">
+      {/* The session lives in the bar: the queue chip opens or folds the queue
+        * panel (no capsule floats over the page), and Loop and Repeat opens
+        * above the bar. The full player and an open dock carry Loop and
+        * Repeat themselves, so it shows here only when neither is open. */}
+      <div className="player-session" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+        {!isPlayerPage && !dockShowsListening ? (
+          <div className="player-listening-menu"><ListeningControls key={currentTrack?.id} variant="bar" /></div>
+        ) : null}
+        <button
+          type="button"
+          className="queue-indicator"
+          onClick={() => {
+            // Phones slide up the Session sheet; wider screens open or fold
+            // the queue panel (the console, on /player).
+            if (window.matchMedia?.("(max-width: 767px)").matches) setSessionSheetOpen(true);
+            else toggleConsoleMinimized();
+          }}
+          aria-pressed={wideScreen ? !consoleLayout.minimized : undefined}
+          aria-label={`Queue, track ${currentIndex + 1} of ${queue.length}${queueMinutes > 0 ? `, ${queueMinutes} minutes left` : ""}. ${wideScreen ? (consoleLayout.minimized ? "Show" : "Hide") : "Show"} the queue.`}
+          title={wideScreen && !consoleLayout.minimized ? "Hide the queue" : "Show the queue"}
+        >
+          <svg className="queue-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 6h13" /><path d="M3 12h13" /><path d="M3 18h9" /><path d="m17 15 4 3-4 3z" />
+          </svg>
+          <span className="queue-count">
+            <span className="queue-count__prefix">N° </span>{currentIndex + 1} / {queue.length}
+            {queueMinutes > 0 ? <span className="queue-count__time"> · {queueMinutes} min</span> : null}
+          </span>
+        </button>
+      </div>
       <div className={`player-volume ${muted ? "is-muted" : ""}`}>
         <button
           type="button"
@@ -295,6 +306,8 @@ export default function PlayerBar() {
           aria-label="Volume"
           aria-valuetext={`${Math.round(volume * 100)} percent`}
         />
+      </div>
+
       </div>
 
       <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">

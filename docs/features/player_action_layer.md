@@ -414,10 +414,14 @@ Off `/player`, the same console layout carries a compact **Session Dock**
 the queue (play a row, remove it, drag it onto a playlist) and Loop and repeat.
 It sits in `.app-stage`, the area under the top bar: docked left or right as a
 column beside the page (content moves over, nothing is covered), floating over
-the page, or folded into a capsule above the player bar with a progress ring and
-the queue position. It shares `resonate.player.consoleLayout.v1`, so docking,
-floating or folding it on any page does the same on `/player`. The player bar's
-queue chip folds and unfolds it (on `/player`, the console). It appears whenever
+the page, or folded into the player bar. It shares
+`resonate.player.consoleLayout.v1`, so docking, floating or folding it on any
+page does the same on `/player`. The player bar's queue chip (place in the queue
+and minutes left, beside the volume, `aria-pressed` while the dock is open)
+folds and unfolds it (on `/player`, the console). Folded, nothing floats over
+the page: Loop and repeat becomes a bar button whose panel opens above the bar
+and closes on Escape or an outside click; the folded dock reappears as a drop
+capsule only while something queueable is dragged. It appears whenever
 there is a queue, and while a queueable drag is in progress even when the queue
 is empty.
 
