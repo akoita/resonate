@@ -59,6 +59,7 @@ import { PurchaseConsentModule } from "./purchase_consent/purchase_consent.modul
 import { PrivacyModule } from "./privacy/privacy.module";
 import { ManagementModule } from "./management/management.module";
 import { DiscoveryJournalModule } from "./discovery_journal/discovery_journal.module";
+import { ListeningStatsModule } from "./listening_stats/listening_stats.module";
 import { AccountsModule } from "./accounts/accounts.module";
 import { AccountStatusInterceptor } from "./accounts/account_status.interceptor";
 import { UserActivityInterceptor } from "./accounts/user_activity.interceptor";
@@ -137,6 +138,7 @@ import { AdminStepUpModule } from "./admin_step_up/admin_step_up.module";
     PrivacyModule,
     ManagementModule,
     DiscoveryJournalModule,
+    ListeningStatsModule,
     CratesModule,
     AccountsModule,
     UserActivityModule,
