@@ -4,8 +4,10 @@ import type { ReactNode } from "react";
 import { RoomAccessBadge, type RoomAccessModel } from "./roomAccess";
 
 /**
- * Shared room card shell for every community surface (listener cohorts, artist
- * rooms, campaign rooms). Each surface used to ship its own card frame
+ * Shared room card shell for room surfaces (artist rooms, campaign rooms).
+ * Listener cohorts on /community use cover tiles instead (see
+ * ListenerCohortsPanel), since a long list of them reads as a browse grid
+ * rather than a list of rooms. Each surface used to ship its own card frame
  * (`listener-cohort-card`, `artist-community-room`, `show-community__room`);
  * this gives them one consistent anatomy — eyebrow + title, an access-badge
  * meta row, a body, and an actions footer — while leaving per-surface content

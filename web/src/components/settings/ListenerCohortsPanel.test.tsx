@@ -9,7 +9,6 @@ import type {
 } from "../../lib/api";
 import {
   cohortPrimaryAction,
-  cohortReasonLabel,
   cohortStatusLabel,
   cohortTypeLabel,
   hasVisibleSelectedCohort,
@@ -162,7 +161,6 @@ function contentProps(overrides: Partial<React.ComponentProps<typeof ListenerCoh
     roomError: null,
     consentEnabled: true,
     actionId: null,
-    onRefresh: vi.fn(),
     onOpenDetail: vi.fn(),
     onCloseDetail: vi.fn(),
     onLoadRoom: vi.fn(),
@@ -195,13 +193,14 @@ describe("ListenerCohortsPanel", () => {
     );
 
     expect(html).toContain("Ambient night listeners");
-    expect(html).toContain("A privacy-safe group for listeners exploring ambient releases.");
+    // Tiles carry a plain sentence; the privacy explanation lives in the detail sheet.
+    expect(html).toContain("People who play a lot of Ambient night.");
     expect(html).toContain("18+ listeners");
-    expect(html).toContain("Shared listening signal");
+    expect(html).toContain("Suggested for you");
     expect(html).not.toContain("taste:ambient");
-    expect(html).toContain("Details");
+    expect(html).toContain("Details: Ambient night listeners");
     expect(html).toContain("Join");
-    expect(html).toContain("Hide");
+    expect(html).toContain("aria-label=\"Hide Ambient night listeners\"");
   });
 
   it("locks all actions on a cohort while one action is pending", () => {
@@ -213,10 +212,10 @@ describe("ListenerCohortsPanel", () => {
     );
 
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Joining\.\.\.<\/button>/);
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>Hide<\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled[^>]*aria-label="Hide Ambient night listeners"/);
   });
 
-  it("renders joined cohorts with a leave action and no hide action", () => {
+  it("renders joined cohorts under Joined, with Leave in the detail sheet and no hide action", () => {
     const joined = cohort({
       membership: {
         status: "joined",
@@ -233,8 +232,19 @@ describe("ListenerCohortsPanel", () => {
     );
 
     expect(cohortPrimaryAction(joined)).toBe("leave");
-    expect(html).toContain("Leave");
+    expect(html).toContain(">Joined<");
+    expect(html).toContain("Open");
     expect(html).not.toContain("Hide");
+    expect(html).not.toContain("Suggested for you");
+
+    const withDetail = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([joined]),
+        selectedCohortId: "cohort-1",
+        detail: detail({ cohort: { ...detail().cohort, membership: joined.membership } }),
+      })} />,
+    );
+    expect(withDetail).toContain("Leave");
   });
 
   it("renders left cohorts with rejoin and hide actions", () => {
@@ -283,7 +293,6 @@ describe("ListenerCohortsPanel", () => {
     expect(cohortTypeLabel("artist_affinity")).toBe("Artist affinity");
     expect(cohortTypeLabel("city_scene")).toBe("City scene");
     expect(cohortTypeLabel("unknown")).toBe("Community");
-    expect(cohortReasonLabel(cohort({ cohortType: "campaign" }))).toBe("Campaign community signal");
   });
 
   it("detects when a selected cohort is no longer visible after refresh", () => {
@@ -503,9 +512,16 @@ describe("ListenerCohortsPanel", () => {
       })} />,
     );
 
-    expect(html).toContain("listener-cohort-card__status--suggested");
-    expect(html).toContain(">Suggested<");
+    expect(html).toContain("listener-cohort-card--suggested");
     expect(html).not.toContain(">suggested<");
+
+    const left = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort({ membership: { ...cohort().membership, status: "left" } })]),
+      })} />,
+    );
+    expect(left).toContain("listener-cohort-card__status--left");
+    expect(left).toContain(">Left<");
   });
 
   it("exposes the details toggle state to assistive technology", () => {
@@ -520,6 +536,36 @@ describe("ListenerCohortsPanel", () => {
     expect(html).toContain("aria-controls=\"listener-cohort-detail\"");
     expect(html).toContain("id=\"listener-cohort-detail\"");
     expect(html).toContain("Hide details");
+    expect(html).toContain("<dialog");
+  });
+
+  it("splits joined and suggested cohorts and offers kind filters when kinds differ", () => {
+    const joined = cohort({ id: "cohort-2", title: "Soul listeners", membership: { ...cohort().membership, status: "joined" } });
+    const artist = cohort({ id: "cohort-3", cohortType: "artist_affinity", title: "Mawa Traore listeners" });
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({
+        suggestions: suggestions([cohort(), joined, artist]),
+      })} />,
+    );
+
+    expect(html.indexOf("Joined")).toBeLessThan(html.indexOf("Suggested for you"));
+    expect(html).toContain("aria-label=\"Show communities by kind\"");
+    expect(html).toContain("Genres");
+    expect(html).toContain("Artists");
+    expect(html).toContain("Fans who keep coming back to Mawa Traore.");
+  });
+
+  it("previews long groups and offers Show all", () => {
+    const many = Array.from({ length: 11 }, (_, index) => cohort({ id: `c-${index}`, title: `Genre ${index} listeners` }));
+    const html = renderToStaticMarkup(
+      <ListenerCohortsContent {...contentProps({ suggestions: suggestions(many) })} />,
+    );
+
+    expect(html).toContain("Show all 11");
+    expect(html).toContain("Genre 7 listeners");
+    expect(html).not.toContain("Genre 8 listeners");
+    // One kind only: no filter row.
+    expect(html).not.toContain("Show communities by kind");
   });
 
   it("disables coming-soon actions instead of rendering them as live links", () => {

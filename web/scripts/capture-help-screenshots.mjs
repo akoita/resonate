@@ -438,8 +438,8 @@ const OWNER_TARGETS = [
     "/community",
     "community.png",
     {
-      selectors: [".community-benefits__privacy", ".listener-cohort-list"],
-      text: ["Benefits for your listener account", "Listener Cohorts"],
+      selectors: [".community-workspace", ".cohort-grid"],
+      text: ["Your listener communities", "Joined"],
       viewportHeight: 1200,
     },
   ],

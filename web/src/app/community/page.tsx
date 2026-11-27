@@ -25,15 +25,16 @@ export default function CommunityPage() {
           <span className="settings-kicker">Communities</span>
           <h1>Your listener communities</h1>
           <p className="community-hero__subtitle">
-            Privacy-safe groups shaped by shared music signals. Join a cohort and pick up the conversation.
+            Small groups of people who love the same music as you. Join the ones that fit, then meet and talk in
+            their rooms. Nobody sees you in a group until you join it.
           </p>
         </header>
 
-        <section className="community-panel" aria-live="polite">
+        <section className="community-panel" aria-label="Your perks" aria-live="polite">
           <CommunityBenefitsPanel token={token} addToast={addToast} />
         </section>
 
-        <section className="community-panel" aria-live="polite">
+        <section className="community-panel" aria-label="Your communities">
           <ListenerCohortsPanel token={token} addToast={addToast} />
         </section>
       </main>
