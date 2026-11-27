@@ -3894,6 +3894,14 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
   gap: var(--space-3);
 }
 
+.vault-free-dollars-address {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.72));
+}
+
 .vault-welcome-note {
   margin: 0;
   font-size: 14px;

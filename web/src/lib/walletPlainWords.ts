@@ -13,6 +13,17 @@ export function isTestMoneyChain(chainId: number | null | undefined) {
   return chainId != null && TEST_CHAIN_IDS.has(chainId);
 }
 
+/** Circle's public test-USDC faucet and the network name it lists, per test chain. */
+const TEST_DOLLAR_FAUCETS: Record<number, string> = {
+  84532: "Base Sepolia",
+  11155111: "Ethereum Sepolia",
+};
+
+export function testDollarFaucet(chainId: number | null | undefined) {
+  const networkName = chainId != null ? TEST_DOLLAR_FAUCETS[chainId] : undefined;
+  return networkName ? { url: "https://faucet.circle.com/", networkName } : null;
+}
+
 /** Dollar-pegged balances (USDC) added up, in dollars. */
 export function dollarBalance(balances: PaymentAssetBalance[]): number {
   return balances

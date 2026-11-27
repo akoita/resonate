@@ -5,6 +5,7 @@ import {
   formatDollars,
   formatWelcomeDollars,
   isTestMoneyChain,
+  testDollarFaucet,
   welcomeMoneyMessage,
 } from "./walletPlainWords";
 
@@ -56,5 +57,14 @@ describe("wallet plain words", () => {
     expect(feesLine({ sponsored: false, ethBalance: 0 })).toMatch(/No fee money yet/);
     expect(feesLine({ sponsored: false, ethBalance: 0.004 })).toMatch(/ready/);
     expect(feesLine({ sponsored: false, ethBalance: null })).toBeNull();
+  });
+});
+
+describe("self-serve test dollars", () => {
+  it("points test networks at Circle's faucet and never production", () => {
+    expect(testDollarFaucet(84532)).toEqual({ url: "https://faucet.circle.com/", networkName: "Base Sepolia" });
+    expect(testDollarFaucet(8453)).toBeNull();
+    expect(testDollarFaucet(31337)).toBeNull();
+    expect(testDollarFaucet(null)).toBeNull();
   });
 });

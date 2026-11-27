@@ -726,6 +726,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             title: "No welcome money yet?",
             text: "Press Get my test money on the Wallet page. If the day's welcome money has all been handed out, try again the next day.",
           },
+          {
+            kind: "paragraph",
+            text: "Need more? The Get more test dollars card on the Wallet page lets you top up yourself for free. Copy your address, open Circle's test faucet at faucet.circle.com, pick USDC and the Base Sepolia network, paste your address under Send to, and press Send. Come back and refresh your balance. Circle hands out test dollars every couple of hours.",
+          },
         ],
       },
       {

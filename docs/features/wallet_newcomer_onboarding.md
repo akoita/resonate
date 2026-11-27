@@ -22,6 +22,12 @@ infrastructure/quality (ADR-BM-6): test money only, no real-money flow.
 - **Get my test money.** When a welcome leg did not arrive (failed send,
   daily limit, or an account made before welcome money existed), the card
   offers a button that claims it once.
+- **Get more test dollars, free.** On Base Sepolia (and Sepolia) a second card
+  walks the newcomer through Circle's public test-USDC faucet: copy the
+  address, open faucet.circle.com, pick USDC and the network, paste the address
+  under "Send to", press Send, refresh. This is the main way to get more test
+  dollars; our own welcome top-up stays small so its faucet wallet can keep up.
+  The card only links out and copies the address; it signs and moves nothing.
 - **Account menu.** The sidebar account card opens a menu: Profile (artist
   page for artists, Settings > Community for listeners), Wallet (only while the
   wallet switch is on), Settings, Sign out.
