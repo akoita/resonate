@@ -1,3 +1,5 @@
+import { removeAllRecentViews } from "./recentViews";
+
 export const TOKEN_KEY = "resonate.token";
 export const ADDRESS_KEY = "resonate.address";
 export const SA_ADDRESS_KEY = "resonate.smartAccountAddress";
@@ -57,6 +59,8 @@ export function resetLocalAppState(): string[] {
   for (const key of keys) {
     localStorage.removeItem(key);
   }
+  // Home's "Jump back in" pages, for every account on this device.
+  keys.push(...removeAllRecentViews());
   window.dispatchEvent(
     new CustomEvent(AUTH_INVALIDATED_EVENT, {
       detail: { reason: "session_reset" as AuthInvalidationReason },

@@ -12,9 +12,10 @@ import { Tabs } from "../../../components/ui/Tabs";
 import { ArtistCommunityTab } from "../../../components/community/ArtistCommunityTab";
 import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLinksRow";
 import { ArtistProfileEditor } from "../../../components/artist/ArtistProfileEditor";
+import { useRecordRecentView } from "../../../components/home/RecordRecentView";
 import { FollowArtistButton } from "../../../components/artist/FollowArtistButton";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { legacyArtistAliasDestination, legacyArtistAliasSearchName, libraryArtistHref, publicReleaseHref } from "../../../lib/artistRoutes";
+import { artistProfileHref, legacyArtistAliasDestination, legacyArtistAliasSearchName, libraryArtistHref, publicReleaseHref } from "../../../lib/artistRoutes";
 import { summarizeCreditedArtists } from "../../../lib/catalogDisplay";
 import { listTracks } from "../../../lib/localLibrary";
 import { libraryArtistNameForProfile } from "../../../lib/libraryNavigation";
@@ -171,6 +172,21 @@ export default function ArtistPage() {
     const genres = Array.from(
         new Set(releases.map((r) => r.genre).filter((g): g is string => Boolean(g))),
     ).slice(0, 4);
+
+    // #2735: remembered on this device for Home's "Jump back in".
+    useRecordRecentView(
+        !loading && artist
+            ? {
+                kind: "artist",
+                id: artist.id,
+                title: artist.displayName,
+                subtitle: genres[0],
+                imageUrl: coverArt,
+                href: artistProfileHref(artist.id),
+                artistId: artist.id,
+            }
+            : null,
+    );
 
     if (!loading && notFound) {
         return (

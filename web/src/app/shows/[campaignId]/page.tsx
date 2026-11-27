@@ -1,3 +1,4 @@
+import { RecordRecentView } from "../../../components/home/RecordRecentView";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
@@ -117,6 +118,19 @@ export default async function CampaignDetailPage({ params }: Props) {
           </Link>
         </div>
 
+        {/* #2735: remembered on this device for Home's "Jump back in". */}
+        {campaign.rawStatus !== "draft" ? (
+          <RecordRecentView
+            view={{
+              kind: "show",
+              id: campaign.id,
+              title: displayTitle,
+              subtitle: [campaign.artistName, campaign.city].filter(Boolean).join(" · "),
+              imageUrl: campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url || null,
+              href: `/shows/${encodeURIComponent(requestedId)}`,
+            }}
+          />
+        ) : null}
         <CampaignDraftOwnerBar campaign={campaign} />
         <ShowInterestOwnerPanel campaign={campaign} />
 

@@ -803,7 +803,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["search bar", "top bar search", "find an artist", "find a release", "find a song", "keyboard shortcut", "ctrl+k", "discover", "home", "browse", "catalog", "trending", "top artists", "charts", "charts empty", "empty charts", "my plays don't count", "my listens don't count", "listens not counted", "not enough listening", "minimum listeners", "why am I not trending", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge", "tuner", "energy", "stem lab", "mixer", "solo", "live events", "shows", "studio"],
+    keywords: ["jump back in", "recently played", "recently viewed", "recent", "history", "resume", "continue listening", "pick up where you left off", "clear recent", "search bar", "top bar search", "find an artist", "find a release", "find a song", "keyboard shortcut", "ctrl+k", "discover", "home", "browse", "catalog", "trending", "top artists", "charts", "charts empty", "empty charts", "my plays don't count", "my listens don't count", "listens not counted", "not enough listening", "minimum listeners", "why am I not trending", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge", "tuner", "energy", "stem lab", "mixer", "solo", "live events", "shows", "studio"],
     sections: [
       {
         id: "home",
@@ -831,6 +831,20 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 1200,
               source: STAGING,
             },
+          },
+        ],
+      },
+      {
+        id: "jump-back-in",
+        heading: "Jump back in",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "When you're signed in, a \"Jump back in\" row sits right under the featured campaign, before the catalog. It gathers what you played or opened lately, from the last few hours to the last few months, newest first: albums, singles and EPs, remixes, playlists, artists, shows, stems and a release's stem mixer. Each tile says what it is and when you last played or opened it. Press its play button to start it; an album or playlist you played picks up at the track you were on. A show or a stem opens its page instead.",
+          },
+          {
+            kind: "paragraph",
+            text: "Plays come from the same listening history as Your listening, so they only appear if you let Resonate remember your plays, and files from your own device never show up. The pages you open are remembered in this browser only and never sent to Resonate. Clear empties the row on this device; to forget your plays everywhere, reset Taste Memory in Settings. If you're new and haven't played or opened anything yet, the row stays hidden and Home starts with the catalog.",
           },
         ],
       },
