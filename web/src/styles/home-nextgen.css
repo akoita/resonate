@@ -1984,3 +1984,52 @@
     align-self: start;
   }
 }
+
+/* ---- The catalog, right after the hero (owner, 2026-11-27) -----------------
+ * The main way into music on Home: a front door, not a footnote. A violet
+ * edge and a larger title set it apart from the shelves below; the search
+ * sends Enter to the full catalog. */
+.home-ng .ng-catalog-home .ng-catalog-shell {
+  position: relative;
+  border-color: color-mix(in srgb, var(--r-primary, #7c5cff) 34%, transparent);
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--r-primary, #7c5cff) 16%, transparent), transparent 55%),
+    rgba(16, 14, 28, 0.72);
+}
+
+.home-ng .ng-catalog-home .ng-section-title {
+  font-size: clamp(1.6rem, 1.1rem + 1.6cqi, 2.25rem);
+  line-height: 1.1;
+  margin: 4px 0 0;
+}
+
+.home-ng .ng-catalog-lede {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.95rem;
+}
+
+.home-ng .ng-catalog-home .ng-catalog-open {
+  flex: none;
+  white-space: nowrap;
+}
+
+.home-ng .ng-catalog-home .ng-cat-genres {
+  margin: 0 0 16px;
+}
+
+/* The title keeps a readable width; in a narrow column (a laptop with the
+   Session Dock open) the button wraps below it instead of squeezing the
+   title to a word per line. */
+.home-ng .ng-catalog-home .ng-catalog-header {
+  flex-wrap: wrap;
+}
+
+.home-ng .ng-catalog-home .ng-catalog-actions {
+  flex: 0 0 auto;
+}
+
+.home-ng .ng-catalog-home .ng-catalog-header > :first-child {
+  flex: 1 1 20rem;
+  min-width: min(100%, 20rem);
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,6 @@ import {
 } from "../lib/api";
 import { artistProfileHref } from "../lib/artistRoutes";
 import {
-  filterPublicPlaylists,
   flattenCatalogStems,
   formatCount,
   getArtistName,
@@ -32,6 +31,7 @@ import {
   groupCatalogStemsByTrack,
   summarizeCreditedArtists,
   summarizeManagedArtists,
+  topCatalogGenres,
   type CatalogArtistSummary,
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
@@ -110,7 +110,8 @@ type FilterOption = {
 };
 type CatalogView = "releases" | "artists" | "stems" | "playlists";
 
-const HOME_RELEASE_SNAPSHOT_LIMIT = 12;
+const HOME_RELEASE_SNAPSHOT_LIMIT = 10;
+const HOME_GENRE_CHIP_LIMIT = 6;
 const HOME_ARTIST_SNAPSHOT_LIMIT = 12;
 const HOME_STEM_TRACK_SNAPSHOT_LIMIT = 6;
 const HOME_PLAYLIST_SNAPSHOT_LIMIT = 12;
@@ -389,7 +390,7 @@ export default function Home() {
   const [myReleases, setMyReleases] = useState<Release[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
-  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogGenre, setCatalogGenre] = useState<string | null>(null);
   // #1454 WS-7: multi-rail personalized feed. null = loading, [] rails = honest empty.
   // #2254: explicit loading / ready / error so a failed feed is not mistaken
   // for a loading one (which would hold the rails below it forever).
@@ -404,7 +405,6 @@ export default function Home() {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [activeHeroCampaignId, setActiveHeroCampaignId] = useState("");
   const [heroPaused, setHeroPaused] = useState(false);
-  const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
   const { status, sessionChecked, token, userId, connectPrivy } = useAuth();
   const { addToast } = useToast();
   const { playQueue } = usePlayer();
@@ -663,44 +663,36 @@ export default function Home() {
     () => summarizeCreditedArtists(displayReleases),
     [displayReleases],
   );
-  const normalizedSearch = catalogSearch.trim().toLowerCase();
-  const catalogFilteredReleases = useMemo(
-    () => filterReleases(displayReleases, normalizedSearch),
-    [displayReleases, normalizedSearch],
+  const catalogStemTracks = useMemo(
+    () => groupCatalogStemsByTrack(catalogStems),
+    [catalogStems],
   );
-  const catalogFilteredArtists = useMemo(
-    () => filterArtists(catalogArtists, normalizedSearch),
-    [catalogArtists, normalizedSearch],
+  // Genre chips (the most common genres in the snapshot) narrow the releases.
+  const catalogGenres = useMemo(
+    () => topCatalogGenres(displayReleases, HOME_GENRE_CHIP_LIMIT),
+    [displayReleases],
   );
-  const catalogFilteredStems = useMemo(
-    () => filterStems(catalogStems, normalizedSearch),
-    [catalogStems, normalizedSearch],
-  );
-  const catalogFilteredPlaylists = useMemo(
-    () => filterPublicPlaylists(publicPlaylists, normalizedSearch),
-    [publicPlaylists, normalizedSearch],
-  );
-  const catalogFilteredStemTracks = useMemo(
-    () => groupCatalogStemsByTrack(catalogFilteredStems),
-    [catalogFilteredStems],
+  const catalogGenreReleases = useMemo(
+    () => catalogGenre
+      ? displayReleases.filter((release) => release.genre?.trim().toLowerCase() === catalogGenre.toLowerCase())
+      : displayReleases,
+    [displayReleases, catalogGenre],
   );
   const browseReleases = useMemo(
-    () => catalogFilteredReleases.slice(0, HOME_RELEASE_SNAPSHOT_LIMIT),
-    [catalogFilteredReleases],
+    () => catalogGenreReleases.slice(0, HOME_RELEASE_SNAPSHOT_LIMIT),
+    [catalogGenreReleases],
   );
   const browseArtists = useMemo(
-    () => catalogFilteredArtists.slice(0, HOME_ARTIST_SNAPSHOT_LIMIT),
-    [catalogFilteredArtists],
+    () => catalogArtists.slice(0, HOME_ARTIST_SNAPSHOT_LIMIT),
+    [catalogArtists],
   );
   const browseStemTracks = useMemo(
-    () => catalogFilteredStemTracks.slice(0, HOME_STEM_TRACK_SNAPSHOT_LIMIT),
-    [catalogFilteredStemTracks],
+    () => catalogStemTracks.slice(0, HOME_STEM_TRACK_SNAPSHOT_LIMIT),
+    [catalogStemTracks],
   );
-  // Analytics keeps counting individual stems shown, not grouped track rows.
-  const browseStemCount = browseStemTracks.reduce((total, group) => total + group.stemCount, 0);
   const browsePlaylists = useMemo(
-    () => catalogFilteredPlaylists.slice(0, HOME_PLAYLIST_SNAPSHOT_LIMIT),
-    [catalogFilteredPlaylists],
+    () => publicPlaylists.slice(0, HOME_PLAYLIST_SNAPSHOT_LIMIT),
+    [publicPlaylists],
   );
   const catalogVisibleCount =
     catalogView === "releases"
@@ -712,12 +704,12 @@ export default function Home() {
           : browsePlaylists.length;
   const catalogTotalCount =
     catalogView === "releases"
-      ? catalogFilteredReleases.length
+      ? catalogGenreReleases.length
       : catalogView === "artists"
-        ? catalogFilteredArtists.length
+        ? catalogArtists.length
         : catalogView === "stems"
-          ? catalogFilteredStemTracks.length
-          : catalogFilteredPlaylists.length;
+          ? catalogStemTracks.length
+          : publicPlaylists.length;
   // #1454 WS-7: feed items adapted to the legacy HomeRecommendation shape so
   // the AI DJ session seeding and vibe-queue building keep working unchanged.
   const feedRecommendations = useMemo<HomeRecommendation[]>(() => {
@@ -756,54 +748,6 @@ export default function Home() {
     .slice()
     .sort((a, b) => getCatalogSortTime(b) - getCatalogSortTime(a))
     .slice(0, 4);
-
-  useEffect(() => {
-    const query = catalogSearch.trim();
-    if (query.length < 2) return;
-    const timer = window.setTimeout(() => {
-      const analyticsKey = JSON.stringify({
-        query,
-        catalogView,
-        activeFilter,
-      });
-      if (lastCatalogSearchAnalyticsKeyRef.current === analyticsKey) return;
-      lastCatalogSearchAnalyticsKeyRef.current = analyticsKey;
-      void recordProductAnalytics(token, "search.submitted", {
-        source: "home_catalog",
-        subjectType: "catalog",
-        payload: {
-          surface: "home_catalog",
-          queryLength: query.length,
-          catalogView,
-          activeFilter,
-          releaseResultCount: browseReleases.length,
-          artistResultCount: browseArtists.length,
-          stemResultCount: browseStemCount,
-          playlistResultCount: browsePlaylists.length,
-        },
-      });
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [activeFilter, browseArtists.length, browsePlaylists.length, browseReleases.length, browseStemCount, catalogSearch, catalogView, token]);
-
-  const recordCatalogSearchResultClick = (
-    resultType: "release" | "artist" | "track" | "playlist",
-    subjectId: string,
-    resultRank: number,
-  ) => {
-    if (!catalogSearch.trim()) return;
-    void recordProductAnalytics(token, "search.result_clicked", {
-      source: "home_catalog",
-      subjectType: resultType,
-      subjectId,
-      payload: {
-        surface: "home_catalog",
-        resultType,
-        resultRank,
-        catalogView,
-      },
-    });
-  };
 
   // #1451 WS-4: Top Artists come from the engagement serving table only —
   // no recency fallback. `loading` hides the rail, `ready` with `[]` = the
@@ -1042,103 +986,25 @@ export default function Home() {
           <EmailPromptCard context="onboarding" />
         </div>
 
-        {/* 2. TUNER — genre/mood filter + vibe session ——————————— */}
-        <HomeTuner
-          filters={FILTERS}
-          activeId={activeFilter}
-          onSelect={(id) => {
-            const next = FILTERS.find((filter) => filter.id === id);
-            if (next) setActiveFilter(next.id);
-          }}
-          matchCount={filteredReleases.length}
-          starting={startingVibe === activeFilter}
-          onStartSession={() => void handleStartVibeSession(activeFilterConfig)}
-        />
-
-        {/* 3. PERSONALIZED FEED — multi-rail (#1454 WS-7) ————————— */}
-        {/* #2254: sections reveal in layout order. A signed-in listener's feed
-            slot is reserved with a skeleton while the feed loads, and the
-            popularity rails below stay on their skeletons until the feed has
-            settled, so real content never paints above-then-below a loading
-            slot. Before the session is checked nothing is reserved here. */}
-        {reveal.feedSlot === "skeleton" && <HomeFeedRailSkeleton />}
-        <HomeFeedRails
-          feed={reveal.feedSlot === "content" ? homeFeed : null}
-          startingSeed={startingSeed}
-          queueable
-          onOpen={(item, railId, position) => emitRecommendationClick(item.id, railId, position)}
-          onStartSession={(item, railId, position) => {
-            emitRecommendationClick(item.id, railId, position);
-            void handleStartRecommendedSession(feedItemToRecommendation(item, displayReleases));
-          }}
-        />
-
-        {/* 4. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
-        {/* The rail renders null while its own data is loading, so the lazy
-            mount waits for `reveal` (data arrived AND the feed above has
-            settled, #2254) and the skeleton holds the slot until then (#1491). */}
-        {reveal.trending === "content" ? (
-          <TrendingNowRail state={trendingRail} genreLabel={popularityGenre} queueable />
-        ) : (
-          <TrendingNowRailSkeleton />
-        )}
-
-        {/* 5. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
-        {reveal.topArtists === "content" ? (
-          <TopArtistsRail
-            state={topArtists}
-            genreLabel={popularityGenre}
-            coverFallbacks={artistCoverFallbacks}
-            queueable
-          />
-        ) : (
-          <TopArtistsRailSkeleton />
-        )}
-
-        {/* 6. STEM LAB — real stems, one-tap solo in the mixer ———— */}
-        <StemLab entries={stemLabEntries} />
-
-        {/* 7. UPCOMING LIVE EVENTS — ticket-style campaign cards ——— */}
-        <LiveEventRail campaigns={actionableCampaigns} />
-
-        {/* 8. DROPS — collectible moments shelf (#1479) ——————————— */}
-        {/* Starts after the page has settled, or when scrolled near: its
-            fetch, its cards and their artwork are not part of opening Home. */}
-        <DeferredMount fallback={<DropsShelfSkeleton />}>
-          <DropsShelf token={token} />
-        </DeferredMount>
-
-        {/* 9. CATALOG BROWSER — "Recently Added" snapshot ——————————— */}
-        <section className="ng-section">
+        {/* 2. THE CATALOG — the main way into music, right after the hero
+            (owner, 2026-11-27): newest releases, artists, stems and public
+            playlists, genre chips, and a clear way to the full catalog. */}
+        <section className="ng-section ng-catalog-home" id="catalog" aria-labelledby="home-catalog-title">
           <div className="ng-catalog-shell ng-glass">
             <header className="ng-catalog-header">
               <div>
-                <span className="ng-kicker ng-kicker--violet">Global catalog snapshot</span>
-                <h3 className="ng-section-title">Recently Added</h3>
+                <span className="ng-kicker ng-kicker--violet">The catalog</span>
+                <h2 className="ng-section-title" id="home-catalog-title">Find something to play</h2>
+                {displayReleases.length > 0 ? (
+                  <p className="ng-catalog-lede">
+                    {formatCount(displayReleases.length, CATALOG_SNAPSHOT_UNITS.releases)}, {formatCount(catalogArtists.length, CATALOG_SNAPSHOT_UNITS.artists)} and {formatCount(publicPlaylists.length, CATALOG_SNAPSHOT_UNITS.playlists)}, newest first.
+                  </p>
+                ) : null}
               </div>
               <div className="ng-catalog-actions">
-                <label className="ng-catalog-search">
-                  <span className="ms-icon" aria-hidden>search</span>
-                  <input
-                    value={catalogSearch}
-                    onChange={(event) => setCatalogSearch(event.target.value)}
-                    placeholder="Search this snapshot"
-                    aria-label="Search catalog snapshot"
-                  />
-                  {catalogSearch && (
-                    <button
-                      type="button"
-                      className="ng-catalog-search__clear"
-                      onClick={() => setCatalogSearch("")}
-                      aria-label="Clear search"
-                    >
-                      <span className="ms-icon" aria-hidden>close</span>
-                    </button>
-                  )}
-                </label>
-                <Link href="/catalog" className="ng-section-link">
-                  Open catalog
-                  <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
+                <Link href="/catalog" className="ng-btn ng-btn--primary ng-catalog-open">
+                  Open the catalog
+                  <span className="ms-icon" aria-hidden>arrow_forward</span>
                 </Link>
               </div>
             </header>
@@ -1158,6 +1024,30 @@ export default function Home() {
               ))}
             </div>
 
+            {catalogView === "releases" && catalogGenres.length > 0 ? (
+              <div className="ng-cat-genres" role="group" aria-label="Filter releases by genre">
+                <button
+                  type="button"
+                  className={catalogGenre === null ? "ng-cat-genre active" : "ng-cat-genre"}
+                  aria-pressed={catalogGenre === null}
+                  onClick={() => setCatalogGenre(null)}
+                >
+                  All
+                </button>
+                {catalogGenres.map((genre) => (
+                  <button
+                    key={genre}
+                    type="button"
+                    className={catalogGenre === genre ? "ng-cat-genre active" : "ng-cat-genre"}
+                    aria-pressed={catalogGenre === genre}
+                    onClick={() => setCatalogGenre(catalogGenre === genre ? null : genre)}
+                  >
+                    {genre}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             {catalogVisibleCount < catalogTotalCount && (
               <p className="ng-cat-summary" aria-live="polite">
                 Showing {catalogVisibleCount} of {formatCount(catalogTotalCount, CATALOG_SNAPSHOT_UNITS[catalogView])}
@@ -1167,11 +1057,10 @@ export default function Home() {
             {catalogView === "releases" && (
               browseReleases.length > 0 ? (
                 <div className="ng-cat-grid">
-                  {browseReleases.map((release, index) => (
+                  {browseReleases.map((release) => (
                     <CatalogReleaseCard
                       key={release.id}
                       release={release}
-                      onSelect={() => recordCatalogSearchResultClick("release", release.id, index + 1)}
                       onPlay={handlePlayCatalogRelease}
                       actions={releaseActions(release)}
                       queueable
@@ -1181,7 +1070,7 @@ export default function Home() {
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>album</span>
-                  <p>{normalizedSearch ? "No releases match your search." : "No releases in the global catalog."}</p>
+                  <p>{"No releases in the global catalog."}</p>
                 </div>
               )
             )}
@@ -1189,11 +1078,10 @@ export default function Home() {
             {catalogView === "artists" && (
               browseArtists.length > 0 ? (
                 <div className="ng-cat-grid">
-                  {browseArtists.map((artist, index) => (
+                  {browseArtists.map((artist) => (
                     <CatalogArtistCard
                       key={artist.key}
                       artist={artist}
-                      onSelect={() => recordCatalogSearchResultClick("artist", artist.artistId ?? artist.key, index + 1)}
                       queueable
                     />
                   ))}
@@ -1201,7 +1089,7 @@ export default function Home() {
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>person_search</span>
-                  <p>{normalizedSearch ? "No artists match your search." : "No artists in the global catalog."}</p>
+                  <p>{"No artists in the global catalog."}</p>
                 </div>
               )
             )}
@@ -1209,18 +1097,17 @@ export default function Home() {
             {catalogView === "stems" && (
               browseStemTracks.length > 0 ? (
                 <div className="ng-cat-stem-list">
-                  {browseStemTracks.map((group, index) => (
+                  {browseStemTracks.map((group) => (
                     <CatalogStemTrackRow
                       key={group.key}
                       group={group}
-                      onSelect={() => recordCatalogSearchResultClick("track", group.trackId, index + 1)}
                     />
                   ))}
                 </div>
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>graphic_eq</span>
-                  <p>{normalizedSearch ? "No stems match your search." : "No stems are exposed in this catalog slice yet."}</p>
+                  <p>{"No stems are exposed in this catalog slice yet."}</p>
                 </div>
               )
             )}
@@ -1228,11 +1115,10 @@ export default function Home() {
             {catalogView === "playlists" && (
               browsePlaylists.length > 0 ? (
                 <div className="ng-cat-grid">
-                  {browsePlaylists.map((playlist, index) => (
+                  {browsePlaylists.map((playlist) => (
                     <CatalogPlaylistCard
                       key={playlist.id}
                       playlist={playlist}
-                      onSelect={() => recordCatalogSearchResultClick("playlist", playlist.id, index + 1)}
                       queueable
                     />
                   ))}
@@ -1240,19 +1126,85 @@ export default function Home() {
               ) : (
                 <div className="ng-empty-state">
                   <span className="ms-icon" aria-hidden>queue_music</span>
-                  <p>{normalizedSearch ? "No playlists match your search." : "No public playlists in the global catalog yet."}</p>
+                  <p>{"No public playlists in the global catalog yet."}</p>
                 </div>
               )
             )}
 
             <div className="ng-catalog-footer">
               <Link href="/catalog" className="ng-btn ng-btn--secondary">
-                Browse catalog
+                See the whole catalog
                 <span className="ms-icon" aria-hidden>arrow_forward</span>
               </Link>
             </div>
           </div>
         </section>
+
+        {/* 3. TUNER — genre/mood filter + vibe session ——————————— */}
+        <HomeTuner
+          filters={FILTERS}
+          activeId={activeFilter}
+          onSelect={(id) => {
+            const next = FILTERS.find((filter) => filter.id === id);
+            if (next) setActiveFilter(next.id);
+          }}
+          matchCount={filteredReleases.length}
+          starting={startingVibe === activeFilter}
+          onStartSession={() => void handleStartVibeSession(activeFilterConfig)}
+        />
+
+        {/* 4. PERSONALIZED FEED — multi-rail (#1454 WS-7) ————————— */}
+        {/* #2254: sections reveal in layout order. A signed-in listener's feed
+            slot is reserved with a skeleton while the feed loads, and the
+            popularity rails below stay on their skeletons until the feed has
+            settled, so real content never paints above-then-below a loading
+            slot. Before the session is checked nothing is reserved here. */}
+        {reveal.feedSlot === "skeleton" && <HomeFeedRailSkeleton />}
+        <HomeFeedRails
+          feed={reveal.feedSlot === "content" ? homeFeed : null}
+          startingSeed={startingSeed}
+          queueable
+          onOpen={(item, railId, position) => emitRecommendationClick(item.id, railId, position)}
+          onStartSession={(item, railId, position) => {
+            emitRecommendationClick(item.id, railId, position);
+            void handleStartRecommendedSession(feedItemToRecommendation(item, displayReleases));
+          }}
+        />
+
+        {/* 5. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
+        {/* The rail renders null while its own data is loading, so the lazy
+            mount waits for `reveal` (data arrived AND the feed above has
+            settled, #2254) and the skeleton holds the slot until then (#1491). */}
+        {reveal.trending === "content" ? (
+          <TrendingNowRail state={trendingRail} genreLabel={popularityGenre} queueable />
+        ) : (
+          <TrendingNowRailSkeleton />
+        )}
+
+        {/* 6. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
+        {reveal.topArtists === "content" ? (
+          <TopArtistsRail
+            state={topArtists}
+            genreLabel={popularityGenre}
+            coverFallbacks={artistCoverFallbacks}
+            queueable
+          />
+        ) : (
+          <TopArtistsRailSkeleton />
+        )}
+
+        {/* 7. STEM LAB — real stems, one-tap solo in the mixer ———— */}
+        <StemLab entries={stemLabEntries} />
+
+        {/* 8. UPCOMING LIVE EVENTS — ticket-style campaign cards ——— */}
+        <LiveEventRail campaigns={actionableCampaigns} />
+
+        {/* 9. DROPS — collectible moments shelf (#1479) ——————————— */}
+        {/* Starts after the page has settled, or when scrolled near: its
+            fetch, its cards and their artwork are not part of opening Home. */}
+        <DeferredMount fallback={<DropsShelfSkeleton />}>
+          <DropsShelf token={token} />
+        </DeferredMount>
 
         {/* 10. AI DJ — session control (signed in) / presets (signed out) ———— */}
         {/* scroll-margin keeps the heading below the sticky topbar when anchored. */}
@@ -1460,43 +1412,6 @@ function getReleaseResourceCount(release: Release) {
     0,
   ) ?? 0;
   return Math.max(1, 1 + stemCount);
-}
-
-function filterReleases(releases: Release[], query: string) {
-  if (!query) return releases;
-  return releases.filter((release) =>
-    [
-      release.title,
-      getArtistName(release),
-      release.genre,
-      release.label,
-      release.type,
-    ].some((value) => value?.toLowerCase().includes(query)),
-  );
-}
-
-function filterArtists(artists: CatalogArtistSummary[], query: string) {
-  if (!query) return artists;
-  return artists.filter((artist) =>
-    [
-      artist.name,
-      artist.latestRelease?.title,
-      ...Array.from(artist.genres),
-    ].some((value) => value?.toLowerCase().includes(query)),
-  );
-}
-
-function filterStems(stems: CatalogStemSummary[], query: string) {
-  if (!query) return stems;
-  return stems.filter((stem) =>
-    [
-      stem.title,
-      stem.trackTitle,
-      stem.type,
-      stem.releaseTitle,
-      stem.artistName,
-    ].some((value) => value.toLowerCase().includes(query)),
-  );
 }
 
 function releaseMatchesFilter(release: Release, filter: FilterOption) {

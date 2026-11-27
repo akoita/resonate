@@ -16,6 +16,7 @@ export type TopbarProps = {
 
 const ROUTE_TITLES: Array<[string, string]> = [
   ["/sonic-radar", "Sonic Radar"],
+  ["/catalog", "Catalog"],
   ["/listening", "Your listening"],
   ["/player", "Player"],
   ["/library", "Library"],
@@ -40,7 +41,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/admin/support", "Support Requests"],
   ["/admin/preview-measures", "Preview Measures"],
   ["/admin/usage-report", "Usage Report"],
-  ["/artist/catalog", "Catalog"],
+  ["/artist/catalog", "My catalog"],
   ["/artist/listings", "Listings"],
   ["/artist/remix-approvals", "Remix Approvals"],
   ["/artist/upload", "Upload"],

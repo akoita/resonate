@@ -38,8 +38,6 @@ const STEM_ACCENTS: Record<MixerStemType, string> = {
   other: "#9880FF",
 };
 
-const METER_BAR_COUNT = 12;
-
 function isMixerStemType(type: string): type is MixerStemType {
   return (MIXER_STEM_ORDER as readonly string[]).includes(type);
 }
@@ -84,48 +82,6 @@ export function selectStemLabEntries(
   return entries;
 }
 
-/** Deterministic 0..99 sequence seeded by a string (stable across renders). */
-function hashSequence(seed: string, count: number): number[] {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
-  }
-  const out: number[] = [];
-  for (let i = 0; i < count; i++) {
-    hash = (hash * 1103515245 + 12345) | 0;
-    out.push(Math.abs(hash) % 100);
-  }
-  return out;
-}
-
-/** Bar heights (percent) shaped so each stem type reads differently. */
-export function stemMeterBars(stemId: string, type: string): number[] {
-  const base = hashSequence(`${stemId}:${type}`, METER_BAR_COUNT);
-  const clamp = (value: number) => Math.max(12, Math.min(100, Math.round(value)));
-  if (type === "drums") {
-    // Spiky, on-beat kicks with quieter ghost notes between.
-    return base.map((v, i) => {
-      if (i % 4 === 0) return clamp(84 + (v % 16));
-      if (i % 4 === 2) return clamp(40 + (v % 20));
-      return clamp(14 + (v % 16));
-    });
-  }
-  if (type === "vocals") {
-    // Smooth sine phrase — a melody rising and falling.
-    return base.map((v, i) => {
-      const t = i / (METER_BAR_COUNT - 1);
-      const phrase = Math.sin(t * Math.PI * 2 - Math.PI / 2) * -0.35 + 0.55;
-      return clamp(phrase * 100 + ((v % 10) - 5));
-    });
-  }
-  if (type === "bass") {
-    // Low, steady pulses.
-    return base.map((v, i) => clamp((i % 2 === 0 ? 46 : 30) + (v % 10)));
-  }
-  // Piano, guitar, other — gentle random movement.
-  return base.map((v) => clamp(28 + (v % 52)));
-}
-
 function stemLabel(type: string): string {
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
@@ -161,18 +117,12 @@ function StemLabCard({ entry }: { entry: StemLabEntry }) {
               aria-label={`Solo ${label} of ${entry.title} in the mixer`}
               style={{ "--stem-accent": accent } as CSSProperties}
             >
-              <span className="ng-stemlab-channel__meter" aria-hidden>
-                {stemMeterBars(stem.id, stem.type).map((height, index) => (
-                  <span
-                    key={index}
-                    style={
-                      {
-                        height: `${height}%`,
-                        "--bar-index": index,
-                      } as CSSProperties
-                    }
-                  />
-                ))}
+              {/* A channel fader, not a level meter: the catalog carries no
+                  per-stem level data, so nothing here pretends to measure the
+                  audio. Hover or focus raises the fader, as soloing would. */}
+              <span className="ng-stemlab-channel__fader" aria-hidden>
+                <span className="ng-stemlab-channel__fill" />
+                <span className="ng-stemlab-channel__knob" />
               </span>
               <span className="ng-stemlab-channel__label">{label}</span>
             </Link>
@@ -200,7 +150,8 @@ export function StemLab({ entries }: { entries: StemLabEntry[] }) {
       kickerTone="tertiary"
       title="Stem Lab"
       description="Solo any layer of a real release in the mixer — vocals, drums, bass and more."
-      itemWidth={392}
+      itemWidth={320}
+      className="ng-shelf--fill"
       action={{ href: "/catalog", label: "Browse catalog" }}
       testId="stem-lab"
     >

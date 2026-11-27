@@ -152,6 +152,12 @@
   mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
 }
 
+/* A shelf of a few wide cards fills the row instead of leaving a gap at
+   the end; once the cards no longer fit, they keep their width and scroll. */
+.home-ng .ng-shelf--fill .ng-shelf__track {
+  grid-auto-columns: minmax(var(--shelf-item, 200px), 1fr);
+}
+
 .home-ng .ng-shelf__item {
   display: flex;
   min-width: 0;
@@ -813,24 +819,38 @@
     color 0.2s ease;
 }
 
-.home-ng .ng-stemlab-channel__meter {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 2px;
-  width: 100%;
-  height: 56px;
+.home-ng .ng-stemlab-channel__fader {
+  position: relative;
+  display: block;
+  width: 10px;
+  height: 64px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
-.home-ng .ng-stemlab-channel__meter span {
-  display: block;
-  flex: 0 1 4px;
-  min-width: 1px;
-  border-radius: 2px;
-  background: var(--stem-accent);
-  opacity: 0.5;
+.home-ng .ng-stemlab-channel__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to top, var(--stem-accent), color-mix(in srgb, var(--stem-accent) 30%, transparent));
+  opacity: 0.55;
+  transform: scaleY(0.55);
   transform-origin: bottom;
-  transition: opacity 0.2s ease;
+  transition: transform 0.3s var(--r-ease-out), opacity 0.2s ease;
+}
+
+.home-ng .ng-stemlab-channel__knob {
+  position: absolute;
+  left: 50%;
+  bottom: calc(55% - 5px);
+  width: 22px;
+  height: 10px;
+  margin-left: -11px;
+  border-radius: 3px;
+  background: linear-gradient(#f4f1ff, #b9b0da);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+  transition: transform 0.3s var(--r-ease-out);
 }
 
 .home-ng .ng-stemlab-channel__label {
@@ -851,16 +871,16 @@
   color: #fff;
 }
 
-.home-ng .ng-stemlab-channel:hover .ng-stemlab-channel__meter span,
-.home-ng .ng-stemlab-channel:focus-visible .ng-stemlab-channel__meter span {
+.home-ng .ng-stemlab-channel:hover .ng-stemlab-channel__fill,
+.home-ng .ng-stemlab-channel:focus-visible .ng-stemlab-channel__fill {
   opacity: 1;
-  animation: ng-stem-level 0.9s ease-in-out infinite alternate;
-  animation-delay: calc(var(--bar-index, 0) * -0.08s);
+  transform: scaleY(0.9);
 }
 
-@keyframes ng-stem-level {
-  from { transform: scaleY(0.72); }
-  to { transform: scaleY(1); }
+/* The knob rides with the fill: 35% of the 64px fader. */
+.home-ng .ng-stemlab-channel:hover .ng-stemlab-channel__knob,
+.home-ng .ng-stemlab-channel:focus-visible .ng-stemlab-channel__knob {
+  transform: translateY(-22px);
 }
 
 .home-ng .ng-stemlab-card__footer {
@@ -1280,11 +1300,6 @@
     transform: scaleY(calc(var(--eq-max) * var(--bar-k)));
   }
 
-  .home-ng .ng-stemlab-channel:hover .ng-stemlab-channel__meter span,
-  .home-ng .ng-stemlab-channel:focus-visible .ng-stemlab-channel__meter span {
-    animation: none;
-  }
-
   .home-ng .ng-hero-skeleton__line::after,
   .home-ng .ng-hero-skeleton__pill::after {
     animation: none;
@@ -1296,6 +1311,8 @@
   .home-ng .ng-stemlab-card,
   .home-ng .ng-stemlab-card__art img,
   .home-ng .ng-stemlab-channel,
+  .home-ng .ng-stemlab-channel__fill,
+  .home-ng .ng-stemlab-channel__knob,
   .home-ng .ng-ticket,
   .home-ng .ng-ticket__image,
   .home-ng .ng-ticket__cta .ms-icon,
