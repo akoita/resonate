@@ -2025,3 +2025,15 @@
 .home-ng .ng-catalog-home .ng-cat-genres {
   margin: 0 0 16px;
 }
+
+/* The title keeps a readable width; in a narrow column (a laptop with the
+   Session Dock open) the search and button wrap below it instead of
+   squeezing the title to a word per line. */
+.home-ng .ng-catalog-home .ng-catalog-header {
+  flex-wrap: wrap;
+}
+
+.home-ng .ng-catalog-home .ng-catalog-header > :first-child {
+  flex: 1 1 20rem;
+  min-width: min(100%, 20rem);
+}
