@@ -91,6 +91,21 @@ const PRIMARY_ITEMS = [
       </svg>
     )
   },
+  {
+    // Owner choice (2026-11-27): Community is a listener destination while
+    // its switch is on; #2663 had dropped it to reach eight items.
+    name: "Community",
+    href: "/community",
+    surface: "community" as ProductSurface,
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    )
+  },
 
 ];
 
@@ -208,7 +223,8 @@ type NavItem = { name: string; href: string; surface?: ProductSurface; icon: Rea
  * The destinations the sidebar offers (#2663): the listening ones and the
  * account ones for everybody, the artist group only to accounts with an
  * artist profile, and nothing whose surface is switched off. A listener sees
- * eight, nine once Sonic Radar has discoveries. Operator links are added separately.
+ * nine with Community on, ten once Sonic Radar has discoveries. Operator links
+ * are added separately.
  */
 export function sidebarDestinations(
   input: { isArtist: boolean; surfaces: Partial<Record<ProductSurface, boolean>>; hasDiscoveries?: boolean },
