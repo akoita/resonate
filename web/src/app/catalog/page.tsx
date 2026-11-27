@@ -10,6 +10,7 @@ import {
   getCatalogSortTime,
   groupCatalogStemsByTrack,
   summarizeCreditedArtists,
+  releaseInGenre,
   topCatalogGenres,
   type CatalogArtistSummary,
   type CatalogStemSummary,
@@ -383,7 +384,7 @@ function sortCatalogReleases(releases: Release[]) {
 function filterReleases(releases: Release[], search: string, genre: string | null) {
   if (!search && !genre) return releases;
   return releases.filter((release) =>
-    (!genre || release.genre?.trim().toLowerCase() === genre)
+    (!genre || releaseInGenre(release, genre))
     && (!search || [
       release.title,
       getArtistName(release),

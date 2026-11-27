@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Release } from "../../lib/api";
 import { publicReleaseHref } from "../../lib/artistRoutes";
 import {
+  displayGenre,
   formatCatalogAge,
   formatReleaseType,
   getArtistName,
@@ -59,7 +60,7 @@ export function CatalogReleaseCard({
   const addedAt = getCatalogSortTime(release);
   const meta = [
     formatReleaseType(release.type),
-    release.genre?.trim() || null,
+    displayGenre(release.genre),
     addedAt ? formatCatalogAge(addedAt) : null,
   ].filter(Boolean).join(" · ");
 

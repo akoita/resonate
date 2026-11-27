@@ -15,6 +15,8 @@ import {
   orderStemTypes,
   summarizeCreditedArtists,
   topCatalogGenres,
+  displayGenre,
+  releaseInGenre,
   type CatalogStemSummary,
 } from "./catalogDisplay";
 
@@ -343,8 +345,39 @@ describe("topCatalogGenres", () => {
       release("8", "  "),
       release("9", "POP"),
     ];
-    expect(topCatalogGenres(releases, 8)).toEqual(["Pop", "hip hop", "Afrobeat", "Jazz"]);
-    expect(topCatalogGenres(releases, 2)).toEqual(["Pop", "hip hop"]);
+    expect(topCatalogGenres(releases, 8)).toEqual(["Pop", "Hip-Hop", "Afrobeat", "Jazz"]);
+    expect(topCatalogGenres(releases, 2)).toEqual(["Pop", "Hip-Hop"]);
     expect(topCatalogGenres([], 8)).toEqual([]);
+  });
+
+  it("merges one genre's spellings and languages into one chip", () => {
+    const releases = [
+      release("1", "Hip-hop/Rap"),
+      release("2", "Rap"),
+      release("3", "Hip-Hop"),
+      release("4", "Rap français"),
+      release("5", "Musiques du monde"),
+      release("6", "World"),
+      release("7", "New Age"),
+    ];
+    expect(topCatalogGenres(releases, 8)).toEqual(["Hip-Hop", "World", "New Age"]);
+  });
+});
+
+describe("displayGenre", () => {
+  it("shows one name per genre and keeps unknown labels as typed", () => {
+    expect(displayGenre("hip-hop/rap")).toBe("Hip-Hop");
+    expect(displayGenre("  Musiques   du monde ")).toBe("World");
+    expect(displayGenre("RnB")).toBe("R&B");
+    expect(displayGenre("New Age")).toBe("New Age");
+    expect(displayGenre("  ")).toBeNull();
+    expect(displayGenre(null)).toBeNull();
+  });
+
+  it("files a release under the chip of its display genre", () => {
+    expect(releaseInGenre({ genre: "Rap" }, "Hip-Hop")).toBe(true);
+    expect(releaseInGenre({ genre: "Musiques du monde" }, "world")).toBe(true);
+    expect(releaseInGenre({ genre: "Pop" }, "Hip-Hop")).toBe(false);
+    expect(releaseInGenre({ genre: null }, "Pop")).toBe(false);
   });
 });

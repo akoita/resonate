@@ -31,6 +31,7 @@ import {
   groupCatalogStemsByTrack,
   summarizeCreditedArtists,
   summarizeManagedArtists,
+  releaseInGenre,
   topCatalogGenres,
   type CatalogArtistSummary,
   type CatalogStemSummary,
@@ -674,7 +675,7 @@ export default function Home() {
   );
   const catalogGenreReleases = useMemo(
     () => catalogGenre
-      ? displayReleases.filter((release) => release.genre?.trim().toLowerCase() === catalogGenre.toLowerCase())
+      ? displayReleases.filter((release) => releaseInGenre(release, catalogGenre))
       : displayReleases,
     [displayReleases, catalogGenre],
   );
