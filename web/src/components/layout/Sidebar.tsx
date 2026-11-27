@@ -83,6 +83,17 @@ const PRIMARY_ITEMS = [
     )
   },
   {
+    // Owner choice (2026-11-27): the public catalog (releases, artists, stems
+    // and public playlists) gets a sidebar link for everyone.
+    name: "Catalog",
+    href: "/catalog",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+      </svg>
+    )
+  },
+  {
     name: "Crates & Stems",
     href: "/crates",
     icon: (
@@ -122,7 +133,8 @@ const ARTIST_ITEMS = [
     )
   },
   {
-    name: "Catalog",
+    // The artist's own releases; the public catalog is "Catalog" above.
+    name: "My catalog",
     href: "/artist/catalog",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -246,7 +258,7 @@ export function sidebarDestinations(
  * crate), so it stays highlighted on /crates/<id>; other items match exactly.
  */
 function isPrimaryItemActive(pathname: string, href: string): boolean {
-  if (href === "/crates") return pathname === href || pathname.startsWith(`${href}/`);
+  if (href === "/crates" || href === "/catalog") return pathname === href || pathname.startsWith(`${href}/`);
   return pathname === href;
 }
 
