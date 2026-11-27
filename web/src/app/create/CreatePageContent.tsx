@@ -312,7 +312,7 @@ export default function CreatePageContent() {
   };
 
   return (
-    <AuthGate title="Connect to create with AI">
+    <AuthGate title="Sign in to create with AI.">
       <div className="create-page">
         <div className="create-header">
           <h1>✨ Create with AI</h1>
