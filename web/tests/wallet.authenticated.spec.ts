@@ -133,6 +133,23 @@ test.describe("Wallet for newcomers", () => {
     await expect(page.getByTestId("wallet-welcome-card")).toHaveCount(0);
   });
 
+  test("WALLET-06: with fee money only, the welcome card points to free test dollars", async ({ authenticatedPage: page }) => {
+    await answerSurfaces(page);
+    await page.route((url) => isBackend(url, "/welcome-funds"), (route: Route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...welcomeStatus({ eth: "sent", canClaim: false }), amountUsdc: null }),
+      }),
+    );
+
+    await page.goto("/wallet");
+    const card = page.getByTestId("wallet-welcome-card");
+    await expect(card).toContainText("We covered your fees");
+    await expect(card).toContainText("Get free test dollars below");
+    await expect(card).not.toContainText("$");
+  });
+
   test("WALLET-04: the sidebar account card opens Profile, Wallet, Settings and Sign out", async ({ authenticatedPage: page }) => {
     await answerSurfaces(page);
     await page.goto("/player");

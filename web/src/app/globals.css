@@ -3885,6 +3885,8 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
 
 .vault-welcome-steps a {
   color: #b9a8ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .vault-welcome-claim {
@@ -3892,6 +3894,14 @@ html[data-session="stored"] .wallet-connect[data-session-pending] {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+.vault-free-dollars-address {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted, rgba(255, 255, 255, 0.72));
 }
 
 .vault-welcome-note {

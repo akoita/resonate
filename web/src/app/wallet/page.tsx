@@ -7,6 +7,7 @@ import VaultSmartAccountCard from "../../components/wallet/VaultSmartAccountCard
 import VaultSecurityCard from "../../components/wallet/VaultSecurityCard";
 import MyStakesCard from "../../components/wallet/MyStakesCard";
 import WelcomeMoneyCard from "../../components/wallet/WelcomeMoneyCard";
+import FreeTestDollarsCard from "../../components/wallet/FreeTestDollarsCard";
 import { useIsDeployed } from "../../hooks/useIsDeployed";
 import { SurfaceGate } from "../../components/system/SurfaceGate";
 import Link from "next/link";
@@ -74,6 +75,8 @@ function WalletContent() {
       />
 
       <WelcomeMoneyCard onFunded={refreshAll} />
+
+      <FreeTestDollarsCard address={saAddress} onRefresh={refreshAll} />
 
       {/* Content Protection Stakes (artists) */}
       <MyStakesCard />

@@ -75,16 +75,20 @@ export default function WelcomeMoneyCard({ onFunded }: { onFunded?: () => void }
         <h2 className="vault-card-title" id="wallet-welcome-title">Start here</h2>
       </div>
       <p className="vault-welcome-lead">
-        {received
-          ? `Welcome! We added ${dollars ?? "test money"} to your wallet so you can try everything for free.`
-          : `Every new account gets ${dollars ?? "test money"} to try Resonate for free.`}
+        {dollars
+          ? received
+            ? `Welcome! We added ${dollars} to your wallet so you can try everything for free.`
+            : `Every new account gets ${dollars} to try Resonate for free.`
+          : received
+            ? "Welcome! We covered your fees with a little test money. Get free test dollars below to back a show."
+            : "Every new account gets a little test money for fees. Get free test dollars below to back a show."}
       </p>
       <ol className="vault-welcome-steps">
         <li>
           <strong>Find a show you&apos;d go to.</strong> <Link href="/shows">Browse shows</Link>
         </li>
         <li>
-          <strong>Back it with a few test dollars.</strong> The artist sees that fans are ready.
+          <strong>Back it with a few test dollars.</strong> The artist sees that fans are ready.{dollars ? null : " Get them free from the card below."}
         </li>
         <li>
           <strong>If the show doesn&apos;t happen, you get it back.</strong> Nothing is ever taken for good.
