@@ -92,7 +92,10 @@ export default function StemDetailPage() {
     const stemPurchasesEnabled = useSurfaceEnabled("stemPurchases");
     const params = useParams();
     const tokenIdStr = params.tokenId as string;
-    const tokenId = tokenIdStr ? BigInt(tokenIdStr) : undefined;
+    // Token ids are on-chain integers. A mistyped or stale link (a catalog stem
+    // id, say) must show "not found", not crash the page on BigInt().
+    const tokenIdValid = typeof tokenIdStr === "string" && /^\d+$/.test(tokenIdStr);
+    const tokenId = tokenIdValid ? BigInt(tokenIdStr) : undefined;
 
     const { address, smartAccountAddress, token } = useAuth();
     const { chainId } = useContractAddresses();
@@ -378,8 +381,25 @@ export default function StemDetailPage() {
         }
     }, []);
 
+    if (!tokenIdValid) {
+        return (
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <div className="text-center">
+                    <h1 className="text-2xl font-bold text-white mb-2">Stem Not Found</h1>
+                    <p className="text-zinc-400 mb-4">This link does not point to a stem.</p>
+                    <Link
+                        href="/crates?tab=stems"
+                        className="text-emerald-500 hover:text-emerald-400"
+                    >
+                        Browse Marketplace →
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     // Loading state
-    if (!tokenId || stemLoading || uriLoading || lineageLoading) {
+    if (tokenId === undefined || stemLoading || uriLoading || lineageLoading) {
         return (
             <div className="min-h-screen bg-black flex items-center justify-center">
                 <div className="animate-pulse space-y-4 text-center" aria-busy="true">
