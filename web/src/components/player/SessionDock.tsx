@@ -18,7 +18,8 @@ import type { LocalTrack } from "../../lib/localLibrary";
 
 const DOCK_BODY_ID = "session-dock-body";
 
-function minutesLeft(queue: LocalTrack[], fromIndex: number): number {
+/** Minutes of music from `fromIndex` to the end of the queue. */
+export function minutesLeft(queue: LocalTrack[], fromIndex: number): number {
   const seconds = queue.slice(Math.max(0, fromIndex)).reduce((sum, track) => sum + (track.duration ?? 0), 0);
   return Math.round(seconds / 60);
 }
@@ -182,8 +183,8 @@ function QueuePlace() {
 /**
  * The Session Dock: now playing and the queue on every page but /player
  * (which has the full console). It shares the console's layout on this
- * device: docked left or right, floating, or folded into a capsule above the
- * player bar. While something queueable is dragged it opens drop lanes, even
+ * device: docked left or right, floating, or folded into the player bar
+ * (shown again as a capsule only to catch a drag). While something queueable is dragged it opens drop lanes, even
  * when the queue is empty.
  */
 export function SessionDock({ stageRef }: { stageRef: RefObject<HTMLElement | null> }) {
@@ -214,6 +215,10 @@ export function SessionDock({ stageRef }: { stageRef: RefObject<HTMLElement | nu
   if (!available || (!hasSession && !dragging && !playlistsOpen)) return null;
 
   const minimized = layout.minimized;
+  // Folded, the session lives in the player bar (its queue chip reopens the
+  // dock), so nothing floats over the page. Only while something queueable
+  // is dragged does the folded dock come back as a drop capsule.
+  if (minimized && !dragging) return null;
   const tab: "session" | "playlists" = playlistsOpen ? "playlists" : "session";
   // A folded dock is a capsule: it keeps its floating spot but not its size.
   const style =

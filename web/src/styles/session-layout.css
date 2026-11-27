@@ -1115,3 +1115,161 @@ html.is-resizing-sidebar .app-sidebar {
     left: var(--space-3);
   }
 }
+
+/* ---- The session in the player bar ---------------------------------------
+ * Folding the dock folds it into the bar: the queue chip and Loop and Repeat
+ * sit in the bar's right-hand cluster beside the volume, so nothing floats
+ * over the page. The chip opens or folds the queue panel (pressed = open). */
+@media (min-width: 768px) {
+  .app-player .player-end {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-4);
+    min-width: 300px;
+  }
+
+  .app-player .player-end .player-volume {
+    width: auto;
+    margin-right: 0;
+  }
+
+  .app-player .player-session {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .app-player .queue-indicator {
+    position: static;
+    transform: none;
+    height: 34px;
+    padding: 0 12px;
+    gap: 8px;
+    border-radius: var(--r-radius-full, 999px);
+    border: 1px solid var(--r-chrome-border);
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: none;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12.5px;
+    font-weight: 700;
+    opacity: 1;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .app-player .queue-indicator:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .app-player .queue-indicator[aria-pressed="true"] {
+    color: #fff;
+    border-color: color-mix(in srgb, var(--r-primary) 55%, transparent);
+    background: color-mix(in srgb, var(--r-primary) 18%, transparent);
+  }
+
+  .app-player .queue-indicator .queue-count__prefix {
+    display: none;
+  }
+
+  /* Loop and Repeat: a round button; its panel opens above the bar. */
+  .app-player .player-listening-menu {
+    position: static;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+
+  .app-player .player-listening-menu .listening-controls--bar,
+  .app-player .player-listening-menu details[open] {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .lc-bar-button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    list-style: none;
+    cursor: pointer;
+    border-radius: var(--r-radius-full, 999px);
+    border: 1px solid var(--r-chrome-border);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.72);
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .lc-bar-button::-webkit-details-marker {
+    display: none;
+  }
+
+  .lc-bar-button:hover,
+  .listening-controls--bar[open] > .lc-bar-button,
+  .lc-bar-button.is-active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .listening-controls--bar[open] > .lc-bar-button {
+    border-color: color-mix(in srgb, var(--r-primary) 55%, transparent);
+  }
+
+  .lc-bar-led {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--r-primary);
+  }
+
+  /* Clears the bar's top edge by the same gap the dock keeps above it. */
+  .listening-controls--bar > .lc-body {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 17px + var(--space-3));
+    width: min(400px, calc(100vw - 32px));
+    max-height: min(65dvh, 560px);
+    overflow: auto;
+    padding: 14px 16px 4px;
+    border-radius: var(--r-radius-md);
+    border: 1px solid var(--r-chrome-border);
+    background: rgba(11, 11, 19, 0.98);
+    box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.85);
+    cursor: auto;
+  }
+
+  .lc-bar-title {
+    margin: 0 0 12px;
+  }
+}
+
+/* A narrower bar keeps the place in the queue and drops the minutes left. */
+@media (max-width: 1100px) {
+  .app-player .queue-count__time {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-player .player-end,
+  .app-player .player-session {
+    display: contents;
+  }
+
+  .app-player .queue-indicator .queue-icon,
+  .app-player .queue-count__time {
+    display: none;
+  }
+}
