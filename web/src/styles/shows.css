@@ -3446,7 +3446,9 @@
   }
 }
 
-@container page (max-width: 743px) {
+/* The intro banner stacks its stats under the copy once the copy column
+ * would drop below a readable measure beside them. */
+@container page (max-width: 960px) {
   .shows-page__intro {
     grid-template-columns: 1fr;
     padding: 56px;
@@ -3457,7 +3459,9 @@
     justify-content: flex-start;
     gap: 16px;
   }
+}
 
+@container page (max-width: 743px) {
   .campaign-hero {
     grid-template-columns: 1fr;
     min-height: auto;

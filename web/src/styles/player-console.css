@@ -554,7 +554,7 @@
 /* Docked left: mirror the right dock. */
 .player-master-stage[data-console-dock="left"] .player-floating-console {
   right: auto;
-  left: var(--space-4);
+  left: var(--space-6);
   box-shadow: 20px 0 80px rgba(0, 0, 0, 0.6);
 }
 

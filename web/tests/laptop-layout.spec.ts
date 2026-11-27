@@ -18,6 +18,7 @@ const API = process.env.E2E_API_URL ?? "http://localhost:3000";
 const LAPTOP_WIDTHS = [1280, 1366, 1440, 1536] as const;
 const ROUTES = [
   "/",
+  "/player",
   "/library",
   "/crates",
   "/create",
@@ -75,7 +76,10 @@ function measureLayout(): LayoutReport {
       const position = getComputedStyle(node).position;
       if (position === "fixed" || position === "sticky") return true;
     }
-    return Boolean(element.closest("[role=dialog], [aria-hidden='true']"));
+    if (element.closest("[role=dialog], [aria-hidden='true']")) return true;
+    // The body of a closed <details> is not shown, though it still has boxes.
+    const closed = element.closest("details:not([open])");
+    return Boolean(closed && !element.closest("summary"));
   };
   const name = (element: Element) =>
     typeof element.className === "string" && element.className.trim()
@@ -196,6 +200,31 @@ async function seedQueue(page: Page) {
   });
 }
 
+/**
+ * The player bar spans the bottom edge; the Session Dock and the /player
+ * console end above it (and above the queue chip on its top edge), sharing
+ * its outer edge.
+ */
+async function panelsClearOfBar(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const issues: string[] = [];
+    const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
+    const bar = box(".app-player");
+    if (!bar) return issues;
+    const chip = box(".app-player .queue-indicator");
+    const barTop = Math.min(bar.top, chip && chip.height > 0 ? chip.top : bar.top);
+    for (const [name, selector] of [["Session Dock", "#session-dock:not(.is-minimized)"], ["player console", ".player-floating-console:not(.is-minimized)"]] as const) {
+      const panel = box(selector);
+      if (!panel || panel.height === 0) continue;
+      if (panel.bottom > barTop - 8) issues.push(`the ${name} reaches the player bar (bottom ${Math.round(panel.bottom)}, bar top ${Math.round(barTop)})`);
+      if (Math.abs(panel.right - bar.right) > 2 && panel.right > bar.left + bar.width / 2) {
+        issues.push(`the ${name} and the player bar do not share their right edge (${Math.round(panel.right)} vs ${Math.round(bar.right)})`);
+      }
+    }
+    return issues;
+  });
+}
+
 for (const width of LAPTOP_WIDTHS) {
   test(`pages keep their layout at ${width}px with the Session Dock open`, async ({ page, request }) => {
     test.setTimeout(240_000);
@@ -223,10 +252,13 @@ for (const width of LAPTOP_WIDTHS) {
       await page.goto(route);
       await page.waitForLoadState("networkidle").catch(() => undefined);
       await dismissPrompts(page);
-      await expect(page.locator("#session-dock")).toBeVisible();
+      // The full player has its own console instead of the dock.
+      await expect(page.locator(route === "/player" ? ".player-floating-console" : "#session-dock")).toBeVisible();
+      await expect(page.locator(".app-player")).toBeVisible();
       const report = await page.evaluate(measureLayout);
       for (const item of report.squeezed) problems.push(`${route}: squeezed ${item}`);
       for (const item of report.overlapping) problems.push(`${route}: overlapping ${item}`);
+      for (const item of await panelsClearOfBar(page)) problems.push(`${route}: ${item}`);
       if (report.sideways > 2) problems.push(`${route}: the page scrolls sideways by ${report.sideways}px; widest: ${report.widest.join(" > ") || "unknown"}`);
     }
     expect(problems, problems.join("\n")).toEqual([]);

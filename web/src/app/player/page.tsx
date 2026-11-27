@@ -515,6 +515,10 @@ function PlayerContent() {
   // last session, no playhead, no share row (the owner's empty-queue report).
   const stageArtworkUrl = currentTrack ? artworkUrl : null;
   const queueEmpty = queue.length === 0;
+  // The player bar is the one home for play, progress and volume whenever it
+  // shows (any session); the console repeats them only without a bar: with no
+  // session, and in immersive full screen, where the bar is out of sight.
+  const consoleTransport = immersive.active || (queueEmpty && !currentTrack);
 
   const displayTrack = currentTrack || {
     title: "No track selected",
@@ -648,87 +652,91 @@ function PlayerContent() {
           <PlayerConsoleLayoutButtons layout={consoleLayout} bodyId={PLAYER_CONSOLE_ID} />
         </div>
 
-        <div className="player-controls-backstage">
-          <button className="ui-btn" onClick={prevTrack} disabled={currentIndex <= 0} aria-label="Prev">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="19 20 9 12 19 4 19 20" fill="currentColor" />
-              <line x1="5" y1="19" x2="5" y2="5" />
-            </svg>
-          </button>
+        {consoleTransport ? (
+          <>
+            <div className="player-controls-backstage">
+              <button className="ui-btn" onClick={prevTrack} disabled={currentIndex <= 0} aria-label="Prev">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="19 20 9 12 19 4 19 20" fill="currentColor" />
+                  <line x1="5" y1="19" x2="5" y2="5" />
+                </svg>
+              </button>
 
-          <button className="ui-btn btn-main" onClick={togglePlay} disabled={queueEmpty && !currentTrack} aria-label={isPlaying ? "Pause" : "Play"}>
-            {isPlaying ? (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16" rx="1" />
-                <rect x="14" y="4" width="4" height="16" rx="1" />
-              </svg>
-            ) : (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: "4px" }}>
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-            )}
-          </button>
+              <button className="ui-btn btn-main" onClick={togglePlay} disabled={queueEmpty && !currentTrack} aria-label={isPlaying ? "Pause" : "Play"}>
+                {isPlaying ? (
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16" rx="1" />
+                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                  </svg>
+                ) : (
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: "4px" }}>
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                )}
+              </button>
 
-          <button className="ui-btn" onClick={() => nextTrack()} disabled={!shuffle && currentIndex >= queue.length - 1 && repeatMode !== "all"} aria-label="Next">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" />
-              <line x1="19" y1="5" x2="19" y2="19" />
-            </svg>
-          </button>
-        </div>
+              <button className="ui-btn" onClick={() => nextTrack()} disabled={!shuffle && currentIndex >= queue.length - 1 && repeatMode !== "all"} aria-label="Next">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" />
+                  <line x1="19" y1="5" x2="19" y2="19" />
+                </svg>
+              </button>
+            </div>
 
-        <div className="player-progress" style={{ marginBottom: "var(--space-2)" }}>
-          <div className="studio-label" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: "2px" }}>
-            <span>Progress</span>
-            {currentTrack ? (
-              <span>{formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} / {formatTime(duration)}</span>
-            ) : null}
-          </div>
-          {/* The A–B marker sits on the scrub track itself, so the highlight reads against the playhead. */}
-          <div className="player-range-wrap">
-          {segmentLoop && duration > 0 && <div className="segment-timeline" aria-label={`Loop from ${segmentLoop.start.toFixed(1)} to ${segmentLoop.end.toFixed(1)} seconds`}><span style={{ marginLeft: `${segmentLoop.start / duration * 100}%`, width: `${(segmentLoop.end - segmentLoop.start) / duration * 100}%` }} /></div>}
-          <input
-            className="player-range"
-            type="range"
-            min="0"
-            max="100"
-            step="0.1"
-            value={currentTrack ? (isDragging ? dragValue : (progress || 0)) : 0}
-            disabled={!currentTrack}
-            onPointerDown={handleSeekStart}
-            onChange={handleSeekChange}
-            onPointerUp={handleSeekEnd}
-            aria-label="Playback position"
-            aria-valuetext={`${formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} of ${formatTime(duration)}`}
-          />
-          </div>
-        </div>
+            <div className="player-progress" style={{ marginBottom: "var(--space-2)" }}>
+              <div className="studio-label" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: "2px" }}>
+                <span>Progress</span>
+                {currentTrack ? (
+                  <span>{formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} / {formatTime(duration)}</span>
+                ) : null}
+              </div>
+              {/* The A–B marker sits on the scrub track itself, so the highlight reads against the playhead. */}
+              <div className="player-range-wrap">
+              {segmentLoop && duration > 0 && <div className="segment-timeline" aria-label={`Loop from ${segmentLoop.start.toFixed(1)} to ${segmentLoop.end.toFixed(1)} seconds`}><span style={{ marginLeft: `${segmentLoop.start / duration * 100}%`, width: `${(segmentLoop.end - segmentLoop.start) / duration * 100}%` }} /></div>}
+              <input
+                className="player-range"
+                type="range"
+                min="0"
+                max="100"
+                step="0.1"
+                value={currentTrack ? (isDragging ? dragValue : (progress || 0)) : 0}
+                disabled={!currentTrack}
+                onPointerDown={handleSeekStart}
+                onChange={handleSeekChange}
+                onPointerUp={handleSeekEnd}
+                aria-label="Playback position"
+                aria-valuetext={`${formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} of ${formatTime(duration)}`}
+              />
+              </div>
+            </div>
 
-        <div className={`console-gain ${muted ? "is-muted" : ""}`}>
-          <div className="studio-label console-gain__label">Volume</div>
-          <div className="console-gain__row">
-            <button
-              type="button"
-              className="console-icon-btn console-icon-btn--mute"
-              onClick={toggleMute}
-              aria-label={muted ? "Unmute" : "Mute"}
-              aria-pressed={muted}
-              title={muted ? "Unmute" : "Mute"}
-            >
-              <VolumeIcon volume={volume} muted={muted} size={16} />
-            </button>
-            <input
-              className="player-range"
-              type="range"
-              min="0"
-              max="100"
-              value={volume * 100}
-              onChange={handleVolume}
-              aria-label="Output volume"
-              aria-valuetext={`${Math.round(volume * 100)} percent`}
-            />
-          </div>
-        </div>
+            <div className={`console-gain ${muted ? "is-muted" : ""}`}>
+              <div className="studio-label console-gain__label">Volume</div>
+              <div className="console-gain__row">
+                <button
+                  type="button"
+                  className="console-icon-btn console-icon-btn--mute"
+                  onClick={toggleMute}
+                  aria-label={muted ? "Unmute" : "Mute"}
+                  aria-pressed={muted}
+                  title={muted ? "Unmute" : "Mute"}
+                >
+                  <VolumeIcon volume={volume} muted={muted} size={16} />
+                </button>
+                <input
+                  className="player-range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={volume * 100}
+                  onChange={handleVolume}
+                  aria-label="Output volume"
+                  aria-valuetext={`${Math.round(volume * 100)} percent`}
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
 
         {currentTrack && (
           <PlayerActionPanel

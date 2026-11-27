@@ -293,29 +293,32 @@ html.is-resizing-sidebar .app-sidebar {
   container: session-dock / inline-size;
 }
 
-/* Docked: a full-height column beside the page. The player bar then spans
- * only the page column (below), so the two never overlap. */
+/* Docked: a column beside the page that ends just above the player bar.
+ * The bar spans the whole bottom edge and is the one home for play,
+ * progress and volume (owner decision 2026-11-27), so the dock stops a gap
+ * above it, clear of the queue chip that sits on the bar's top edge. */
+.app-main {
+  /* Bar height + its bottom gap + the queue chip's overhang. */
+  --player-bar-clearance: calc(68px + var(--space-5) + 14px);
+}
+
 .session-dock--right:not(.is-minimized),
 .session-dock--left:not(.is-minimized) {
   --dock-width: clamp(288px, 24vw, 360px);
   flex: 0 0 var(--dock-width);
-  /* Bottom edge lines up with the player bar's. */
-  margin: var(--dock-gap) var(--dock-gap) var(--space-5) 0;
+  margin: var(--dock-gap) var(--dock-gap) calc(var(--player-bar-clearance) + var(--dock-gap)) 0;
 }
 
 .session-dock--left:not(.is-minimized) {
   order: -1;
-  margin: var(--dock-gap) 0 var(--space-5) var(--dock-gap);
+  margin: var(--dock-gap) 0 calc(var(--player-bar-clearance) + var(--dock-gap)) var(--dock-gap);
 }
 
-@media (min-width: 768px) {
-  .app-main:has(.session-dock--right:not(.is-minimized)) > .app-player {
-    right: calc(clamp(288px, 24vw, 360px) + 2 * var(--space-3));
-  }
-
-  .app-main:has(.session-dock--left:not(.is-minimized)) > .app-player {
-    left: calc(clamp(288px, 24vw, 360px) + 2 * var(--space-3));
-  }
+/* With no session the bar is gone, so the dock (open for playlists) can use
+ * the full height. */
+.app-main:not(:has(> .app-player)) .session-dock--right:not(.is-minimized),
+.app-main:not(:has(> .app-player)) .session-dock--left:not(.is-minimized) {
+  margin-bottom: var(--space-5);
 }
 
 .session-dock--floating {
@@ -1099,5 +1102,16 @@ html.is-resizing-sidebar .app-sidebar {
 @container sidebar-logo (max-width: 190px) {
   .app-sidebar .sidebar-logo .brand-logo__wordmark {
     display: none;
+  }
+}
+
+/* The bar and a docked panel share their outer edge. */
+@media (min-width: 768px) {
+  .app-main:has(.session-dock--right:not(.is-minimized)) > .app-player {
+    right: var(--space-3);
+  }
+
+  .app-main:has(.session-dock--left:not(.is-minimized)) > .app-player {
+    left: var(--space-3);
   }
 }
